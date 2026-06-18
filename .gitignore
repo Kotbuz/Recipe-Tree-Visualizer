@@ -216,3 +216,7 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Runtime data
+backend/logs/
+backend/data/mods/*.jar
