@@ -1,2 +1,2 @@
-# Recipe-Tree-Visualizer-
+# Recipe-Tree-Visualizer
 веб-сервис для извлечения рецептов крафта из модов Minecraft Java (.jar) и построения интерактивного нодового дерева зависимостей крафта
