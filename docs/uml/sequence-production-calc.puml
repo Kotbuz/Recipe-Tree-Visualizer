@@ -1,0 +1,40 @@
+@startuml sequence-production-calc
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title Sequence — расчёт производительности
+
+actor "Пользователь" as User
+participant "Production Panel" as Panel
+participant "ProductionCalculator" as Calc
+participant "BipartiteGraph" as Graph
+participant "ModIndexer" as Indexer
+
+User -> Panel : цель: 100 железных\nпластин / мин
+Panel -> Calc : POST /graph/calculate\n{target_item, rate, graph}
+activate Calc
+
+Calc -> Graph : load graph topology
+Graph --> Calc : nodes + edges
+
+loop для каждого RecipeNode снизу вверх
+  Calc -> Indexer : get_recipe + machine.speed
+  Indexer --> Calc : Recipe, Machine (1x/2x/5x)
+  Calc -> Calc : normalize recipe\n(2 доски->4 палки = 1->2)
+  Calc -> Calc : crafts/min, machines,\nresource flow (float OK)
+end
+
+Calc --> Panel : ProductionPlan
+deactivate Calc
+
+Panel --> User : 100 пластин/мин\n-> 4 пресса\n-> 200 слитков/мин\n-> 8 печей\n-> 200 руды/мин
+
+note over Calc
+  UI показывает оригинальный рецепт,
+  расчёт использует нормализованные
+  коэффициенты; дробные значения OK
+end note
+
+@enduml
