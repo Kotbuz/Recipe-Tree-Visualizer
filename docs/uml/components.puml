@@ -1,0 +1,58 @@
+@startuml components
+!theme plain
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam packageStyle rectangle
+
+title Component Diagram — Recipe Tree Visualizer
+
+package "Frontend (React Flow)" {
+  component "Canvas\n(infinite board)" as Canvas
+  component "Item Search" as Search
+  component "Recipe Picker\n(alternatives)" as Picker
+  component "Production Panel\n(items/min, machines)" as Panel
+}
+
+package "Backend (FastAPI)" {
+  component "Routes\n/mods /items /graph" as Routes
+  component "ModService" as ModSvc
+  component "GraphService" as GraphSvc
+  component "ProductionCalculator" as Calc
+  component "JarParser" as Parser
+  component "ModIndexer\nItem · Recipe · Machine" as Indexer
+  component "BipartiteGraph\nauto-build · paths" as Graph
+  component "Core\nConfig · Loguru" as Core
+}
+
+database "Mod Registry\n(per mod_id)" as Registry
+database ".jar / modpack" as Jar
+
+Canvas --> Routes : REST / JSON
+Search --> Routes
+Picker --> Routes
+Panel --> Routes
+
+Routes --> ModSvc
+Routes --> GraphSvc
+Routes --> Calc
+
+ModSvc --> Parser
+ModSvc --> Indexer
+Parser --> Jar
+Indexer --> Registry
+
+GraphSvc --> Graph
+GraphSvc --> Indexer
+Calc --> Graph
+Calc --> Indexer
+
+Routes ..> Core
+ModSvc ..> Core
+GraphSvc ..> Core
+Calc ..> Core
+Parser ..> Core
+Indexer ..> Core
+Graph ..> Core
+
+@enduml
