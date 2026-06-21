@@ -43,14 +43,6 @@
     transform: rotateX(-30deg) rotateY(45deg);
 }
 
-.block-preview-cube.slab {
-    height: 30px;
-}
-
-.block-preview-cube.stairs {
-    height: 45px;
-}
-
 .block-face {
     position: absolute;
     width: 62px;
@@ -60,70 +52,26 @@
     background-repeat: no-repeat;
 }
 
-.block-preview-cube.slab .block-face {
-    height: 30px;
+.block-front {
+    transform: translateZ(31px);
 }
 
-.block-preview-cube.slab .block-top,
-.block-preview-cube.slab .block-bottom {
-    height: 62px;
+.block-back {
+    transform: rotateY(180deg) translateZ(31px);
 }
 
-.block-preview-cube.slab .block-front {
-    transform: translateZ(15px);
+.block-left {
+    transform: rotateY(-90deg) translateZ(31px);
 }
 
-.block-preview-cube.slab .block-back {
-    transform: rotateY(180deg) translateZ(15px);
+.block-right {
+    transform: rotateY(90deg) translateZ(31px);
 }
 
-.block-preview-cube.slab .block-left {
-    transform: rotateY(-90deg) translateZ(15px);
+.block-top {
+    transform: rotateX(90deg) translateZ(31px);
 }
 
-.block-preview-cube.slab .block-right {
-    transform: rotateY(90deg) translateZ(15px);
-}
-
-.block-preview-cube.slab .block-top {
-    transform: rotateX(90deg) translateZ(15px);
-}
-
-.block-preview-cube.slab .block-bottom {
-    transform: rotateX(-90deg) translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-face {
-    width: 62px;
-}
-
-.block-preview-cube.stairs .block-front,
-.block-preview-cube.stairs .block-back,
-.block-preview-cube.stairs .block-left,
-.block-preview-cube.stairs .block-right {
-    height: 30px;
-}
-
-.block-preview-cube.stairs .block-front {
-    transform: translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-back {
-    transform: rotateY(180deg) translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-left {
-    transform: rotateY(-90deg) translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-right {
-    transform: rotateY(90deg) translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-top {
-    transform: rotateX(90deg) translateZ(15px);
-}
-
-.block-preview-cube.stairs .block-bottom {
-    transform: rotateX(-90deg) translateZ(15px);
+.block-bottom {
+    transform: rotateX(-90deg) translateZ(31px);
 }
