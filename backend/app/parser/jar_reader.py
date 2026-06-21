@@ -6,6 +6,7 @@ from pathlib import PurePosixPath
 import orjson
 
 from app.parser.exceptions import JarParseError
+from app.parser.loaders import ModLoader
 from app.parser.models import RawModData, RawModMeta, RawRecipeFile
 
 RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
@@ -33,33 +34,39 @@ class JarReader:
             raise JarParseError(f"Invalid jar archive: {jar_path}") from exc
 
     def _read_mod_meta(self, archive: zipfile.ZipFile) -> RawModMeta:
-        if "META-INF/neoforge.mods.toml" in archive.namelist():
-            return self._read_neoforge_meta(archive.read("META-INF/neoforge.mods.toml"))
-        if "fabric.mod.json" in archive.namelist():
-            return self._read_fabric_meta(archive.read("fabric.mod.json"))
+        names = set(archive.namelist())
+        if "META-INF/neoforge.mods.toml" in names:
+            meta = self._read_mods_toml(archive.read("META-INF/neoforge.mods.toml"))
+            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.NEOFORGE)
+        if "fabric.mod.json" in names:
+            meta = self._read_fabric_meta(archive.read("fabric.mod.json"))
+            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FABRIC)
+        if "META-INF/mods.toml" in names:
+            meta = self._read_mods_toml(archive.read("META-INF/mods.toml"))
+            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FORGE)
         raise JarParseError(
-            "Mod metadata not found (expected neoforge.mods.toml or fabric.mod.json)"
+            "Mod metadata not found (expected neoforge.mods.toml, fabric.mod.json, or mods.toml)"
         )
 
-    def _read_neoforge_meta(self, raw: bytes) -> RawModMeta:
+    def _read_mods_toml(self, raw: bytes) -> tuple[str, str]:
         data = tomllib.loads(raw.decode("utf-8"))
         mods = data.get("mods")
         if not mods:
-            raise JarParseError("neoforge.mods.toml has no [[mods]] section")
+            raise JarParseError("mods.toml has no [[mods]] section")
         first = mods[0]
         mod_id = first.get("modId")
         if not mod_id:
-            raise JarParseError("neoforge.mods.toml is missing modId")
+            raise JarParseError("mods.toml is missing modId")
         name = first.get("displayName") or mod_id
-        return RawModMeta(mod_id=mod_id, name=name)
+        return mod_id, name
 
-    def _read_fabric_meta(self, raw: bytes) -> RawModMeta:
+    def _read_fabric_meta(self, raw: bytes) -> tuple[str, str]:
         data = orjson.loads(raw)
         mod_id = data.get("id")
         if not mod_id:
             raise JarParseError("fabric.mod.json is missing id")
         name = data.get("name") or mod_id
-        return RawModMeta(mod_id=mod_id, name=name)
+        return mod_id, name
 
     def _discover_recipes(self, archive: zipfile.ZipFile) -> list[RawRecipeFile]:
         recipes: list[RawRecipeFile] = []

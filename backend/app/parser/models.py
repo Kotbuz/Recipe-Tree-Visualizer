@@ -1,10 +1,13 @@
 from dataclasses import dataclass, field
 
+from app.parser.loaders import ModLoader
+
 
 @dataclass(frozen=True)
 class RawModMeta:
     mod_id: str
     name: str
+    loader: ModLoader
 
 
 @dataclass(frozen=True)

@@ -2,29 +2,36 @@ from collections import Counter
 
 from app.parser.exceptions import JarParseError
 from app.parser.models import RawRecipeFile
+from app.parser.recipe_types import (
+    BLASTING,
+    CAMPFIRE_COOKING,
+    CRAFTING_SHAPED,
+    CRAFTING_SHAPELESS,
+    MACHINE_BY_TYPE,
+    SMELTING,
+    SMOKING,
+    STONECUTTING,
+    is_supported_recipe_type,
+    normalize_recipe_type,
+)
 from app.schemas.domain import Recipe, RecipeIO
-
-MACHINE_BY_TYPE: dict[str, str] = {
-    "crafting_shaped": "minecraft:crafting_table",
-    "crafting_shapeless": "minecraft:crafting_table",
-    "smelting": "minecraft:furnace",
-    "blasting": "minecraft:blast_furnace",
-    "smoking": "minecraft:smoker",
-    "campfire_cooking": "minecraft:campfire",
-    "stonecutting": "minecraft:stonecutter",
-}
 
 
 class RecipeExtractor:
+    def can_extract(self, recipe_file: RawRecipeFile) -> bool:
+        recipe_type = recipe_file.data.get("type")
+        return isinstance(recipe_type, str) and is_supported_recipe_type(recipe_type)
+
     def extract(self, recipe_file: RawRecipeFile, mod_id: str) -> Recipe:
         data = recipe_file.data
-        recipe_type = data.get("type")
-        if not isinstance(recipe_type, str):
+        raw_type = data.get("type")
+        if not isinstance(raw_type, str):
             raise JarParseError(f"Recipe {recipe_file.recipe_id} is missing type")
 
+        recipe_type = normalize_recipe_type(raw_type)
         machine_id = MACHINE_BY_TYPE.get(recipe_type)
         if machine_id is None:
-            raise JarParseError(f"Unsupported recipe type: {recipe_type}")
+            raise JarParseError(f"Unsupported recipe type: {raw_type}")
 
         inputs = self._extract_inputs(recipe_type, data)
         outputs = [self._extract_result(data)]
@@ -44,13 +51,13 @@ class RecipeExtractor:
         )
 
     def _extract_inputs(self, recipe_type: str, data: dict[str, object]) -> list[RecipeIO]:
-        if recipe_type == "crafting_shaped":
+        if recipe_type == CRAFTING_SHAPED:
             return self._extract_shaped_inputs(data)
-        if recipe_type == "crafting_shapeless":
+        if recipe_type == CRAFTING_SHAPELESS:
             return self._extract_shapeless_inputs(data)
-        if recipe_type in {"smelting", "blasting", "smoking", "campfire_cooking"}:
+        if recipe_type in {SMELTING, BLASTING, SMOKING, CAMPFIRE_COOKING}:
             return self._extract_single_input(data, key="ingredient")
-        if recipe_type == "stonecutting":
+        if recipe_type == STONECUTTING:
             return self._extract_single_input(data, key="ingredient")
         raise JarParseError(f"Unsupported recipe type: {recipe_type}")
 
@@ -125,7 +132,7 @@ class RecipeExtractor:
             if "tag" in ingredient:
                 tag = ingredient["tag"]
                 if isinstance(tag, str):
-                    return f"tag:{tag.lstrip('#')}"
+                    return self._normalize_item_id(tag)
             item = ingredient.get("item") or ingredient.get("id")
             if isinstance(item, str):
                 return self._normalize_item_id(item)
@@ -138,5 +145,5 @@ class RecipeExtractor:
 
     def _normalize_item_id(self, raw: str) -> str:
         if raw.startswith("#"):
-            return f"tag:{raw.lstrip('#')}"
+            return f"tag:{raw.removeprefix('#')}"
         return raw

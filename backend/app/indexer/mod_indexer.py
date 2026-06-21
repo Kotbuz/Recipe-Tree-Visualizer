@@ -1,3 +1,5 @@
+from loguru import logger
+
 from app.indexer.mod_registry import ModIndex
 from app.parser.item_builder import build_item
 from app.parser.models import RawModData
@@ -19,8 +21,22 @@ class ModIndexer:
         self._recipe_extractor = recipe_extractor or RecipeExtractor()
 
     def build(self, raw: RawModData) -> ModIndex:
-        index = ModIndex(mod_id=raw.meta.mod_id, name=raw.meta.name)
+        index = ModIndex(
+            mod_id=raw.meta.mod_id,
+            name=raw.meta.name,
+            loader=raw.meta.loader,
+        )
         for recipe_file in raw.recipe_files:
+            if not self._recipe_extractor.can_extract(recipe_file):
+                index.skipped_recipe_count += 1
+                recipe_type = recipe_file.data.get("type")
+                logger.info(
+                    "Skipping unsupported recipe {} (type={})",
+                    recipe_file.recipe_id,
+                    recipe_type,
+                )
+                continue
+
             recipe = self._recipe_extractor.extract(recipe_file, raw.meta.mod_id)
             index.recipes[recipe.id] = recipe
             self._register_machine(index, recipe.machine_id)
@@ -33,9 +49,8 @@ class ModIndexer:
     def _register_machine(self, index: ModIndex, machine_id: str) -> None:
         if machine_id in index.machines:
             return
-        label, icon = DEFAULT_MACHINES.get(
-            machine_id, (machine_id.split(":")[-1].title(), machine_id)
-        )
+        default = (machine_id.split(":")[-1].title(), machine_id)
+        label, icon = DEFAULT_MACHINES.get(machine_id, default)
         namespace = machine_id.split(":", maxsplit=1)[0]
         index.machines[machine_id] = Machine(
             id=machine_id,

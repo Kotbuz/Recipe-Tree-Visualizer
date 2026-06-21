@@ -44,6 +44,8 @@ class Recipe(BaseModel):
 class ModSummary(BaseModel):
     mod_id: str
     name: str
+    loader: str = "unknown"
     item_count: int = 0
     recipe_count: int = 0
     machine_count: int = 0
+    skipped_recipe_count: int = 0
