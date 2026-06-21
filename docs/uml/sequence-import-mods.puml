@@ -1,0 +1,49 @@
+@startuml sequence-import-mods
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title Sequence — импорт и индексация модов
+
+actor "Пользователь" as User
+participant "Frontend" as FE
+participant "ModService" as ModSvc
+participant "JarParser" as Parser
+participant "ModIndexer" as Indexer
+database "Mod Registry" as Registry
+database ".jar файлы" as Jar
+
+User -> FE : загрузить jar(ы)\nили модпак
+FE -> ModSvc : POST /mods/upload\nили /mods/modpack
+activate ModSvc
+
+loop для каждого .jar
+  ModSvc -> Parser : extract(jar_path)
+  activate Parser
+  Parser -> Jar : zipfile: items, blocks,\nrecipes, machines
+  Jar --> Parser : JSON / data files
+  Parser --> ModSvc : RawModData
+  deactivate Parser
+
+  ModSvc -> Indexer : index(raw_data, mod_id)
+  activate Indexer
+  Indexer -> Indexer : Item, Recipe,\nRecipeIO, Machine
+  Indexer -> Registry : save(mod_id, index)
+  Indexer --> ModSvc : ModIndexSummary
+  deactivate Indexer
+end
+
+ModSvc --> FE : 200 {mods: [...], counts}
+deactivate ModSvc
+
+FE --> User : моды доступны\nдля поиска
+
+note over Indexer, Registry
+  Для каждого рецепта:
+  inputs, outputs, machine,
+  duration, probability,
+  mod_id
+end note
+
+@enduml

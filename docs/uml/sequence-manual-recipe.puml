@@ -1,0 +1,38 @@
+@startuml sequence-manual-recipe
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title Sequence — ручное создание узла рецепта
+
+actor "Пользователь" as User
+participant "Canvas\n(React Flow)" as Canvas
+participant "GraphService" as GraphSvc
+participant "ModIndexer" as Indexer
+database "Mod Registry" as Registry
+
+User -> Canvas : тянет связь\nот узла «Доски»
+Canvas -> GraphSvc : GET /items/{item_id}/recipes
+activate GraphSvc
+GraphSvc -> Indexer : find_recipes(item_id)
+Indexer -> Registry : query
+Registry --> Indexer : [верстак, печь, пресс, ...]
+Indexer --> GraphSvc : list[Recipe]
+GraphSvc --> Canvas : альтернативные рецепты
+deactivate GraphSvc
+
+User -> Canvas : выбирает рецепт\n«2 Доски -> 4 Палки»
+
+Canvas -> Canvas : создать RecipeNode\n[Верстак] + ItemNode [Палки x4]
+Canvas -> Canvas : edges с amount:\nДоски --(2)--> Верстак\nВерстак --(4)--> Палки
+
+Canvas --> User : двудольный фрагмент:\nItem -> Recipe -> Item
+
+note over Canvas
+  Узел рецепта: машина в центре,
+  входы слева, выходы справа,
+  duration, speed, mod_id
+end note
+
+@enduml

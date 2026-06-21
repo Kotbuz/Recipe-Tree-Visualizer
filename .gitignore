@@ -217,6 +217,13 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
+# Runtime data
+backend/logs/
+backend/data/mods/*.jar
+
+# PlantUML local JAR (source .puml and rendered .png are committed)
+docs/uml/plantuml.jar
+
 
 #
 
