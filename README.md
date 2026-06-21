@@ -1,8 +1,8 @@
 # Recipe Tree Visualizer
 
 Интерактивный граф производства для Minecraft (vanilla + моды): импорт `.jar`, индексация
-предметов/рецептов/машин, ручное или автоматическое построение **двудольного графа**
-`Предмет → Рецепт → Предмет` и расчёт производительности (items/min, количество машин).
+предметов/рецептов/машин, **ручное** построение двудольного графа
+`Предмет → Рецепт → Предмет` на холсте и расчёт производительности (items/min, количество машин).
 
 ## Команда
 
@@ -13,10 +13,11 @@
 
 ## Ключевая идея
 
+- Импорт мода **не строит граф** — только наполняет каталог; холст пуст, ноды добавляет пользователь.
 - **Узел ресурса** — предмет на холсте (иконка, название, количество).
 - **Узел рецепта** — машина в центре, входы слева, выходы справа.
 - Рецепт — **отдельная нода**, не просто линия между предметами.
-- Поддержка альтернативных рецептов, много входов/выходов, расчёт цепочки как в Factorio.
+- Альтернативные рецепты, много входов/выходов, расчёт цепочки (референс: Satisfactory Modeler).
 
 Архитектура и UML (PlantUML → PNG): [docs/architecture.md](docs/architecture.md) · [docs/uml/](docs/uml/)
 
@@ -32,30 +33,31 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Swagger UI: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
 
-## Структура backend (целевая)
+## Структура backend
 
 ```
 backend/app/
-  api/routes/     # /mods, /items, /graph
+  api/routes/     # /mods, /items, /graph, /health
   services/       # ModService, GraphService
   parser/         # .jar → raw data
   indexer/        # Item, Recipe, Machine registry
-  graph/          # двудольный граф, auto-build
+  graph/          # двудольный граф (manual canvas state)
   calculator/     # производительность, нормализация
   schemas/        # Pydantic-модели
   core/           # config, logging
 ```
 
-## API (черновик)
+## API
 
-| Метод | Путь | Назначение |
-|-------|------|------------|
-| POST | `/mods/upload` | Загрузка `.jar` (один или несколько) |
-| POST | `/mods/modpack` | Импорт модпака |
-| GET | `/items/search` | Поиск предмета |
-| GET | `/items/{id}/recipes` | Альтернативные рецепты |
-| POST | `/graph/auto-build` | Автопостроение цепочки |
-| POST | `/graph/calculate` | Расчёт items/min и машин |
+| Метод | Путь | Статус |
+|-------|------|--------|
+| GET | `/health` | ✅ реализован |
+| GET | `/mods` | ✅ список (пустой до импорта) |
+| POST | `/mods/upload` | 🔜 заготовка (501) |
+| POST | `/mods/modpack` | 🔜 заготовка (501) |
+| GET | `/items/search` | ✅ поиск (пустой до индексации) |
+| GET | `/items/{id}/recipes` | ✅ альтернативные рецепты |
+| POST | `/graph/calculate` | 🔜 заготовка (501) |
 
 ## Переменные окружения
 
