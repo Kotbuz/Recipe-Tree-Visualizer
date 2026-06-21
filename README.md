@@ -21,6 +21,18 @@
 
 Архитектура и UML (PlantUML → PNG): [docs/architecture.md](docs/architecture.md) · [docs/uml/](docs/uml/)
 
+## Локальный запуск фронтенда
+
+1. Откройте терминал в папке `frontend`:
+   - `cd frontend`
+2. Установите зависимости:
+   - `npm install`
+3. Запустите локальный сервер разработки:
+   - `npm run dev`
+4. Откройте в браузере URL, который покажет Vite, обычно:
+   - `http://localhost:5173`
+
+
 ## Backend — быстрый старт
 
 ```bash
@@ -90,3 +102,6 @@ java -jar plantuml.jar -tpng *.puml
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).
+# Recipe-Tree-Visualizer
+веб-сервис для извлечения рецептов крафта из модов Minecraft Java (.jar) и построения интерактивного нодового дерева зависимостей крафта
+

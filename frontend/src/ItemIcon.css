@@ -1,0 +1,39 @@
+.item-icon-card {
+    max-width: 360px;
+    margin: 1rem auto;
+    padding: 1rem;
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    text-align: center;
+}
+
+.item-icon-card h3 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+}
+
+.item-icon-message {
+    min-height: 120px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #475569;
+    font-size: 1rem;
+}
+
+.item-icon-image {
+    width: 120px;
+    height: 120px;
+    object-fit: contain;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    border-radius: 16px;
+    background: #f8fafc;
+}
+
+.item-icon-label {
+    margin-top: 0.75rem;
+    color: #334155;
+    font-size: 0.95rem;
+}

@@ -1,0 +1,77 @@
+.block-preview-card {
+    max-width: 360px;
+    margin: 1rem auto;
+    padding: 1rem;
+    background: #ffffff;
+    border-radius: 18px;
+    border: 1px solid rgba(15, 23, 42, 0.08);
+    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+}
+
+.block-preview-card h3 {
+    margin: 0 0 1rem;
+    font-size: 1.1rem;
+    text-align: center;
+}
+
+.block-preview-scene {
+    min-height: 280px;
+    position: relative;
+    perspective: 900px;
+}
+
+.block-preview-message {
+    width: 100%;
+    min-height: 240px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #334155;
+    font-size: 0.98rem;
+}
+
+.block-preview-error {
+    color: #b91c1c;
+}
+
+.block-preview-cube {
+    width: 60px;
+    height: 60px;
+    margin: 0 auto;
+    position: relative;
+    transform-style: preserve-3d;
+    transform: rotateX(-30deg) rotateY(45deg);
+}
+
+.block-face {
+    position: absolute;
+    width: 62px;
+    height: 62px;
+    background-size: cover;
+    background-position: center;
+    background-repeat: no-repeat;
+}
+
+.block-front {
+    transform: translateZ(31px);
+}
+
+.block-back {
+    transform: rotateY(180deg) translateZ(31px);
+}
+
+.block-left {
+    transform: rotateY(-90deg) translateZ(31px);
+}
+
+.block-right {
+    transform: rotateY(90deg) translateZ(31px);
+}
+
+.block-top {
+    transform: rotateX(90deg) translateZ(31px);
+}
+
+.block-bottom {
+    transform: rotateX(-90deg) translateZ(31px);
+}

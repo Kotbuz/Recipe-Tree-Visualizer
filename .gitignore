@@ -223,3 +223,9 @@ backend/data/mods/*.jar
 
 # PlantUML local JAR (source .puml and rendered .png are committed)
 docs/uml/plantuml.jar
+
+
+#
+
+package-lock.json
+node_modules/
