@@ -1,0 +1,99 @@
+@startuml entity-relationship
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam linetype ortho
+
+title Entity-Relationship — двудольная модель
+
+entity "MOD" as mod {
+  * mod_id : string <<PK>>
+  --
+  name : string
+  jar_path : string
+}
+
+entity "ITEM" as item {
+  * id : string <<PK>>
+  --
+  name : string
+  icon : string
+  mod_id : string <<FK>>
+}
+
+entity "MACHINE" as machine {
+  * id : string <<PK>>
+  --
+  name : string
+  icon : string
+  speed : float
+  mod_id : string <<FK>>
+}
+
+entity "RECIPE" as recipe {
+  * id : string <<PK>>
+  --
+  machine_id : string <<FK>>
+  duration_ticks : int
+  duration_seconds : float
+  energy_cost : float
+  probability : float
+  mod_id : string <<FK>>
+}
+
+entity "RECIPE_IO" as io {
+  * recipe_id : string <<FK>>
+  * item_id : string <<FK>>
+  * direction : enum <<PK>>
+  --
+  amount : float
+  chance : float
+}
+
+entity "CANVAS_ITEM_NODE" as item_node {
+  * node_id : string <<PK>>
+  --
+  item_id : string <<FK>>
+  amount : float
+  x : float
+  y : float
+}
+
+entity "CANVAS_RECIPE_NODE" as recipe_node {
+  * node_id : string <<PK>>
+  --
+  recipe_id : string <<FK>>
+  x : float
+  y : float
+}
+
+entity "CANVAS_EDGE" as edge {
+  * edge_id : string <<PK>>
+  --
+  source_node_id : string
+  target_node_id : string
+  item_id : string <<FK>>
+  amount : float
+}
+
+mod ||--o{ item : contains
+mod ||--o{ machine : contains
+mod ||--o{ recipe : contains
+machine ||--o{ recipe : executes
+recipe ||--o{ io : has
+item ||--o{ io : references
+
+item_node }o--|| item : displays
+recipe_node }o--|| recipe : displays
+item_node ||--o{ edge : source
+recipe_node ||--o{ edge : source
+recipe_node ||--o{ edge : target
+item_node ||--o{ edge : target
+
+note bottom of recipe
+  Двудольный граф:
+  ITEM_NODE -> RECIPE_NODE -> ITEM_NODE
+  amount на каждом ребре
+end note
+
+@enduml

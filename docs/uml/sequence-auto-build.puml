@@ -1,0 +1,47 @@
+@startuml sequence-auto-build
+!theme plain
+skinparam shadowing false
+skinparam defaultFontName Arial
+skinparam sequenceMessageAlign center
+
+title Sequence — автопостроение цепочки
+
+actor "Пользователь" as User
+participant "Frontend" as FE
+participant "GraphService" as GraphSvc
+participant "BipartiteGraph" as Graph
+participant "ModIndexer" as Indexer
+
+User -> FE : «Построить цепочку\nавтоматически»\nцель: Алмазная кирка
+FE -> GraphSvc : POST /graph/auto-build\n{item_id, recipe_id?}
+activate GraphSvc
+
+GraphSvc -> Indexer : get_recipe(item_id)
+Indexer --> GraphSvc : Recipe + inputs
+
+GraphSvc -> Graph : build_chain(item_id)
+activate Graph
+
+loop рекурсивно для каждого ингредиента
+  Graph -> Indexer : find_recipes(ingredient_id)
+  Indexer --> Graph : Recipe (default or first)
+  Graph -> Graph : add ItemNode -> RecipeNode -> ItemNode
+end
+
+Graph --> GraphSvc : CanvasGraph\n(nodes, edges, amounts)
+deactivate Graph
+
+GraphSvc --> FE : 200 JSON graph
+deactivate GraphSvc
+
+FE -> FE : layout (elkjs / dagre)
+FE --> User : полный граф производства
+
+note over Graph
+  Предмет -> Рецепт -> Предмет
+  -> Рецепт -> ...
+  Поддержка альтернатив
+  через recipe_id
+end note
+
+@enduml
