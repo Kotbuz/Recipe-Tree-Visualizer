@@ -38,12 +38,22 @@ const mapMachineName = (typeName: string) =>
 
 export default function RecipeCanvas() {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
-    const [contextMenu, setContextMenu] = useState<{
+    type RecipeContextMenu = {
+        type: 'recipe';
         contentX: number;
         contentY: number;
         screenX: number;
         screenY: number;
-    } | null>(null);
+    };
+
+    type NodeContextMenu = {
+        type: 'node';
+        nodeId: string;
+        screenX: number;
+        screenY: number;
+    };
+
+    const [contextMenu, setContextMenu] = useState<RecipeContextMenu | NodeContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
     const [dragState, setDragState] = useState<DragState | null>(null);
@@ -93,6 +103,7 @@ export default function RecipeCanvas() {
         if (!contentCoords) return;
 
         setContextMenu({
+            type: 'recipe',
             contentX: contentCoords.x,
             contentY: contentCoords.y,
             screenX: event.clientX,
@@ -105,7 +116,7 @@ export default function RecipeCanvas() {
     };
 
     const handleRecipeClick = (recipe: RecipeSummary) => {
-        if (!contextMenu) return;
+        if (!contextMenu || contextMenu.type !== 'recipe') return;
         const node: RecipeNode = {
             id: `${recipe.recipe_id}-${nodes.length}`,
             x: contextMenu.contentX,
@@ -132,6 +143,18 @@ export default function RecipeCanvas() {
             nodeId,
             offsetX: contentCoords.x - node.x,
             offsetY: contentCoords.y - node.y,
+        });
+    };
+
+    const handleNodeContextMenu = (nodeId: string, event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedRecipe(null);
+        setContextMenu({
+            type: 'node',
+            nodeId,
+            screenX: event.clientX,
+            screenY: event.clientY,
         });
     };
 
@@ -232,9 +255,10 @@ export default function RecipeCanvas() {
                     {nodes.map((node) => (
                         <div
                             key={node.id}
-                            className="recipe-node"
+                            className={`recipe-node ${contextMenu?.type === 'node' && contextMenu.nodeId === node.id ? 'recipe-node--active' : ''}`}
                             style={{ left: node.x, top: node.y }}
                             onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
+                            onContextMenu={(e) => handleNodeContextMenu(node.id, e)}
                         >
                             <div className="recipe-node-column recipe-node-column--inputs">
                                 {node.inputs.length > 0 ? (
@@ -265,7 +289,7 @@ export default function RecipeCanvas() {
                     ))}
                 </div>
 
-                {contextMenu && (
+                {contextMenu?.type === 'recipe' && (
                     <div className="recipe-context-modal" onClick={closeMenu}>
                         <div
                             className="recipe-context-panel"
@@ -288,6 +312,23 @@ export default function RecipeCanvas() {
                                     <div className="recipe-context-empty">Не найдены рецепты</div>
                                 )}
                             </div>
+                        </div>
+                    </div>
+                )}
+
+                {contextMenu?.type === 'node' && (
+                    <div className="recipe-context-modal recipe-context-modal--transparent" onClick={closeMenu}>
+                        <div
+                            className="recipe-node-context-panel"
+                            style={{ position: 'fixed', left: contextMenu.screenX, top: contextMenu.screenY }}
+                            onClick={(event) => event.stopPropagation()}
+                        >
+                            <button className="recipe-node-context-item" onClick={() => {
+                                setNodes((current) => current.filter((node) => node.id !== contextMenu.nodeId));
+                                closeMenu();
+                            }}>
+                                Удалить ноду
+                            </button>
                         </div>
                     </div>
                 )}

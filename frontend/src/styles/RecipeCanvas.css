@@ -41,6 +41,11 @@
     cursor: grabbing;
 }
 
+.recipe-node--active {
+    outline: 3px solid #2563eb;
+    outline-offset: 4px;
+}
+
 .recipe-node-column {
     display: flex;
     flex-direction: column;
@@ -87,6 +92,11 @@
     justify-content: flex-start;
 }
 
+.recipe-context-modal--transparent {
+    background: transparent;
+    backdrop-filter: none;
+}
+
 .recipe-context-panel {
     position: absolute;
     width: min(360px, calc(100% - 2rem));
@@ -126,6 +136,31 @@
 
 .recipe-context-item:hover {
     background: #eef2ff;
+}
+
+.recipe-node-context-panel {
+    position: fixed;
+    min-width: 180px;
+    padding: 0.75rem;
+    background: #ffffff;
+    border-radius: 14px;
+    box-shadow: 0 14px 32px rgba(15, 23, 42, 0.18);
+}
+
+.recipe-node-context-item {
+    width: 100%;
+    padding: 0.75rem 1rem;
+    border: none;
+    border-radius: 12px;
+    background: #fee2e2;
+    color: #b91c1c;
+    font-weight: 700;
+    text-align: left;
+    cursor: pointer;
+}
+
+.recipe-node-context-item:hover {
+    background: #fecaca;
 }
 
 .recipe-context-empty {
