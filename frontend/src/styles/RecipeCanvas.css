@@ -18,6 +18,7 @@
     position: relative;
     flex: 1;
     background: #eef2ff;
+    overflow: hidden;
 }
 
 .recipe-node {
@@ -32,6 +33,12 @@
     box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
     transform: translate(-50%, -50%);
     min-width: 340px;
+    user-select: none;
+    cursor: grab;
+}
+
+.recipe-node:active {
+    cursor: grabbing;
 }
 
 .recipe-node-column {
@@ -81,9 +88,9 @@
 }
 
 .recipe-context-panel {
+    position: absolute;
     width: min(360px, calc(100% - 2rem));
     max-height: min(80vh, 560px);
-    margin: 1rem;
     padding: 1rem;
     background: #ffffff;
     border-radius: 18px;

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RecipeSummary, RecipeListResponse } from './types/recipe';
 import './styles/RecipeCanvas.css';
 
@@ -9,6 +9,12 @@ interface RecipeNode {
     machineName: string;
     inputs: string[];
     outputs: string[];
+}
+
+interface DragState {
+    nodeId: string;
+    offsetX: number;
+    offsetY: number;
 }
 
 const machineNameMap: Record<string, string> = {
@@ -35,6 +41,8 @@ export default function RecipeCanvas() {
     const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
+    const [dragState, setDragState] = useState<DragState | null>(null);
+    const canvasRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         fetch('/recipes?version=26.2')
@@ -58,7 +66,7 @@ export default function RecipeCanvas() {
     const openMenu = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault();
         setSelectedRecipe(null);
-        setContextMenu({ x: event.clientX, y: event.clientY });
+        setContextMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
     };
 
     const closeMenu = () => {
@@ -80,14 +88,72 @@ export default function RecipeCanvas() {
         closeMenu();
     };
 
+    const handleNodeMouseDown = (nodeId: string, event: React.MouseEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        const node = nodes.find((n) => n.id === nodeId);
+        if (!node) return;
+
+        setDragState({
+            nodeId,
+            offsetX: event.clientX - node.x,
+            offsetY: event.clientY - node.y,
+        });
+    };
+
+    const handleCanvasMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!dragState) return;
+
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === dragState.nodeId
+                    ? {
+                        ...node,
+                        x: event.clientX - dragState.offsetX,
+                        y: event.clientY - dragState.offsetY,
+                    }
+                    : node,
+            ),
+        );
+    };
+
+    const handleCanvasMouseUp = () => {
+        setDragState(null);
+    };
+
+    useEffect(() => {
+        if (!dragState || !canvasRef.current) return;
+
+        const canvas = canvasRef.current;
+        canvas.addEventListener('mousemove', handleCanvasMouseMove as any);
+        canvas.addEventListener('mouseup', handleCanvasMouseUp);
+
+        return () => {
+            canvas.removeEventListener('mousemove', handleCanvasMouseMove as any);
+            canvas.removeEventListener('mouseup', handleCanvasMouseUp);
+        };
+    }, [dragState]);
+
+
     return (
         <div className="recipe-canvas-page">
             <div className="recipe-canvas-toolbar">
-                <div>Правый клик по холсту для добавления ноды рецепта</div>
+                <div>Правый клик по холсту для добавления ноды рецепта • Перетащите ноду для перемещения</div>
             </div>
-            <div className="recipe-canvas" onContextMenu={openMenu}>
+            <div
+                className="recipe-canvas"
+                ref={canvasRef}
+                onContextMenu={openMenu}
+                onMouseMove={handleCanvasMouseMove}
+                onMouseUp={handleCanvasMouseUp}
+                onMouseLeave={handleCanvasMouseUp}
+            >
                 {nodes.map((node) => (
-                    <div key={node.id} className="recipe-node" style={{ left: node.x, top: node.y }}>
+                    <div
+                        key={node.id}
+                        className="recipe-node"
+                        style={{ left: node.x, top: node.y }}
+                        onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
+                    >
                         <div className="recipe-node-column recipe-node-column--inputs">
                             {node.inputs.length > 0 ? (
                                 node.inputs.map((input, index) => (
