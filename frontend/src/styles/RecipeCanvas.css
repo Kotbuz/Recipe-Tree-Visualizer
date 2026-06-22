@@ -1,20 +1,23 @@
 .recipe-canvas-page {
-    min-height: 72vh;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
 }
 
 .recipe-canvas-toolbar {
-    margin-bottom: 1rem;
+    padding: 0.75rem 1rem;
+    background: #ffffff;
+    border-bottom: 1px solid #e2e8f0;
     color: #374151;
     font-size: 0.95rem;
+    flex-shrink: 0;
 }
 
 .recipe-canvas {
     position: relative;
-    min-height: 600px;
+    flex: 1;
     background: #eef2ff;
-    border: 2px dashed #c7d2fe;
-    border-radius: 16px;
-    overflow: hidden;
 }
 
 .recipe-node {

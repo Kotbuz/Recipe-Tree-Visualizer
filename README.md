@@ -21,17 +21,15 @@
 
 Архитектура и UML (PlantUML → PNG): [docs/architecture.md](docs/architecture.md) · [docs/uml/](docs/uml/)
 
-## Локальный запуск фронтенда
+## Frontend — быстрый старт
 
-1. Откройте терминал в папке `frontend`:
-   - `cd frontend`
-2. Установите зависимости:
-   - `npm install`
-3. Запустите локальный сервер разработки:
-   - `npm run dev`
-4. Откройте в браузере URL, который покажет Vite, обычно:
-   - `http://localhost:5173`
+```bash
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1
+```
 
+- Сайт: http://localhost:5173/#preview
 
 ## Backend — быстрый старт
 
