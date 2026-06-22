@@ -38,11 +38,22 @@ const mapMachineName = (typeName: string) =>
 
 export default function RecipeCanvas() {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
-    const [contextMenu, setContextMenu] = useState<{ x: number; y: number } | null>(null);
+    const [contextMenu, setContextMenu] = useState<{
+        contentX: number;
+        contentY: number;
+        screenX: number;
+        screenY: number;
+    } | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
     const [dragState, setDragState] = useState<DragState | null>(null);
+    const [scale, setScale] = useState(1);
+    const [offsetX, setOffsetX] = useState(0);
+    const [offsetY, setOffsetY] = useState(0);
+    const [isPanning, setIsPanning] = useState(false);
+    const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
     const canvasRef = useRef<HTMLDivElement>(null);
+    const containerRef = useRef<HTMLDivElement>(null);
 
     useEffect(() => {
         fetch('/recipes?version=26.2')
@@ -66,7 +77,22 @@ export default function RecipeCanvas() {
     const openMenu = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault();
         setSelectedRecipe(null);
-        setContextMenu({ x: event.nativeEvent.offsetX, y: event.nativeEvent.offsetY });
+
+        if (!canvasRef.current) return;
+        const rect = canvasRef.current.getBoundingClientRect();
+
+        const canvasX = event.clientX - rect.left;
+        const canvasY = event.clientY - rect.top;
+
+        const contentX = (canvasX - offsetX) / scale;
+        const contentY = (canvasY - offsetY) / scale;
+
+        setContextMenu({
+            contentX,
+            contentY,
+            screenX: event.clientX,
+            screenY: event.clientY,
+        });
     };
 
     const closeMenu = () => {
@@ -77,8 +103,8 @@ export default function RecipeCanvas() {
         if (!contextMenu) return;
         const node: RecipeNode = {
             id: `${recipe.recipe_id}-${nodes.length}`,
-            x: contextMenu.x,
-            y: contextMenu.y,
+            x: contextMenu.contentX,
+            y: contextMenu.contentY,
             machineName: mapMachineName(recipe.machine_type),
             inputs: recipe.inputs,
             outputs: recipe.outputs,
@@ -90,6 +116,7 @@ export default function RecipeCanvas() {
 
     const handleNodeMouseDown = (nodeId: string, event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
+        event.stopPropagation();
         const node = nodes.find((n) => n.id === nodeId);
         if (!node) return;
 
@@ -133,60 +160,105 @@ export default function RecipeCanvas() {
         };
     }, [dragState]);
 
+    const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        const delta = event.deltaY > 0 ? 0.9 : 1.1;
+        const newScale = Math.max(0.5, Math.min(3, scale * delta));
+        setScale(newScale);
+    };
+
+    const handleCanvasMouseDownForPan = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (event.button !== 0) return;
+        if (dragState) return;
+        setIsPanning(true);
+        setPanStart({ x: event.clientX - offsetX, y: event.clientY - offsetY });
+    };
+
+    const handleCanvasMouseMoveForPan = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (!isPanning || !panStart) return;
+        setOffsetX(event.clientX - panStart.x);
+        setOffsetY(event.clientY - panStart.y);
+    };
+
+    const handleCanvasMouseUpForPan = () => {
+        setIsPanning(false);
+        setPanStart(null);
+    };
 
     return (
         <div className="recipe-canvas-page">
             <div className="recipe-canvas-toolbar">
-                <div>Правый клик по холсту для добавления ноды рецепта • Перетащите ноду для перемещения</div>
+                <div>Правый клик по холсту для добавления ноды • Перетащите ноду для перемещения • Колесо мыши для зума • ЛКМ+движение для панинга</div>
             </div>
             <div
                 className="recipe-canvas"
                 ref={canvasRef}
                 onContextMenu={openMenu}
-                onMouseMove={handleCanvasMouseMove}
-                onMouseUp={handleCanvasMouseUp}
-                onMouseLeave={handleCanvasMouseUp}
+                onWheel={handleWheel}
+                onMouseDown={handleCanvasMouseDownForPan}
+                onMouseMove={(e) => {
+                    handleCanvasMouseMove(e);
+                    handleCanvasMouseMoveForPan(e);
+                }}
+                onMouseUp={() => {
+                    handleCanvasMouseUp();
+                    handleCanvasMouseUpForPan();
+                }}
+                onMouseLeave={() => {
+                    handleCanvasMouseUp();
+                    handleCanvasMouseUpForPan();
+                }}
+                style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
-                {nodes.map((node) => (
-                    <div
-                        key={node.id}
-                        className="recipe-node"
-                        style={{ left: node.x, top: node.y }}
-                        onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
-                    >
-                        <div className="recipe-node-column recipe-node-column--inputs">
-                            {node.inputs.length > 0 ? (
-                                node.inputs.map((input, index) => (
-                                    <div key={index} className="recipe-node-row">
-                                        {input}
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="recipe-node-empty">Нет входов</div>
-                            )}
+                <div
+                    ref={containerRef}
+                    style={{
+                        transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
+                        transformOrigin: '0 0',
+                        transition: isPanning || dragState ? 'none' : 'transform 0.1s ease-out',
+                    }}
+                >
+                    {nodes.map((node) => (
+                        <div
+                            key={node.id}
+                            className="recipe-node"
+                            style={{ left: node.x, top: node.y }}
+                            onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
+                        >
+                            <div className="recipe-node-column recipe-node-column--inputs">
+                                {node.inputs.length > 0 ? (
+                                    node.inputs.map((input, index) => (
+                                        <div key={index} className="recipe-node-row">
+                                            {input}
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="recipe-node-empty">Нет входов</div>
+                                )}
+                            </div>
+                            <div className="recipe-node-column recipe-node-column--machine">
+                                <div className="recipe-node-machine">{node.machineName}</div>
+                            </div>
+                            <div className="recipe-node-column recipe-node-column--outputs">
+                                {node.outputs.length > 0 ? (
+                                    node.outputs.map((output, index) => (
+                                        <div key={index} className="recipe-node-row">
+                                            {output}
+                                        </div>
+                                    ))
+                                ) : (
+                                    <div className="recipe-node-empty">Нет результата</div>
+                                )}
+                            </div>
                         </div>
-                        <div className="recipe-node-column recipe-node-column--machine">
-                            <div className="recipe-node-machine">{node.machineName}</div>
-                        </div>
-                        <div className="recipe-node-column recipe-node-column--outputs">
-                            {node.outputs.length > 0 ? (
-                                node.outputs.map((output, index) => (
-                                    <div key={index} className="recipe-node-row">
-                                        {output}
-                                    </div>
-                                ))
-                            ) : (
-                                <div className="recipe-node-empty">Нет результата</div>
-                            )}
-                        </div>
-                    </div>
-                ))}
+                    ))}
+                </div>
 
                 {contextMenu && (
                     <div className="recipe-context-modal" onClick={closeMenu}>
                         <div
                             className="recipe-context-panel"
-                            style={{ left: contextMenu.x, top: contextMenu.y }}
+                            style={{ position: 'fixed', left: contextMenu.screenX, top: contextMenu.screenY }}
                             onClick={(event) => event.stopPropagation()}
                         >
                             <div className="recipe-context-header">Выберите рецепт</div>

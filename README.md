@@ -21,15 +21,7 @@
 
 Архитектура и UML (PlantUML → PNG): [docs/architecture.md](docs/architecture.md) · [docs/uml/](docs/uml/)
 
-## Frontend — быстрый старт
 
-```bash
-cd frontend
-npm install
-npm run dev -- --host 127.0.0.1
-```
-
-- Сайт: http://localhost:5173/#preview
 
 ## Backend — быстрый старт
 
@@ -42,6 +34,16 @@ uv run uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 
 - Swagger UI: http://localhost:8000/docs
 - Health check: http://localhost:8000/health
+
+## Frontend — быстрый старт
+
+```bash
+cd frontend
+npm install
+npm run dev -- --host 127.0.0.1
+```
+
+- Сайт: http://localhost:5173/#preview
 
 ## Структура backend
 
