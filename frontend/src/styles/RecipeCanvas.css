@@ -1,0 +1,124 @@
+.recipe-canvas-page {
+    min-height: 72vh;
+}
+
+.recipe-canvas-toolbar {
+    margin-bottom: 1rem;
+    color: #374151;
+    font-size: 0.95rem;
+}
+
+.recipe-canvas {
+    position: relative;
+    min-height: 600px;
+    background: #eef2ff;
+    border: 2px dashed #c7d2fe;
+    border-radius: 16px;
+    overflow: hidden;
+}
+
+.recipe-node {
+    position: absolute;
+    display: grid;
+    grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
+    gap: 0.75rem;
+    padding: 0.85rem;
+    background: #ffffff;
+    border: 1px solid #cbd5e1;
+    border-radius: 16px;
+    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    transform: translate(-50%, -50%);
+    min-width: 340px;
+}
+
+.recipe-node-column {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.recipe-node-column--machine {
+    align-items: center;
+    justify-content: center;
+}
+
+.recipe-node-machine {
+    padding: 0.65rem 1rem;
+    border-radius: 999px;
+    background: #e0e7ff;
+    color: #3730a3;
+    font-weight: 700;
+    text-align: center;
+}
+
+.recipe-node-row {
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #111827;
+    font-size: 0.95rem;
+}
+
+.recipe-node-empty {
+    padding: 0.55rem 0.75rem;
+    border-radius: 10px;
+    background: #f8fafc;
+    color: #6b7280;
+    font-size: 0.95rem;
+}
+
+.recipe-context-modal {
+    position: absolute;
+    inset: 0;
+    background: rgba(15, 23, 42, 0.45);
+    backdrop-filter: blur(2px);
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-start;
+}
+
+.recipe-context-panel {
+    width: min(360px, calc(100% - 2rem));
+    max-height: min(80vh, 560px);
+    margin: 1rem;
+    padding: 1rem;
+    background: #ffffff;
+    border-radius: 18px;
+    box-shadow: 0 20px 40px rgba(15, 23, 42, 0.12);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+}
+
+.recipe-context-header {
+    font-weight: 700;
+    margin-bottom: 0.75rem;
+}
+
+.recipe-context-list {
+    flex: 1;
+    overflow-y: auto;
+    display: grid;
+    gap: 0.5rem;
+}
+
+.recipe-context-item {
+    width: 100%;
+    padding: 0.85rem 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #f8fafc;
+    text-align: left;
+    cursor: pointer;
+    color: #111827;
+    font-size: 0.95rem;
+}
+
+.recipe-context-item:hover {
+    background: #eef2ff;
+}
+
+.recipe-context-empty {
+    color: #6b7280;
+    padding: 0.85rem;
+}
