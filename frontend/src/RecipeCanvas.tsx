@@ -74,22 +74,27 @@ export default function RecipeCanvas() {
         [recipes],
     );
 
+    const getContentCoordinates = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+        if (!canvasRef.current) return null;
+        const rect = canvasRef.current.getBoundingClientRect();
+        const canvasX = event.clientX - rect.left;
+        const canvasY = event.clientY - rect.top;
+        return {
+            x: (canvasX - offsetX) / scale,
+            y: (canvasY - offsetY) / scale,
+        };
+    };
+
     const openMenu = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault();
         setSelectedRecipe(null);
 
-        if (!canvasRef.current) return;
-        const rect = canvasRef.current.getBoundingClientRect();
-
-        const canvasX = event.clientX - rect.left;
-        const canvasY = event.clientY - rect.top;
-
-        const contentX = (canvasX - offsetX) / scale;
-        const contentY = (canvasY - offsetY) / scale;
+        const contentCoords = getContentCoordinates(event);
+        if (!contentCoords) return;
 
         setContextMenu({
-            contentX,
-            contentY,
+            contentX: contentCoords.x,
+            contentY: contentCoords.y,
             screenX: event.clientX,
             screenY: event.clientY,
         });
@@ -120,23 +125,29 @@ export default function RecipeCanvas() {
         const node = nodes.find((n) => n.id === nodeId);
         if (!node) return;
 
+        const contentCoords = getContentCoordinates(event);
+        if (!contentCoords) return;
+
         setDragState({
             nodeId,
-            offsetX: event.clientX - node.x,
-            offsetY: event.clientY - node.y,
+            offsetX: contentCoords.x - node.x,
+            offsetY: contentCoords.y - node.y,
         });
     };
 
     const handleCanvasMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
         if (!dragState) return;
 
+        const contentCoords = getContentCoordinates(event);
+        if (!contentCoords) return;
+
         setNodes((current) =>
             current.map((node) =>
                 node.id === dragState.nodeId
                     ? {
                         ...node,
-                        x: event.clientX - dragState.offsetX,
-                        y: event.clientY - dragState.offsetY,
+                        x: contentCoords.x - dragState.offsetX,
+                        y: contentCoords.y - dragState.offsetY,
                     }
                     : node,
             ),
