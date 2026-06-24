@@ -78,44 +78,58 @@
 .recipe-node {
     position: absolute;
     display: grid;
-    grid-template-columns: minmax(120px, 1fr) auto minmax(120px, 1fr);
-    gap: 0.75rem;
-    padding: 0.85rem;
+    grid-template-columns: auto auto auto;
+    gap: 0;
+    padding: 0;
     background: #ffffff;
     border: 1px solid #cbd5e1;
-    border-radius: 16px;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.08);
+    border-radius: 0;
+    box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
     transform: translate(-50%, -50%);
-    min-width: 340px;
+    width: max-content;
     user-select: none;
     z-index: 1;
 }
 
 .recipe-node--active {
-    outline: 3px solid #2563eb;
-    outline-offset: 4px;
+    outline: 2px solid #2563eb;
+    outline-offset: 0;
 }
 
 .recipe-node-column {
     display: flex;
     flex-direction: column;
-    gap: 0.5rem;
+    gap: 0;
+}
+
+.recipe-node-column--inputs {
+    align-items: flex-end;
+}
+
+.recipe-node-column--outputs {
+    align-items: flex-start;
+}
+
+.recipe-node-column .recipe-node-item + .recipe-node-item {
+    margin-top: -1px;
 }
 
 .recipe-node-column--machine {
-    align-items: center;
+    align-items: stretch;
     justify-content: center;
 }
 
 .recipe-node-machine {
-    padding: 0.65rem 1rem;
-    border-radius: 999px;
+    padding: 0.45rem 0.55rem;
+    border-radius: 0;
     background: #e0e7ff;
     color: #3730a3;
+    font-size: 0.84rem;
     font-weight: 700;
     text-align: center;
     cursor: grab;
     white-space: nowrap;
+    line-height: 1.1;
 }
 
 .recipe-node-machine:active {
@@ -136,17 +150,17 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    width: 28px;
-    height: 28px;
+    box-sizing: border-box;
+    width: 32px;
+    height: 32px;
     padding: 0;
-    border-radius: 6px;
+    border-radius: 0;
     cursor: crosshair;
     border: 1px solid transparent;
     transition: background 0.15s ease, border-color 0.15s ease;
 }
 
 .recipe-node-item--input {
-    align-items: flex-start;
     background: #fde8e8;
     color: #7f1d1d;
     border-color: #f5c6c6;
@@ -158,7 +172,6 @@
 }
 
 .recipe-node-item--output {
-    align-items: flex-end;
     background: #e3f5e8;
     color: #14532d;
     border-color: #b8dfc4;
@@ -176,15 +189,29 @@
 }
 
 .recipe-node-item-placeholder {
-    font-size: 0.5rem;
+    font-size: 0.58rem;
+    border-radius: 0;
+}
+
+.recipe-node .item-icon-view {
+    width: 32px;
+    height: 32px;
+    flex: 0 0 32px;
+    border-radius: 0;
+}
+
+.recipe-node .item-icon-view--chip {
+    padding: 0 2px;
+    font-size: 0.58rem;
+    border-radius: 0;
 }
 
 .recipe-node-empty {
-    padding: 0.55rem 0.75rem;
-    border-radius: 10px;
+    padding: 0.35rem 0.45rem;
+    border-radius: 0;
     background: #f8fafc;
     color: #6b7280;
-    font-size: 0.95rem;
+    font-size: 0.82rem;
 }
 
 .recipe-context-modal {

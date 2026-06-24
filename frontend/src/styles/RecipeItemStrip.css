@@ -2,14 +2,15 @@
     display: flex;
     flex-wrap: wrap;
     align-content: flex-start;
-    gap: 3px;
+    gap: 4px;
     min-width: 0;
+    width: 100%;
 }
 
 .recipe-picker-row > .recipe-item-strip:first-child {
-    justify-content: flex-end;
+    justify-content: flex-start;
 }
 
 .recipe-picker-row > .recipe-item-strip:last-child {
-    justify-content: flex-start;
+    justify-content: flex-end;
 }

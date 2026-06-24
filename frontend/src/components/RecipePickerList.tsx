@@ -3,7 +3,7 @@ import RecipePickerRow from './RecipePickerRow';
 import VirtualList from './VirtualList';
 import '../styles/RecipePickerList.css';
 
-const RECIPE_ROW_HEIGHT = 56;
+const RECIPE_ROW_HEIGHT = 84;
 
 type RecipePickerListProps = {
     recipes: RecipeSummary[];
