@@ -121,6 +121,12 @@ export default defineConfig({
     server: {
         port: 5173,
         middlewareMode: false,
+        proxy: {
+            '/recipes': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            }
+        },
         fs: {
             allow: [assetRoot, resolve(__dirname)]
         }
