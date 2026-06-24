@@ -132,6 +132,18 @@ const findMatchingSlotIndex = (
     return items.findIndex((item) => item.name === itemName);
 };
 
+const formatRecipeResultLabel = (recipe: RecipeSummary) =>
+    recipe.outputs.map((output) => output.name).join(' + ') || 'Без результата';
+
+const filterRecipesByResultName = (recipes: RecipeSummary[], query: string) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return recipes;
+
+    return recipes.filter((recipe) =>
+        recipe.outputs.some((output) => output.name.toLowerCase().includes(needle)),
+    );
+};
+
 export default function RecipeCanvas() {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
@@ -145,12 +157,14 @@ export default function RecipeCanvas() {
     const [offsetY, setOffsetY] = useState(0);
     const [isPanning, setIsPanning] = useState(false);
     const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
+    const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
     const [, setLayoutTick] = useState(0);
 
     const canvasRef = useRef<HTMLDivElement>(null);
     const containerRef = useRef<HTMLDivElement>(null);
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemDragRef = useRef<ItemDragState | null>(null);
+    const recipeSearchRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetch('/recipes/?version=26.2')
@@ -294,11 +308,13 @@ export default function RecipeCanvas() {
 
     const closeMenu = () => {
         setContextMenu(null);
+        setRecipeSearchQuery('');
     };
 
     const openMenu = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault();
         setSelectedRecipe(null);
+        setRecipeSearchQuery('');
 
         const contentCoords = getContentCoordinates(event);
         if (!contentCoords) return;
@@ -465,6 +481,7 @@ export default function RecipeCanvas() {
                 screenX: clientX,
                 screenY: clientY,
             });
+            setRecipeSearchQuery('');
         },
         [screenToContent, findCompatibleSlotAt, connectSlots],
     );
@@ -582,12 +599,37 @@ export default function RecipeCanvas() {
               )
             : [];
 
+    const baseRecipePickerOptions =
+        contextMenu?.type === 'recipe'
+            ? recipeItems
+            : contextMenu?.type === 'item-recipe'
+              ? itemRecipeOptions
+              : [];
+
+    const filteredRecipePickerOptions = useMemo(
+        () => filterRecipesByResultName(baseRecipePickerOptions, recipeSearchQuery),
+        [baseRecipePickerOptions, recipeSearchQuery],
+    );
+
     const itemRecipeHeader =
         contextMenu?.type === 'item-recipe'
             ? contextMenu.sourceSlotType === 'input'
                 ? `Рецепты с результатом «${contextMenu.itemName}»`
                 : `Рецепты с ингредиентом «${contextMenu.itemName}»`
             : '';
+
+    const recipePickerEmptyMessage =
+        baseRecipePickerOptions.length === 0
+            ? contextMenu?.type === 'item-recipe'
+                ? 'Нет подходящих рецептов'
+                : 'Не найдены рецепты'
+            : 'Ничего не найдено';
+
+    useEffect(() => {
+        if (contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') {
+            recipeSearchRef.current?.focus();
+        }
+    }, [contextMenu]);
 
     const renderItemSlot = (
         nodeId: string,
@@ -721,7 +763,7 @@ export default function RecipeCanvas() {
                     ))}
                 </div>
 
-                {contextMenu?.type === 'recipe' && (
+                {(contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') && (
                     <div className="recipe-context-modal" onClick={closeMenu}>
                         <div
                             className="recipe-context-panel"
@@ -732,58 +774,44 @@ export default function RecipeCanvas() {
                             }}
                             onClick={(event) => event.stopPropagation()}
                         >
-                            <div className="recipe-context-header">Выберите рецепт</div>
-                            <div className="recipe-context-list">
-                                {recipeItems.length > 0 ? (
-                                    recipeItems.map((recipe) => (
-                                        <button
-                                            key={recipe.recipe_id}
-                                            className="recipe-context-item"
-                                            onClick={() => handleRecipeClick(recipe)}
-                                        >
-                                            {recipe.outputs[0]?.name ?? 'Без результата'}
-                                        </button>
-                                    ))
-                                ) : (
-                                    <div className="recipe-context-empty">Не найдены рецепты</div>
-                                )}
+                            <div className="recipe-context-header">
+                                {contextMenu.type === 'recipe'
+                                    ? 'Выберите рецепт'
+                                    : itemRecipeHeader}
                             </div>
-                        </div>
-                    </div>
-                )}
-
-                {contextMenu?.type === 'item-recipe' && (
-                    <div className="recipe-context-modal" onClick={closeMenu}>
-                        <div
-                            className="recipe-context-panel"
-                            style={{
-                                position: 'fixed',
-                                left: contextMenu.screenX,
-                                top: contextMenu.screenY,
-                            }}
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="recipe-context-header">{itemRecipeHeader}</div>
+                            <input
+                                ref={recipeSearchRef}
+                                className="recipe-context-search"
+                                type="search"
+                                placeholder="Поиск по результату..."
+                                value={recipeSearchQuery}
+                                onChange={(event) => setRecipeSearchQuery(event.target.value)}
+                            />
                             <div className="recipe-context-list">
-                                {itemRecipeOptions.length > 0 ? (
-                                    itemRecipeOptions.map((recipe) => (
+                                {filteredRecipePickerOptions.length > 0 ? (
+                                    filteredRecipePickerOptions.map((recipe) => (
                                         <button
                                             key={recipe.recipe_id}
                                             className="recipe-context-item"
-                                            onClick={() => handleItemRecipeClick(recipe)}
+                                            onClick={() =>
+                                                contextMenu.type === 'recipe'
+                                                    ? handleRecipeClick(recipe)
+                                                    : handleItemRecipeClick(recipe)
+                                            }
                                         >
                                             <span className="recipe-context-item-title">
-                                                {recipe.outputs.map((o) => o.name).join(' + ') ||
-                                                    'Без результата'}
+                                                {formatRecipeResultLabel(recipe)}
                                             </span>
-                                            <span className="recipe-context-item-meta">
-                                                {mapMachineName(recipe.machine_type)}
-                                            </span>
+                                            {contextMenu.type === 'item-recipe' && (
+                                                <span className="recipe-context-item-meta">
+                                                    {mapMachineName(recipe.machine_type)}
+                                                </span>
+                                            )}
                                         </button>
                                     ))
                                 ) : (
                                     <div className="recipe-context-empty">
-                                        Нет подходящих рецептов
+                                        {recipePickerEmptyMessage}
                                     </div>
                                 )}
                             </div>
