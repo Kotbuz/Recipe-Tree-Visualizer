@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -15,11 +16,20 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_dir: str = "logs"
     mods_storage_dir: str = "data/mods"
+    minecraft_versions_dir: str = "../Minecraft versions"
     cors_origins: str = "http://localhost:5173"
 
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",") if origin.strip()]
+
+    @property
+    def minecraft_versions_path(self) -> Path:
+        path = Path(self.minecraft_versions_dir)
+        if path.is_absolute():
+            return path
+        backend_root = Path(__file__).resolve().parents[2]
+        return (backend_root / path).resolve()
 
 
 @lru_cache
