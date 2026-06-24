@@ -23,7 +23,20 @@
 
 
 
-## Backend — быстрый старт
+## Docker — запуск одной командой
+
+```bash
+cp .env.example .env
+docker compose up --build
+```
+
+- Frontend: http://localhost:5173
+- Swagger UI: http://localhost:8000/docs
+- Health: http://localhost:8000/health
+
+Папка `Minecraft versions/` монтируется read-only в оба контейнера. Логи и загруженные моды — в `backend/logs/` и `backend/data/mods/`.
+
+## Backend — локальный запуск
 
 ```bash
 cp .env.example .env
@@ -80,6 +93,7 @@ backend/app/
 | `LOG_LEVEL` | Уровень логов | `INFO` |
 | `LOG_DIR` | Каталог лог-файлов | `logs` |
 | `MODS_STORAGE_DIR` | Хранилище `.jar` | `data/mods` |
+| `MINECRAFT_VERSIONS_DIR` | Каталог версий Minecraft | `../Minecraft versions` |
 | `CORS_ORIGINS` | Origins для CORS | `http://localhost:5173` |
 
 ## Разработка
@@ -102,6 +116,3 @@ java -jar plantuml.jar -tpng *.puml
 ## Лицензия
 
 MIT — см. [LICENSE](LICENSE).
-# Recipe-Tree-Visualizer
-веб-сервис для извлечения рецептов крафта из модов Minecraft Java (.jar) и построения интерактивного нодового дерева зависимостей крафта
-
