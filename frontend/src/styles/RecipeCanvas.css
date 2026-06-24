@@ -1,23 +1,37 @@
 .recipe-canvas-page {
-    width: 100%;
-    height: 100%;
-    display: flex;
-    flex-direction: column;
+    position: fixed;
+    inset: 0;
+    overflow: hidden;
+    background: #eef2ff;
 }
 
 .recipe-canvas-toolbar {
-    padding: 0.75rem 1rem;
-    background: #ffffff;
-    border-bottom: 1px solid #e2e8f0;
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    right: 6rem;
+    z-index: 10;
+    padding: 0.65rem 0.9rem;
+    background: rgba(255, 255, 255, 0.92);
+    border: 1px solid #e2e8f0;
+    border-radius: 12px;
     color: #374151;
-    font-size: 0.95rem;
-    flex-shrink: 0;
+    font-size: 0.9rem;
+    box-shadow: 0 8px 24px rgba(15, 23, 42, 0.08);
+    pointer-events: none;
+}
+
+.recipe-canvas-toolbar > div {
+    pointer-events: auto;
+}
+
+.recipe-canvas-page:has(.mods-panel--expanded) .recipe-canvas-toolbar {
+    right: calc(min(360px, 92vw) + 0.75rem);
 }
 
 .recipe-canvas {
-    position: relative;
-    flex: 1;
-    background: #eef2ff;
+    position: absolute;
+    inset: 0;
     overflow: hidden;
 }
 
@@ -29,13 +43,23 @@
 
 .recipe-connections-layer {
     position: absolute;
-    left: -20000px;
-    top: -20000px;
-    width: 40000px;
-    height: 40000px;
+    left: calc(-1 * var(--canvas-svg-offset, 10000px));
+    top: calc(-1 * var(--canvas-svg-offset, 10000px));
+    width: var(--canvas-svg-size, 20000px);
+    height: var(--canvas-svg-size, 20000px);
     overflow: visible;
     pointer-events: none;
-    transform: translate(20000px, 20000px);
+    transform: translate(var(--canvas-svg-offset, 10000px), var(--canvas-svg-offset, 10000px));
+}
+
+.recipe-connections-screen-layer {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    overflow: visible;
+    pointer-events: none;
+    z-index: 2;
 }
 
 .recipe-connection-line {
@@ -182,14 +206,14 @@
 }
 
 .recipe-context-modal {
-    position: absolute;
+    position: fixed;
     inset: 0;
     background: rgba(15, 23, 42, 0.45);
     backdrop-filter: blur(2px);
     display: flex;
     align-items: flex-start;
     justify-content: flex-start;
-    z-index: 10;
+    z-index: 1000;
 }
 
 .recipe-context-modal--transparent {
@@ -198,8 +222,8 @@
 }
 
 .recipe-context-panel {
-    position: absolute;
-    width: min(600px, calc(100% - 2rem));
+    position: fixed;
+    width: min(600px, calc(100vw - 2rem));
     max-height: min(80vh, 560px);
     padding: 1rem;
     background: #ffffff;
@@ -208,6 +232,7 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    transform: translate(-50%, -50%);
 }
 
 .recipe-context-body {
