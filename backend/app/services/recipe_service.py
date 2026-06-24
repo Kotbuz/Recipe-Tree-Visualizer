@@ -5,12 +5,14 @@ from pathlib import Path
 from typing import Any
 
 from app.core.config import get_settings
-from app.schemas.recipe_file import RecipeSummary
+from app.schemas.recipe_file import RecipeItem, RecipeSummary
 
 
 def _pretty_item_name(item_id: str | None) -> str:
     if not item_id:
         return "unknown"
+    if item_id.startswith("#"):
+        item_id = item_id[1:]
     if ":" in item_id:
         item_id = item_id.split(":", 1)[1]
     return item_id.replace("_", " ")
@@ -55,25 +57,34 @@ def _extract_item_id(value: Any) -> str | None:
     return None
 
 
-def _collect_inputs(recipe_data: dict[str, Any]) -> list[str]:
-    inputs: list[str] = []
-    unique: set[str] = set()
+def _extract_item_amount(value: Any) -> int:
+    if value is None:
+        return 1
+    if isinstance(value, dict):
+        if "count" in value:
+            return int(value["count"])
+        if "amount" in value:
+            return int(value["amount"])
+    return 1
 
-    def add(item_id: str | None) -> None:
+
+def _collect_inputs(recipe_data: dict[str, Any]) -> list[RecipeItem]:
+    inputs_dict: dict[str, int] = {}
+
+    def add(item_id: str | None, amount: int = 1) -> None:
         name = _pretty_item_name(
             _extract_item_id(item_id) if isinstance(item_id, (str, dict)) else None
         )
-        if name and name not in unique:
-            unique.add(name)
-            inputs.append(name)
+        if name:
+            inputs_dict[name] = inputs_dict.get(name, 0) + amount
 
     if "ingredients" in recipe_data and isinstance(recipe_data["ingredients"], list):
         for ingredient in recipe_data["ingredients"]:
             if isinstance(ingredient, list):
                 for item in ingredient:
-                    add(_extract_item_id(item))
+                    add(_extract_item_id(item), _extract_item_amount(item))
             else:
-                add(_extract_item_id(ingredient))
+                add(_extract_item_id(ingredient), _extract_item_amount(ingredient))
 
     if (
         "pattern" in recipe_data
@@ -87,51 +98,49 @@ def _collect_inputs(recipe_data: dict[str, Any]) -> list[str]:
                 if symbol == " ":
                     continue
                 key_value = recipe_data["key"].get(symbol)
-                add(_extract_item_id(key_value))
+                add(_extract_item_id(key_value), _extract_item_amount(key_value))
 
     if "ingredient" in recipe_data:
         ingredient = recipe_data["ingredient"]
         if isinstance(ingredient, list):
             for item in ingredient:
-                add(_extract_item_id(item))
+                add(_extract_item_id(item), _extract_item_amount(item))
         else:
-            add(_extract_item_id(ingredient))
+            add(_extract_item_id(ingredient), _extract_item_amount(ingredient))
 
-    if not inputs and "key" in recipe_data and isinstance(recipe_data["key"], dict):
+    if not inputs_dict and "key" in recipe_data and isinstance(recipe_data["key"], dict):
         for value in recipe_data["key"].values():
-            add(_extract_item_id(value))
+            add(_extract_item_id(value), _extract_item_amount(value))
 
-    return inputs
+    return [RecipeItem(name=name, amount=amount) for name, amount in inputs_dict.items()]
 
 
-def _collect_outputs(recipe_data: dict[str, Any]) -> list[str]:
-    outputs: list[str] = []
-    unique: set[str] = set()
+def _collect_outputs(recipe_data: dict[str, Any]) -> list[RecipeItem]:
+    outputs_dict: dict[str, int] = {}
 
-    def add(item_id: str | None) -> None:
+    def add(item_id: str | None, amount: int = 1) -> None:
         name = _pretty_item_name(item_id)
-        if name and name not in unique:
-            unique.add(name)
-            outputs.append(name)
+        if name:
+            outputs_dict[name] = outputs_dict.get(name, 0) + amount
 
     if "result" in recipe_data:
         result = recipe_data["result"]
         if isinstance(result, dict):
-            add(_extract_item_id(result))
+            add(_extract_item_id(result), _extract_item_amount(result))
         else:
-            add(_extract_item_id(result))
+            add(_extract_item_id(result), _extract_item_amount(result))
 
     if "results" in recipe_data and isinstance(recipe_data["results"], list):
         for result in recipe_data["results"]:
             if isinstance(result, dict):
-                add(_extract_item_id(result))
+                add(_extract_item_id(result), _extract_item_amount(result))
             else:
-                add(_extract_item_id(result))
+                add(_extract_item_id(result), _extract_item_amount(result))
 
     if "output" in recipe_data:
-        add(_extract_item_id(recipe_data["output"]))
+        add(_extract_item_id(recipe_data["output"]), _extract_item_amount(recipe_data["output"]))
 
-    return outputs
+    return [RecipeItem(name=name, amount=amount) for name, amount in outputs_dict.items()]
 
 
 def _load_recipe_file(file_path: Path) -> RecipeSummary | None:

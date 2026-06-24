@@ -1,21 +1,81 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
-import type { RecipeSummary, RecipeListResponse } from './types/recipe';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import {
+    itemsMatch,
+    type RecipeSummary,
+    type RecipeListResponse,
+    type RecipeItem,
+    type SlotType,
+    type NodeSlot,
+    type RecipeConnection,
+    type NodeKind,
+} from './types/recipe';
+import ModsPanel from './components/ModsPanel';
+import {
+    CANVAS_CONFIG,
+    buildCanvasBezierPath,
+    buildViewportBezierPath,
+    createCanvasDocument,
+    downloadCanvasDocument,
+    getSlotAnchorCanvas,
+    normalizeCanvasPoint,
+    pickCanvasDocumentFile,
+    slotConnectionSide,
+    useCanvasViewport,
+    type CanvasNodeRecord,
+} from './canvas';
 import './styles/RecipeCanvas.css';
 
-interface RecipeNode {
-    id: string;
-    x: number;
-    y: number;
-    machineName: string;
-    inputs: string[];
-    outputs: string[];
-}
+type RecipeNode = CanvasNodeRecord;
 
-interface DragState {
+interface NodeDragState {
     nodeId: string;
     offsetX: number;
     offsetY: number;
 }
+
+interface ItemDragState {
+    sourceNodeId: string;
+    sourceSlotType: SlotType;
+    sourceItemIndex: number;
+    itemName: string;
+    startX: number;
+    startY: number;
+    startClientX: number;
+    startClientY: number;
+    currentClientX: number;
+    currentClientY: number;
+}
+
+type RecipeContextMenu = {
+    type: 'recipe';
+    screenX: number;
+    screenY: number;
+};
+
+type NodeContextMenu = {
+    type: 'node';
+    nodeId: string;
+    screenX: number;
+    screenY: number;
+};
+
+type ItemRecipeContextMenu = {
+    type: 'item-recipe';
+    itemName: string;
+    sourceNodeId: string;
+    sourceSlotType: SlotType;
+    sourceItemIndex: number;
+    screenX: number;
+    screenY: number;
+};
+
+type ContextMenu = RecipeContextMenu | NodeContextMenu | ItemRecipeContextMenu;
+
+type TerminalKind = 'chest' | 'outpost';
+
+const MIN_ITEM_DRAG_DISTANCE = CANVAS_CONFIG.interaction.minItemDragDistance;
+const SLOT_HIT_RADIUS = CANVAS_CONFIG.interaction.slotHitRadius;
 
 const machineNameMap: Record<string, string> = {
     'minecraft:crafting_shaped': 'Верстак',
@@ -29,6 +89,11 @@ const machineNameMap: Record<string, string> = {
     'minecraft:stonecutting': 'Наковальня',
 };
 
+const TERMINAL_LABELS: Record<TerminalKind, string> = {
+    chest: 'Сундук',
+    outpost: 'Аванпост',
+};
+
 const mapMachineName = (typeName: string) =>
     machineNameMap[typeName] ??
     typeName
@@ -36,34 +101,104 @@ const mapMachineName = (typeName: string) =>
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c: string) => c.toUpperCase());
 
+const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
+
+const getChestPassthroughItem = (node: RecipeNode) =>
+    node.inputs[0]?.name || node.outputs[0]?.name || '';
+
+const getSlotItemName = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        return getChestPassthroughItem(node);
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.name ?? '';
+};
+
+const slotKey = (nodeId: string, slotType: SlotType, index: number) =>
+    `${nodeId}:${slotType}:${index}`;
+
+const connectionId = (from: NodeSlot, to: NodeSlot) =>
+    `${from.nodeId}:${from.slotType}:${from.itemIndex}->${to.nodeId}:${to.slotType}:${to.itemIndex}`;
+
+const filterRecipesForItemDrag = (
+    recipes: RecipeSummary[],
+    itemName: string,
+    sourceSlotType: SlotType,
+) => {
+    if (sourceSlotType === 'input') {
+        return recipes.filter((recipe) =>
+            recipe.outputs.some((output) => itemsMatch(itemName, output.name)),
+        );
+    }
+    return recipes.filter((recipe) =>
+        recipe.inputs.some((input) => itemsMatch(itemName, input.name)),
+    );
+};
+
+const findMatchingSlotIndex = (
+    node: RecipeNode,
+    slotType: SlotType,
+    itemName: string,
+) => {
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items.findIndex((item) => itemsMatch(itemName, item.name));
+};
+
+const formatRecipeResultLabel = (recipe: RecipeSummary) =>
+    recipe.outputs.map((output) => output.name).join(' + ') || 'Без результата';
+
+const filterRecipesByResultName = (recipes: RecipeSummary[], query: string) => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return recipes;
+
+    return recipes.filter((recipe) =>
+        recipe.outputs.some((output) => output.name.toLowerCase().includes(needle)),
+    );
+};
+
+const isSlotCompatible = (
+    node: RecipeNode,
+    slotType: SlotType,
+    index: number,
+    itemName: string,
+) => {
+    const slotName = getSlotItemName(node, slotType, index);
+    if (!slotName) {
+        return isTerminalNode(node);
+    }
+
+    return itemsMatch(itemName, slotName);
+};
+
 export default function RecipeCanvas() {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
-    type RecipeContextMenu = {
-        type: 'recipe';
-        contentX: number;
-        contentY: number;
-        screenX: number;
-        screenY: number;
-    };
-
-    type NodeContextMenu = {
-        type: 'node';
-        nodeId: string;
-        screenX: number;
-        screenY: number;
-    };
-
-    const [contextMenu, setContextMenu] = useState<RecipeContextMenu | NodeContextMenu | null>(null);
+    const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
-    const [dragState, setDragState] = useState<DragState | null>(null);
-    const [scale, setScale] = useState(1);
-    const [offsetX, setOffsetX] = useState(0);
-    const [offsetY, setOffsetY] = useState(0);
-    const [isPanning, setIsPanning] = useState(false);
-    const [panStart, setPanStart] = useState<{ x: number; y: number } | null>(null);
-    const canvasRef = useRef<HTMLDivElement>(null);
-    const containerRef = useRef<HTMLDivElement>(null);
+    const [connections, setConnections] = useState<RecipeConnection[]>([]);
+    const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
+    const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
+    const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
+    const [, setLayoutTick] = useState(0);
+
+    const {
+        viewportRef,
+        contentRef,
+        transform,
+        transformStyle,
+        coords,
+        isPanning,
+        setViewportTransform,
+        handleWheel,
+        handlePanMouseDown,
+        handlePanMouseMove,
+        handlePanMouseUp,
+    } = useCanvasViewport();
+
+    const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
+    const itemDragRef = useRef<ItemDragState | null>(null);
+    const recipeSearchRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         fetch('/recipes?version=26.2')
@@ -77,76 +212,407 @@ export default function RecipeCanvas() {
     }, []);
 
     const recipeItems = useMemo(
-        () => recipes.map((recipe) => ({
-            ...recipe,
-            machineName: mapMachineName(recipe.machine_type),
-        })),
+        () =>
+            recipes.map((recipe) => ({
+                ...recipe,
+                machineName: mapMachineName(recipe.machine_type),
+            })),
         [recipes],
     );
 
-    const getContentCoordinates = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
-        if (!canvasRef.current) return null;
-        const rect = canvasRef.current.getBoundingClientRect();
-        const canvasX = event.clientX - rect.left;
-        const canvasY = event.clientY - rect.top;
-        return {
-            x: (canvasX - offsetX) / scale,
-            y: (canvasY - offsetY) / scale,
-        };
+    const screenToCanvas = coords.screenToCanvas;
+
+    const canvasPointFromScreen = useCallback(
+        (clientX: number, clientY: number) => {
+            const point = screenToCanvas(clientX, clientY);
+            return point ? normalizeCanvasPoint(point) : null;
+        },
+        [screenToCanvas],
+    );
+
+    const getContentCoordinates = useCallback(
+        (event: { clientX: number; clientY: number }) =>
+            canvasPointFromScreen(event.clientX, event.clientY),
+        [canvasPointFromScreen],
+    );
+
+    const getSlotAnchor = useCallback(
+        (nodeId: string, slotType: SlotType, index: number) => {
+            const key = slotKey(nodeId, slotType, index);
+            const element = itemRefs.current.get(key);
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!element || !node) return null;
+
+            return getSlotAnchorCanvas({
+                nodeX: node.x,
+                nodeY: node.y,
+                slotType,
+                itemElement: element,
+                scale: transform.scale,
+            });
+        },
+        [nodes, transform.scale],
+    );
+
+    const bumpLayout = useCallback(() => {
+        setLayoutTick((value) => value + 1);
+    }, []);
+
+    useEffect(() => {
+        bumpLayout();
+    }, [nodes, connections, transform, bumpLayout]);
+
+    const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
+        setNodes((current) =>
+            current.map((node) => {
+                if (node.id !== nodeId || node.kind !== 'chest') return node;
+
+                return {
+                    ...node,
+                    inputs: node.inputs.map((item, index) =>
+                        index === 0 ? { ...item, name: itemName } : item,
+                    ),
+                    outputs: node.outputs.map((item, index) =>
+                        index === 0 ? { ...item, name: itemName } : item,
+                    ),
+                };
+            }),
+        );
+    }, []);
+
+    const populateTerminalSlot = useCallback(
+        (nodeId: string, slotType: SlotType, itemIndex: number, itemName: string) => {
+            setNodes((current) =>
+                current.map((node) => {
+                    if (node.id !== nodeId || node.kind !== 'outpost') return node;
+
+                    const items = slotType === 'input' ? node.inputs : node.outputs;
+                    const item = items[itemIndex];
+                    if (!item || item.name) return node;
+
+                    const updatedItem = { ...item, name: itemName };
+                    if (slotType === 'input') {
+                        const inputs = [...node.inputs];
+                        inputs[itemIndex] = updatedItem;
+                        return { ...node, inputs };
+                    }
+
+                    const outputs = [...node.outputs];
+                    outputs[itemIndex] = updatedItem;
+                    return { ...node, outputs };
+                }),
+            );
+        },
+        [],
+    );
+
+    const addConnection = useCallback((from: NodeSlot, to: NodeSlot) => {
+        const id = connectionId(from, to);
+        setConnections((current) => {
+            if (current.some((connection) => connection.id === id)) {
+                return current;
+            }
+            return [...current, { id, from, to }];
+        });
+    }, []);
+
+    const removeNode = useCallback((nodeId: string) => {
+        setNodes((current) => current.filter((node) => node.id !== nodeId));
+        setConnections((current) =>
+            current.filter(
+                (connection) =>
+                    connection.from.nodeId !== nodeId && connection.to.nodeId !== nodeId,
+            ),
+        );
+    }, []);
+
+    const findCompatibleSlotAt = useCallback(
+        (
+            point: { x: number; y: number },
+            itemName: string,
+            sourceSlotType: SlotType,
+            sourceNodeId: string,
+        ): NodeSlot | null => {
+            const targetSlotType: SlotType = sourceSlotType === 'input' ? 'output' : 'input';
+
+            for (const node of nodes) {
+                if (node.id === sourceNodeId) continue;
+
+                const items = targetSlotType === 'input' ? node.inputs : node.outputs;
+                for (let index = 0; index < items.length; index += 1) {
+                    if (!isSlotCompatible(node, targetSlotType, index, itemName)) {
+                        continue;
+                    }
+
+                    const anchor = getSlotAnchor(node.id, targetSlotType, index);
+                    if (!anchor) continue;
+
+                    const distance = Math.hypot(anchor.x - point.x, anchor.y - point.y);
+                    if (distance <= SLOT_HIT_RADIUS) {
+                        return {
+                            nodeId: node.id,
+                            slotType: targetSlotType,
+                            itemIndex: index,
+                            itemName,
+                        };
+                    }
+                }
+            }
+
+            return null;
+        },
+        [nodes, getSlotAnchor],
+    );
+
+    const connectSlots = useCallback(
+        (
+            sourceNodeId: string,
+            sourceSlotType: SlotType,
+            sourceItemIndex: number,
+            itemName: string,
+            target: NodeSlot,
+        ) => {
+            const source: NodeSlot = {
+                nodeId: sourceNodeId,
+                slotType: sourceSlotType,
+                itemIndex: sourceItemIndex,
+                itemName,
+            };
+
+            if (sourceSlotType === 'input') {
+                addConnection(target, source);
+            } else {
+                addConnection(source, target);
+            }
+
+            syncChestPassthrough(target.nodeId, itemName);
+            syncChestPassthrough(source.nodeId, itemName);
+            populateTerminalSlot(target.nodeId, target.slotType, target.itemIndex, itemName);
+            populateTerminalSlot(source.nodeId, source.slotType, source.itemIndex, itemName);
+        },
+        [addConnection, syncChestPassthrough, populateTerminalSlot],
+    );
+
+    const closeMenu = () => {
+        setContextMenu(null);
+        setRecipeSearchQuery('');
     };
 
     const openMenu = (event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
         event.preventDefault();
         setSelectedRecipe(null);
+        setRecipeSearchQuery('');
 
-        const contentCoords = getContentCoordinates(event);
-        if (!contentCoords) return;
+        if (!canvasPointFromScreen(event.clientX, event.clientY)) return;
 
         setContextMenu({
             type: 'recipe',
-            contentX: contentCoords.x,
-            contentY: contentCoords.y,
             screenX: event.clientX,
             screenY: event.clientY,
         });
     };
 
-    const closeMenu = () => {
-        setContextMenu(null);
-    };
+    const placeNodeAtScreen = useCallback(
+        (clientX: number, clientY: number) => canvasPointFromScreen(clientX, clientY),
+        [canvasPointFromScreen],
+    );
 
-    const handleRecipeClick = (recipe: RecipeSummary) => {
-        if (!contextMenu || contextMenu.type !== 'recipe') return;
+    const createNodeFromRecipe = (recipe: RecipeSummary, x: number, y: number) => {
         const node: RecipeNode = {
-            id: `${recipe.recipe_id}-${nodes.length}`,
-            x: contextMenu.contentX,
-            y: contextMenu.contentY,
+            id: `${recipe.recipe_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: 'recipe',
+            recipeId: recipe.recipe_id,
+            x,
+            y,
             machineName: mapMachineName(recipe.machine_type),
             inputs: recipe.inputs,
             outputs: recipe.outputs,
         };
         setNodes((current) => [...current, node]);
         setSelectedRecipe(recipe);
+        return node;
+    };
+
+    const createTerminalNode = (
+        terminalKind: TerminalKind,
+        x: number,
+        y: number,
+        prefilledSlot?: { slotType: SlotType; itemName: string },
+    ) => {
+        const node: RecipeNode = {
+            id: `${terminalKind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: terminalKind,
+            x,
+            y,
+            machineName: TERMINAL_LABELS[terminalKind],
+            inputs: [
+                {
+                    name:
+                        prefilledSlot?.slotType === 'input' ? prefilledSlot.itemName : '',
+                    amount: 1,
+                },
+            ],
+            outputs: [
+                {
+                    name:
+                        prefilledSlot?.slotType === 'output' ? prefilledSlot.itemName : '',
+                    amount: 1,
+                },
+            ],
+        };
+        setNodes((current) => [...current, node]);
+        return node;
+    };
+
+    const connectItemDragToTerminal = (
+        menu: ItemRecipeContextMenu,
+        terminalNode: RecipeNode,
+    ) => {
+        const targetSlotType: SlotType =
+            menu.sourceSlotType === 'input' ? 'output' : 'input';
+        const targetIndex = 0;
+
+        connectSlots(
+            menu.sourceNodeId,
+            menu.sourceSlotType,
+            menu.sourceItemIndex,
+            menu.itemName,
+            {
+                nodeId: terminalNode.id,
+                slotType: targetSlotType,
+                itemIndex: targetIndex,
+                itemName: menu.itemName,
+            },
+        );
+    };
+
+    const handleRecipeClick = (recipe: RecipeSummary) => {
+        if (!contextMenu || contextMenu.type !== 'recipe') return;
+        const coords = placeNodeAtScreen(contextMenu.screenX, contextMenu.screenY);
+        if (!coords) return;
+        createNodeFromRecipe(recipe, coords.x, coords.y);
         closeMenu();
     };
 
-    const handleNodeMouseDown = (nodeId: string, event: React.MouseEvent<HTMLDivElement>) => {
+    const handleItemRecipeClick = (recipe: RecipeSummary) => {
+        if (!contextMenu || contextMenu.type !== 'item-recipe') return;
+
+        const coords = placeNodeAtScreen(contextMenu.screenX, contextMenu.screenY);
+        if (!coords) return;
+
+        const newNode = createNodeFromRecipe(recipe, coords.x, coords.y);
+
+        const targetSlotType: SlotType =
+            contextMenu.sourceSlotType === 'input' ? 'output' : 'input';
+        const targetIndex = findMatchingSlotIndex(newNode, targetSlotType, contextMenu.itemName);
+
+        if (targetIndex >= 0) {
+            connectSlots(
+                contextMenu.sourceNodeId,
+                contextMenu.sourceSlotType,
+                contextMenu.sourceItemIndex,
+                contextMenu.itemName,
+                {
+                    nodeId: newNode.id,
+                    slotType: targetSlotType,
+                    itemIndex: targetIndex,
+                    itemName: contextMenu.itemName,
+                },
+            );
+        }
+
+        closeMenu();
+    };
+
+    const handleTerminalNodeClick = (terminalKind: TerminalKind) => {
+        if (!contextMenu || (contextMenu.type !== 'recipe' && contextMenu.type !== 'item-recipe')) {
+            return;
+        }
+
+        const coords = placeNodeAtScreen(contextMenu.screenX, contextMenu.screenY);
+        if (!coords) return;
+
+        if (contextMenu.type === 'recipe') {
+            createTerminalNode(terminalKind, coords.x, coords.y);
+            closeMenu();
+            return;
+        }
+
+        const prefilledSlot =
+            terminalKind === 'outpost'
+                ? {
+                      slotType: (contextMenu.sourceSlotType === 'input'
+                          ? 'output'
+                          : 'input') as SlotType,
+                      itemName: contextMenu.itemName,
+                  }
+                : undefined;
+
+        const terminalNode = createTerminalNode(
+            terminalKind,
+            coords.x,
+            coords.y,
+            prefilledSlot,
+        );
+        connectItemDragToTerminal(contextMenu, terminalNode);
+        closeMenu();
+    };
+
+    const handleMachineMouseDown = (nodeId: string, event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
-        const node = nodes.find((n) => n.id === nodeId);
+
+        const node = nodes.find((entry) => entry.id === nodeId);
         if (!node) return;
 
         const contentCoords = getContentCoordinates(event);
         if (!contentCoords) return;
 
-        setDragState({
+        setNodeDragState({
             nodeId,
             offsetX: contentCoords.x - node.x,
             offsetY: contentCoords.y - node.y,
         });
     };
 
-    const handleNodeContextMenu = (nodeId: string, event: React.MouseEvent<HTMLDivElement, MouseEvent>) => {
+    const handleItemMouseDown = (
+        nodeId: string,
+        slotType: SlotType,
+        itemIndex: number,
+        event: React.MouseEvent<HTMLDivElement>,
+    ) => {
+        const node = nodes.find((entry) => entry.id === nodeId);
+        if (!node) return;
+
+        const itemName = getSlotItemName(node, slotType, itemIndex);
+        if (!itemName) return;
+
+        event.preventDefault();
+        event.stopPropagation();
+
+        const anchor = getSlotAnchor(nodeId, slotType, itemIndex);
+        if (!anchor) return;
+
+        const drag: ItemDragState = {
+            sourceNodeId: nodeId,
+            sourceSlotType: slotType,
+            sourceItemIndex: itemIndex,
+            itemName,
+            startX: anchor.x,
+            startY: anchor.y,
+            startClientX: event.clientX,
+            startClientY: event.clientY,
+            currentClientX: event.clientX,
+            currentClientY: event.clientY,
+        };
+        itemDragRef.current = drag;
+        setItemDragState(drag);
+    };
+
+    const handleNodeContextMenu = (
+        nodeId: string,
+        event: React.MouseEvent<HTMLDivElement, MouseEvent>,
+    ) => {
         event.preventDefault();
         event.stopPropagation();
         setSelectedRecipe(null);
@@ -158,181 +624,459 @@ export default function RecipeCanvas() {
         });
     };
 
-    const handleCanvasMouseMove = (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!dragState) return;
+    const finishItemDrag = useCallback(
+        (drag: ItemDragState, clientX: number, clientY: number) => {
+            const distance = Math.hypot(
+                clientX - drag.startClientX,
+                clientY - drag.startClientY,
+            );
+            if (distance < MIN_ITEM_DRAG_DISTANCE) {
+                return;
+            }
 
-        const contentCoords = getContentCoordinates(event);
-        if (!contentCoords) return;
+            const dropPoint = canvasPointFromScreen(clientX, clientY);
+            if (!dropPoint) return;
 
-        setNodes((current) =>
-            current.map((node) =>
-                node.id === dragState.nodeId
-                    ? {
-                        ...node,
-                        x: contentCoords.x - dragState.offsetX,
-                        y: contentCoords.y - dragState.offsetY,
-                    }
-                    : node,
-            ),
-        );
-    };
+            const compatibleSlot = findCompatibleSlotAt(
+                dropPoint,
+                drag.itemName,
+                drag.sourceSlotType,
+                drag.sourceNodeId,
+            );
 
-    const handleCanvasMouseUp = () => {
-        setDragState(null);
-    };
+            if (compatibleSlot) {
+                connectSlots(
+                    drag.sourceNodeId,
+                    drag.sourceSlotType,
+                    drag.sourceItemIndex,
+                    drag.itemName,
+                    compatibleSlot,
+                );
+                return;
+            }
+
+            setContextMenu({
+                type: 'item-recipe',
+                itemName: drag.itemName,
+                sourceNodeId: drag.sourceNodeId,
+                sourceSlotType: drag.sourceSlotType,
+                sourceItemIndex: drag.sourceItemIndex,
+                screenX: clientX,
+                screenY: clientY,
+            });
+            setRecipeSearchQuery('');
+        },
+        [canvasPointFromScreen, findCompatibleSlotAt, connectSlots],
+    );
 
     useEffect(() => {
-        if (!dragState || !canvasRef.current) return;
+        if (!nodeDragState) return;
 
-        const canvas = canvasRef.current;
-        canvas.addEventListener('mousemove', handleCanvasMouseMove as any);
-        canvas.addEventListener('mouseup', handleCanvasMouseUp);
+        const handleMouseMove = (event: MouseEvent) => {
+            const contentCoords = canvasPointFromScreen(event.clientX, event.clientY);
+            if (!contentCoords) return;
+
+            setNodes((current) =>
+                current.map((node) =>
+                    node.id === nodeDragState.nodeId
+                        ? {
+                              ...node,
+                              x: contentCoords.x - nodeDragState.offsetX,
+                              y: contentCoords.y - nodeDragState.offsetY,
+                          }
+                        : node,
+                ),
+            );
+        };
+
+        const handleMouseUp = () => {
+            setNodeDragState(null);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
 
         return () => {
-            canvas.removeEventListener('mousemove', handleCanvasMouseMove as any);
-            canvas.removeEventListener('mouseup', handleCanvasMouseUp);
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
         };
-    }, [dragState]);
+    }, [nodeDragState, canvasPointFromScreen]);
 
-    const handleWheel = (event: React.WheelEvent<HTMLDivElement>) => {
-        event.preventDefault();
-        const delta = event.deltaY > 0 ? 0.9 : 1.1;
-        const newScale = Math.max(0.5, Math.min(3, scale * delta));
-        setScale(newScale);
-    };
+    useEffect(() => {
+        const handleMouseMove = (event: MouseEvent) => {
+            const drag = itemDragRef.current;
+            if (!drag) return;
+
+            const nextDrag = {
+                ...drag,
+                currentClientX: event.clientX,
+                currentClientY: event.clientY,
+            };
+            itemDragRef.current = nextDrag;
+            setItemDragState(nextDrag);
+        };
+
+        const handleMouseUp = (event: MouseEvent) => {
+            const drag = itemDragRef.current;
+            if (!drag) return;
+
+            itemDragRef.current = null;
+            setItemDragState(null);
+            finishItemDrag(drag, event.clientX, event.clientY);
+        };
+
+        window.addEventListener('mousemove', handleMouseMove);
+        window.addEventListener('mouseup', handleMouseUp);
+
+        return () => {
+            window.removeEventListener('mousemove', handleMouseMove);
+            window.removeEventListener('mouseup', handleMouseUp);
+        };
+    }, [finishItemDrag]);
 
     const handleCanvasMouseDownForPan = (event: React.MouseEvent<HTMLDivElement>) => {
         if (event.button !== 0) return;
-        if (dragState) return;
-        setIsPanning(true);
-        setPanStart({ x: event.clientX - offsetX, y: event.clientY - offsetY });
+        if (nodeDragState || itemDragState) return;
+        handlePanMouseDown(event);
     };
 
-    const handleCanvasMouseMoveForPan = (event: React.MouseEvent<HTMLDivElement>) => {
-        if (!isPanning || !panStart) return;
-        setOffsetX(event.clientX - panStart.x);
-        setOffsetY(event.clientY - panStart.y);
+    const handleSaveCanvas = useCallback(() => {
+        const document = createCanvasDocument({
+            nodes,
+            connections,
+            viewport: transform,
+            name: 'recipe-tree',
+        });
+        downloadCanvasDocument(document);
+    }, [connections, nodes, transform]);
+
+    const handleLoadCanvas = useCallback(async () => {
+        try {
+            const document = await pickCanvasDocumentFile();
+            setNodes(document.nodes);
+            setConnections(document.connections);
+            if (document.viewport) {
+                setViewportTransform(document.viewport);
+            }
+            setContextMenu(null);
+            setRecipeSearchQuery('');
+        } catch {
+            // пользователь отменил выбор или файл некорректен
+        }
+    }, [setViewportTransform]);
+
+    const renderConnectionPath = (from: NodeSlot, to: NodeSlot) => {
+        const fromAnchor = getSlotAnchor(from.nodeId, from.slotType, from.itemIndex);
+        const toAnchor = getSlotAnchor(to.nodeId, to.slotType, to.itemIndex);
+        if (!fromAnchor || !toAnchor) return null;
+
+        return buildCanvasBezierPath(
+            { ...fromAnchor, side: slotConnectionSide(from.slotType) },
+            { ...toAnchor, side: slotConnectionSide(to.slotType) },
+        );
     };
 
-    const handleCanvasMouseUpForPan = () => {
-        setIsPanning(false);
-        setPanStart(null);
+    const itemRecipeOptions =
+        contextMenu?.type === 'item-recipe'
+            ? filterRecipesForItemDrag(
+                  recipeItems,
+                  contextMenu.itemName,
+                  contextMenu.sourceSlotType,
+              )
+            : [];
+
+    const baseRecipePickerOptions =
+        contextMenu?.type === 'recipe'
+            ? recipeItems
+            : contextMenu?.type === 'item-recipe'
+              ? itemRecipeOptions
+              : [];
+
+    const filteredRecipePickerOptions = useMemo(
+        () => filterRecipesByResultName(baseRecipePickerOptions, recipeSearchQuery),
+        [baseRecipePickerOptions, recipeSearchQuery],
+    );
+
+    const itemRecipeHeader =
+        contextMenu?.type === 'item-recipe'
+            ? contextMenu.sourceSlotType === 'input'
+                ? `Рецепты с результатом «${contextMenu.itemName}»`
+                : `Рецепты с ингредиентом «${contextMenu.itemName}»`
+            : '';
+
+    const recipePickerEmptyMessage =
+        baseRecipePickerOptions.length === 0
+            ? contextMenu?.type === 'item-recipe'
+                ? 'Нет подходящих рецептов'
+                : 'Не найдены рецепты'
+            : 'Ничего не найдено';
+
+    useEffect(() => {
+        if (contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') {
+            recipeSearchRef.current?.focus();
+        }
+    }, [contextMenu]);
+
+    const renderItemSlot = (
+        node: RecipeNode,
+        slotType: SlotType,
+        item: RecipeItem,
+        index: number,
+    ) => {
+        const displayName = getSlotItemName(node, slotType, index);
+        const isEmpty = !displayName;
+        const placeholder = slotType === 'input' ? 'Вход' : 'Выход';
+
+        return (
+            <div
+                key={slotKey(node.id, slotType, index)}
+                ref={(element) => {
+                    const key = slotKey(node.id, slotType, index);
+                    if (element) {
+                        itemRefs.current.set(key, element);
+                    } else {
+                        itemRefs.current.delete(key);
+                    }
+                }}
+                className={`recipe-node-item recipe-node-item--${slotType}${
+                    isEmpty ? ' recipe-node-item--empty' : ''
+                }`}
+                onMouseDown={(event) =>
+                    handleItemMouseDown(node.id, slotType, index, event)
+                }
+            >
+                <span className="recipe-node-item-name">{isEmpty ? placeholder : displayName}</span>
+                {!isEmpty && (
+                    <span className="recipe-node-item-amount">×{item.amount}</span>
+                )}
+            </div>
+        );
     };
+
+    const dragPreviewPath = useMemo(() => {
+        if (!itemDragState) return null;
+
+        const start = coords.canvasToViewportLocal({
+            x: itemDragState.startX,
+            y: itemDragState.startY,
+        });
+        const end = coords.viewportLocalFromScreen(
+            itemDragState.currentClientX,
+            itemDragState.currentClientY,
+        );
+        if (!start || !end) return null;
+
+        return buildViewportBezierPath(
+            { ...start, side: slotConnectionSide(itemDragState.sourceSlotType) },
+            {
+                ...end,
+                side: end.x >= start.x ? 'left' : 'right',
+            },
+        );
+    }, [coords, itemDragState]);
+
+    const canvasStyle = {
+        '--canvas-svg-offset': `${CANVAS_CONFIG.layers.connectionsSvgOffset}px`,
+        '--canvas-svg-size': `${CANVAS_CONFIG.layers.connectionsSvgSize}px`,
+    } as React.CSSProperties;
 
     return (
-        <div className="recipe-canvas-page">
-            <div className="recipe-canvas-toolbar">
-                <div>Правый клик по холсту для добавления ноды • Перетащите ноду для перемещения • Колесо мыши для зума • ЛКМ+движение для панинга</div>
-            </div>
+        <div className="recipe-canvas-page" style={canvasStyle}>
             <div
                 className="recipe-canvas"
-                ref={canvasRef}
+                ref={viewportRef}
                 onContextMenu={openMenu}
                 onWheel={handleWheel}
                 onMouseDown={handleCanvasMouseDownForPan}
-                onMouseMove={(e) => {
-                    handleCanvasMouseMove(e);
-                    handleCanvasMouseMoveForPan(e);
-                }}
-                onMouseUp={() => {
-                    handleCanvasMouseUp();
-                    handleCanvasMouseUpForPan();
-                }}
-                onMouseLeave={() => {
-                    handleCanvasMouseUp();
-                    handleCanvasMouseUpForPan();
-                }}
+                onMouseMove={handlePanMouseMove}
+                onMouseUp={handlePanMouseUp}
+                onMouseLeave={handlePanMouseUp}
                 style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
+                <div className="recipe-canvas-toolbar">
+                    <div>
+                        ПКМ по холсту — добавить ноду • Тяните за блок крафта — перемещение •
+                        Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
+                        панорама
+                    </div>
+                </div>
+
+                {dragPreviewPath && (
+                    <svg className="recipe-connections-screen-layer" aria-hidden="true">
+                        <path
+                            className="recipe-connection-line recipe-connection-line--preview"
+                            d={dragPreviewPath}
+                        />
+                    </svg>
+                )}
                 <div
-                    ref={containerRef}
+                    ref={contentRef}
+                    className="recipe-canvas-content"
                     style={{
-                        transform: `translate(${offsetX}px, ${offsetY}px) scale(${scale})`,
+                        transform: transformStyle,
                         transformOrigin: '0 0',
-                        transition: isPanning || dragState ? 'none' : 'transform 0.1s ease-out',
                     }}
                 >
+                    <svg className="recipe-connections-layer" aria-hidden="true">
+                        {connections.map((connection) => {
+                            const path = renderConnectionPath(connection.from, connection.to);
+                            if (!path) return null;
+                            return (
+                                <path
+                                    key={connection.id}
+                                    className="recipe-connection-line"
+                                    d={path}
+                                />
+                            );
+                        })}
+                    </svg>
+
                     {nodes.map((node) => (
                         <div
                             key={node.id}
-                            className={`recipe-node ${contextMenu?.type === 'node' && contextMenu.nodeId === node.id ? 'recipe-node--active' : ''}`}
+                            className={`recipe-node ${
+                                contextMenu?.type === 'node' && contextMenu.nodeId === node.id
+                                    ? 'recipe-node--active'
+                                    : ''
+                            }`}
                             style={{ left: node.x, top: node.y }}
-                            onMouseDown={(e) => handleNodeMouseDown(node.id, e)}
-                            onContextMenu={(e) => handleNodeContextMenu(node.id, e)}
+                            onContextMenu={(event) => handleNodeContextMenu(node.id, event)}
                         >
                             <div className="recipe-node-column recipe-node-column--inputs">
-                                {node.inputs.length > 0 ? (
-                                    node.inputs.map((input, index) => (
-                                        <div key={index} className="recipe-node-row">
-                                            {input}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="recipe-node-empty">Нет входов</div>
+                                {node.inputs.map((input, index) =>
+                                    renderItemSlot(node, 'input', input, index),
                                 )}
                             </div>
                             <div className="recipe-node-column recipe-node-column--machine">
-                                <div className="recipe-node-machine">{node.machineName}</div>
+                                <div
+                                    className={`recipe-node-machine recipe-node-machine--${node.kind}`}
+                                    onMouseDown={(event) =>
+                                        handleMachineMouseDown(node.id, event)
+                                    }
+                                >
+                                    {node.machineName}
+                                </div>
                             </div>
                             <div className="recipe-node-column recipe-node-column--outputs">
-                                {node.outputs.length > 0 ? (
-                                    node.outputs.map((output, index) => (
-                                        <div key={index} className="recipe-node-row">
-                                            {output}
-                                        </div>
-                                    ))
-                                ) : (
-                                    <div className="recipe-node-empty">Нет результата</div>
+                                {node.outputs.map((output, index) =>
+                                    renderItemSlot(node, 'output', output, index),
                                 )}
                             </div>
                         </div>
                     ))}
                 </div>
 
-                {contextMenu?.type === 'recipe' && (
-                    <div className="recipe-context-modal" onClick={closeMenu}>
-                        <div
-                            className="recipe-context-panel"
-                            style={{ position: 'fixed', left: contextMenu.screenX, top: contextMenu.screenY }}
-                            onClick={(event) => event.stopPropagation()}
-                        >
-                            <div className="recipe-context-header">Выберите рецепт</div>
-                            <div className="recipe-context-list">
-                                {recipeItems.length > 0 ? (
-                                    recipeItems.map((recipe) => (
+                {(contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') &&
+                    createPortal(
+                        <div className="recipe-context-modal" onClick={closeMenu}>
+                            <div
+                                className="recipe-context-panel"
+                                style={{
+                                    left: contextMenu.screenX,
+                                    top: contextMenu.screenY,
+                                }}
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-context-header">
+                                    {contextMenu.type === 'recipe'
+                                        ? 'Добавить на холст'
+                                        : itemRecipeHeader}
+                                </div>
+                                <div className="recipe-context-body">
+                                    <div className="recipe-context-sidebar">
+                                        <div className="recipe-context-sidebar-title">Блоки</div>
                                         <button
-                                            key={recipe.recipe_id}
-                                            className="recipe-context-item"
-                                            onClick={() => handleRecipeClick(recipe)}
+                                            type="button"
+                                            className="recipe-context-terminal recipe-context-terminal--chest"
+                                            onClick={() => handleTerminalNodeClick('chest')}
                                         >
-                                            {recipe.outputs[0] ?? 'Без результата'}
+                                            Сундук
                                         </button>
-                                    ))
-                                ) : (
-                                    <div className="recipe-context-empty">Не найдены рецепты</div>
-                                )}
+                                        <button
+                                            type="button"
+                                            className="recipe-context-terminal recipe-context-terminal--outpost"
+                                            onClick={() => handleTerminalNodeClick('outpost')}
+                                        >
+                                            Аванпост
+                                        </button>
+                                    </div>
+                                    <div className="recipe-context-main">
+                                        <div className="recipe-context-main-title">Рецепты</div>
+                                        <input
+                                            ref={recipeSearchRef}
+                                            className="recipe-context-search"
+                                            type="search"
+                                            placeholder="Поиск по результату..."
+                                            value={recipeSearchQuery}
+                                            onChange={(event) =>
+                                                setRecipeSearchQuery(event.target.value)
+                                            }
+                                        />
+                                        <div className="recipe-context-list">
+                                            {filteredRecipePickerOptions.length > 0 ? (
+                                                filteredRecipePickerOptions.map((recipe) => (
+                                                    <button
+                                                        key={recipe.recipe_id}
+                                                        type="button"
+                                                        className="recipe-context-item"
+                                                        onClick={() =>
+                                                            contextMenu.type === 'recipe'
+                                                                ? handleRecipeClick(recipe)
+                                                                : handleItemRecipeClick(recipe)
+                                                        }
+                                                    >
+                                                        <span className="recipe-context-item-title">
+                                                            {formatRecipeResultLabel(recipe)}
+                                                        </span>
+                                                        <span className="recipe-context-item-meta">
+                                                            {mapMachineName(recipe.machine_type)}
+                                                        </span>
+                                                    </button>
+                                                ))
+                                            ) : (
+                                                <div className="recipe-context-empty">
+                                                    {recipePickerEmptyMessage}
+                                                </div>
+                                            )}
+                                        </div>
+                                    </div>
+                                </div>
                             </div>
-                        </div>
-                    </div>
-                )}
+                        </div>,
+                        document.body,
+                    )}
 
-                {contextMenu?.type === 'node' && (
-                    <div className="recipe-context-modal recipe-context-modal--transparent" onClick={closeMenu}>
+                {contextMenu?.type === 'node' &&
+                    createPortal(
                         <div
-                            className="recipe-node-context-panel"
-                            style={{ position: 'fixed', left: contextMenu.screenX, top: contextMenu.screenY }}
-                            onClick={(event) => event.stopPropagation()}
+                            className="recipe-context-modal recipe-context-modal--transparent"
+                            onClick={closeMenu}
                         >
-                            <button className="recipe-node-context-item" onClick={() => {
-                                setNodes((current) => current.filter((node) => node.id !== contextMenu.nodeId));
-                                closeMenu();
-                            }}>
-                                Удалить ноду
-                            </button>
-                        </div>
-                    </div>
-                )}
+                            <div
+                                className="recipe-node-context-panel"
+                                style={{
+                                    left: contextMenu.screenX,
+                                    top: contextMenu.screenY,
+                                }}
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <button
+                                    type="button"
+                                    className="recipe-node-context-item"
+                                    onClick={() => {
+                                        removeNode(contextMenu.nodeId);
+                                        closeMenu();
+                                    }}
+                                >
+                                    Удалить ноду
+                                </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
             </div>
+
+            <ModsPanel onSave={handleSaveCanvas} onLoad={handleLoadCanvas} modCount={0} />
         </div>
     );
 }

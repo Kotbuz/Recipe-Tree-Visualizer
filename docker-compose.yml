@@ -7,7 +7,7 @@ services:
       - .env
     environment:
       MINECRAFT_VERSIONS_DIR: /app/MinecraftVersions
-      CORS_ORIGINS: http://localhost:5173,http://localhost
+      CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:ro
       - ./backend/logs:/app/backend/logs

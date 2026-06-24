@@ -93,8 +93,8 @@ backend/app/
 | `LOG_LEVEL` | Уровень логов | `INFO` |
 | `LOG_DIR` | Каталог лог-файлов | `logs` |
 | `MODS_STORAGE_DIR` | Хранилище `.jar` | `data/mods` |
-| `MINECRAFT_VERSIONS_DIR` | Каталог версий Minecraft | `../Minecraft versions` |
-| `CORS_ORIGINS` | Origins для CORS | `http://localhost:5173` |
+| `MINECRAFT_VERSIONS_DIR` | Каталог версий Minecraft | `../MinecraftVersions` |
+| `CORS_ORIGINS` | Origins для CORS | `http://localhost:5173,http://127.0.0.1:5173,http://localhost` |
 
 ## Разработка
 

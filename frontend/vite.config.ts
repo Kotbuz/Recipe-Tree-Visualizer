@@ -125,7 +125,7 @@ export default defineConfig({
             '/recipes': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,
-            }
+            },
         },
         fs: {
             allow: [assetRoot, resolve(__dirname)]

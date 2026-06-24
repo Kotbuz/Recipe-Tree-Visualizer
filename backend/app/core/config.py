@@ -16,8 +16,8 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_dir: str = "logs"
     mods_storage_dir: str = "data/mods"
-    minecraft_versions_dir: str = "../Minecraft versions"
-    cors_origins: str = "http://localhost:5173"
+    minecraft_versions_dir: str = "../MinecraftVersions"
+    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property
     def cors_origins_list(self) -> list[str]:
