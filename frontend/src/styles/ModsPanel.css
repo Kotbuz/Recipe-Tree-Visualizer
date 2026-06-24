@@ -104,6 +104,30 @@
     line-height: 1.45;
 }
 
+.mods-panel-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+}
+
+.mods-panel-field-label {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+}
+
+.mods-panel-select {
+    width: 100%;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #1f2937;
+    font-size: 0.92rem;
+}
+
 .mods-panel-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;

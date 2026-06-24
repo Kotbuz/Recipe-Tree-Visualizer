@@ -1,0 +1,15 @@
+.recipe-picker-list {
+    flex: 1;
+    min-height: 0;
+}
+
+.recipe-picker-list--hint {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 120px;
+    padding: 1rem;
+    color: #6b7280;
+    font-size: 0.92rem;
+    text-align: center;
+}

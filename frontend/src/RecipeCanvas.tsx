@@ -3,7 +3,6 @@ import { createPortal } from 'react-dom';
 import {
     itemsMatch,
     type RecipeSummary,
-    type RecipeListResponse,
     type RecipeItem,
     type SlotType,
     type NodeSlot,
@@ -11,6 +10,10 @@ import {
     type NodeKind,
 } from './types/recipe';
 import ModsPanel from './components/ModsPanel';
+import ItemIconView from './components/ItemIconView';
+import RecipePickerList from './components/RecipePickerList';
+import { useMinecraftVersion } from './context/MinecraftVersionContext';
+import { useRecipeSearch } from './hooks/useRecipeSearch';
 import {
     CANVAS_CONFIG,
     buildCanvasBezierPath,
@@ -121,21 +124,6 @@ const slotKey = (nodeId: string, slotType: SlotType, index: number) =>
 const connectionId = (from: NodeSlot, to: NodeSlot) =>
     `${from.nodeId}:${from.slotType}:${from.itemIndex}->${to.nodeId}:${to.slotType}:${to.itemIndex}`;
 
-const filterRecipesForItemDrag = (
-    recipes: RecipeSummary[],
-    itemName: string,
-    sourceSlotType: SlotType,
-) => {
-    if (sourceSlotType === 'input') {
-        return recipes.filter((recipe) =>
-            recipe.outputs.some((output) => itemsMatch(itemName, output.name)),
-        );
-    }
-    return recipes.filter((recipe) =>
-        recipe.inputs.some((input) => itemsMatch(itemName, input.name)),
-    );
-};
-
 const findMatchingSlotIndex = (
     node: RecipeNode,
     slotType: SlotType,
@@ -143,18 +131,6 @@ const findMatchingSlotIndex = (
 ) => {
     const items = slotType === 'input' ? node.inputs : node.outputs;
     return items.findIndex((item) => itemsMatch(itemName, item.name));
-};
-
-const formatRecipeResultLabel = (recipe: RecipeSummary) =>
-    recipe.outputs.map((output) => output.name).join(' + ') || 'Без результата';
-
-const filterRecipesByResultName = (recipes: RecipeSummary[], query: string) => {
-    const needle = query.trim().toLowerCase();
-    if (!needle) return recipes;
-
-    return recipes.filter((recipe) =>
-        recipe.outputs.some((output) => output.name.toLowerCase().includes(needle)),
-    );
 };
 
 const isSlotCompatible = (
@@ -172,7 +148,7 @@ const isSlotCompatible = (
 };
 
 export default function RecipeCanvas() {
-    const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
+    const { version, versions, setVersion } = useMinecraftVersion();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -181,6 +157,36 @@ export default function RecipeCanvas() {
     const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
     const [, setLayoutTick] = useState(0);
+
+    const recipeSearchParams = useMemo(() => {
+        if (contextMenu?.type !== 'recipe' && contextMenu?.type !== 'item-recipe') {
+            return {
+                enabled: false,
+                query: '',
+            };
+        }
+
+        if (contextMenu.type === 'item-recipe') {
+            return {
+                enabled: true,
+                query: recipeSearchQuery,
+                producesItem:
+                    contextMenu.sourceSlotType === 'input' ? contextMenu.itemName : undefined,
+                usesItem:
+                    contextMenu.sourceSlotType === 'output' ? contextMenu.itemName : undefined,
+            };
+        }
+
+        return {
+            enabled: true,
+            query: recipeSearchQuery,
+        };
+    }, [contextMenu, recipeSearchQuery]);
+
+    const { recipes: searchedRecipes, loading: recipesLoading } = useRecipeSearch(
+        version,
+        recipeSearchParams,
+    );
 
     const {
         viewportRef,
@@ -200,24 +206,19 @@ export default function RecipeCanvas() {
     const itemDragRef = useRef<ItemDragState | null>(null);
     const recipeSearchRef = useRef<HTMLInputElement>(null);
 
-    useEffect(() => {
-        fetch('/recipes?version=26.2')
-            .then((response) => response.json())
-            .then((data: RecipeListResponse) => {
-                setRecipes(data.recipes);
-            })
-            .catch(() => {
-                setRecipes([]);
-            });
-    }, []);
-
-    const recipeItems = useMemo(
-        () =>
-            recipes.map((recipe) => ({
-                ...recipe,
-                machineName: mapMachineName(recipe.machine_type),
-            })),
-        [recipes],
+    const handleVersionChange = useCallback(
+        (nextVersion: string) => {
+            setVersion(nextVersion);
+            setNodes([]);
+            setConnections([]);
+            setContextMenu(null);
+            setRecipeSearchQuery('');
+            setSelectedRecipe(null);
+            setNodeDragState(null);
+            setItemDragState(null);
+            itemDragRef.current = null;
+        },
+        [setVersion],
     );
 
     const screenToCanvas = coords.screenToCanvas;
@@ -776,27 +777,6 @@ export default function RecipeCanvas() {
         );
     };
 
-    const itemRecipeOptions =
-        contextMenu?.type === 'item-recipe'
-            ? filterRecipesForItemDrag(
-                  recipeItems,
-                  contextMenu.itemName,
-                  contextMenu.sourceSlotType,
-              )
-            : [];
-
-    const baseRecipePickerOptions =
-        contextMenu?.type === 'recipe'
-            ? recipeItems
-            : contextMenu?.type === 'item-recipe'
-              ? itemRecipeOptions
-              : [];
-
-    const filteredRecipePickerOptions = useMemo(
-        () => filterRecipesByResultName(baseRecipePickerOptions, recipeSearchQuery),
-        [baseRecipePickerOptions, recipeSearchQuery],
-    );
-
     const itemRecipeHeader =
         contextMenu?.type === 'item-recipe'
             ? contextMenu.sourceSlotType === 'input'
@@ -804,12 +784,11 @@ export default function RecipeCanvas() {
                 : `Рецепты с ингредиентом «${contextMenu.itemName}»`
             : '';
 
+    const recipePickerEmptyQuery =
+        contextMenu?.type === 'recipe' && recipeSearchQuery.trim().length === 0;
+
     const recipePickerEmptyMessage =
-        baseRecipePickerOptions.length === 0
-            ? contextMenu?.type === 'item-recipe'
-                ? 'Нет подходящих рецептов'
-                : 'Не найдены рецепты'
-            : 'Ничего не найдено';
+        contextMenu?.type === 'item-recipe' ? 'Нет подходящих рецептов' : 'Ничего не найдено';
 
     useEffect(() => {
         if (contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') {
@@ -820,12 +799,11 @@ export default function RecipeCanvas() {
     const renderItemSlot = (
         node: RecipeNode,
         slotType: SlotType,
-        item: RecipeItem,
+        _item: RecipeItem,
         index: number,
     ) => {
         const displayName = getSlotItemName(node, slotType, index);
         const isEmpty = !displayName;
-        const placeholder = slotType === 'input' ? 'Вход' : 'Выход';
 
         return (
             <div
@@ -844,10 +822,14 @@ export default function RecipeCanvas() {
                 onMouseDown={(event) =>
                     handleItemMouseDown(node.id, slotType, index, event)
                 }
+                title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
             >
-                <span className="recipe-node-item-name">{isEmpty ? placeholder : displayName}</span>
-                {!isEmpty && (
-                    <span className="recipe-node-item-amount">×{item.amount}</span>
+                {isEmpty ? (
+                    <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
+                        {slotType === 'input' ? 'IN' : 'OUT'}
+                    </span>
+                ) : (
+                    <ItemIconView itemName={displayName} />
                 )}
             </div>
         );
@@ -1013,31 +995,17 @@ export default function RecipeCanvas() {
                                             }
                                         />
                                         <div className="recipe-context-list">
-                                            {filteredRecipePickerOptions.length > 0 ? (
-                                                filteredRecipePickerOptions.map((recipe) => (
-                                                    <button
-                                                        key={recipe.recipe_id}
-                                                        type="button"
-                                                        className="recipe-context-item"
-                                                        onClick={() =>
-                                                            contextMenu.type === 'recipe'
-                                                                ? handleRecipeClick(recipe)
-                                                                : handleItemRecipeClick(recipe)
-                                                        }
-                                                    >
-                                                        <span className="recipe-context-item-title">
-                                                            {formatRecipeResultLabel(recipe)}
-                                                        </span>
-                                                        <span className="recipe-context-item-meta">
-                                                            {mapMachineName(recipe.machine_type)}
-                                                        </span>
-                                                    </button>
-                                                ))
-                                            ) : (
-                                                <div className="recipe-context-empty">
-                                                    {recipePickerEmptyMessage}
-                                                </div>
-                                            )}
+                                            <RecipePickerList
+                                                recipes={searchedRecipes}
+                                                loading={recipesLoading}
+                                                emptyQuery={recipePickerEmptyQuery}
+                                                emptyMessage={recipePickerEmptyMessage}
+                                                onRecipeClick={(recipe) =>
+                                                    contextMenu.type === 'recipe'
+                                                        ? handleRecipeClick(recipe)
+                                                        : handleItemRecipeClick(recipe)
+                                                }
+                                            />
                                         </div>
                                     </div>
                                 </div>
@@ -1076,7 +1044,14 @@ export default function RecipeCanvas() {
                     )}
             </div>
 
-            <ModsPanel onSave={handleSaveCanvas} onLoad={handleLoadCanvas} modCount={0} />
+            <ModsPanel
+                versions={versions}
+                version={version}
+                onVersionChange={handleVersionChange}
+                onSave={handleSaveCanvas}
+                onLoad={handleLoadCanvas}
+                modCount={0}
+            />
         </div>
     );
 }

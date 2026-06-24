@@ -2,12 +2,22 @@ import { useState } from 'react';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
+    versions: string[];
+    version: string;
+    onVersionChange: (version: string) => void;
     onSave: () => void;
     onLoad: () => void;
     modCount?: number;
 };
 
-export default function ModsPanel({ onSave, onLoad, modCount = 0 }: ModsPanelProps) {
+export default function ModsPanel({
+    versions,
+    version,
+    onVersionChange,
+    onSave,
+    onLoad,
+    modCount = 0,
+}: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
 
     if (!expanded) {
@@ -45,6 +55,21 @@ export default function ModsPanel({ onSave, onLoad, modCount = 0 }: ModsPanelPro
                     </button>
                 </div>
             </div>
+
+            <label className="mods-panel-field">
+                <span className="mods-panel-field-label">Версия Minecraft</span>
+                <select
+                    className="mods-panel-select"
+                    value={version}
+                    onChange={(event) => onVersionChange(event.target.value)}
+                >
+                    {versions.map((entry) => (
+                        <option key={entry} value={entry}>
+                            {entry}
+                        </option>
+                    ))}
+                </select>
+            </label>
 
             <p className="mods-panel-hint">
                 Здесь будет список подключённых модов и управление ими. Панель не влияет на размер

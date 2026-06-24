@@ -126,6 +126,10 @@ export default defineConfig({
                 target: 'http://localhost:8000',
                 changeOrigin: true,
             },
+            '/versions': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            },
         },
         fs: {
             allow: [assetRoot, resolve(__dirname)]

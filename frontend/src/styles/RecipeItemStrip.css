@@ -1,0 +1,15 @@
+.recipe-item-strip {
+    display: flex;
+    flex-wrap: wrap;
+    align-content: flex-start;
+    gap: 3px;
+    min-width: 0;
+}
+
+.recipe-picker-row > .recipe-item-strip:first-child {
+    justify-content: flex-end;
+}
+
+.recipe-picker-row > .recipe-item-strip:last-child {
+    justify-content: flex-start;
+}
