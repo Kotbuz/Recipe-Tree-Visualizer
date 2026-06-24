@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import type {
-    RecipeSummary,
-    RecipeListResponse,
-    RecipeItem,
-    SlotType,
-    NodeSlot,
-    RecipeConnection,
-    NodeKind,
+import {
+    itemsMatch,
+    type RecipeSummary,
+    type RecipeListResponse,
+    type RecipeItem,
+    type SlotType,
+    type NodeSlot,
+    type RecipeConnection,
+    type NodeKind,
 } from './types/recipe';
 import './styles/RecipeCanvas.css';
 
@@ -138,11 +139,11 @@ const filterRecipesForItemDrag = (
 ) => {
     if (sourceSlotType === 'input') {
         return recipes.filter((recipe) =>
-            recipe.outputs.some((output) => output.name === itemName),
+            recipe.outputs.some((output) => itemsMatch(itemName, output.name)),
         );
     }
     return recipes.filter((recipe) =>
-        recipe.inputs.some((input) => input.name === itemName),
+        recipe.inputs.some((input) => itemsMatch(itemName, input.name)),
     );
 };
 
@@ -152,7 +153,7 @@ const findMatchingSlotIndex = (
     itemName: string,
 ) => {
     const items = slotType === 'input' ? node.inputs : node.outputs;
-    return items.findIndex((item) => item.name === itemName);
+    return items.findIndex((item) => itemsMatch(itemName, item.name));
 };
 
 const formatRecipeResultLabel = (recipe: RecipeSummary) =>
@@ -178,7 +179,7 @@ const isSlotCompatible = (
         return isTerminalNode(node);
     }
 
-    return slotName === itemName;
+    return itemsMatch(itemName, slotName);
 };
 
 export default function RecipeCanvas() {

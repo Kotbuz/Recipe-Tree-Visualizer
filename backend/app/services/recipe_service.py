@@ -11,6 +11,8 @@ from app.schemas.recipe_file import RecipeItem, RecipeSummary
 def _pretty_item_name(item_id: str | None) -> str:
     if not item_id:
         return "unknown"
+    if item_id.startswith("#"):
+        item_id = item_id[1:]
     if ":" in item_id:
         item_id = item_id.split(":", 1)[1]
     return item_id.replace("_", " ")

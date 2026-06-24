@@ -31,3 +31,17 @@ export interface RecipeConnection {
     from: NodeSlot;
     to: NodeSlot;
 }
+
+/** Сопоставление предмета с тегом Minecraft (planks) и конкретным видом (oak planks). */
+export const itemsMatch = (requiredName: string, candidateName: string): boolean => {
+    if (!requiredName || !candidateName) return false;
+
+    const required = requiredName.toLowerCase();
+    const candidate = candidateName.toLowerCase();
+
+    if (required === candidate) return true;
+    if (candidate.endsWith(` ${required}`)) return true;
+    if (required.endsWith(` ${candidate}`)) return true;
+
+    return false;
+};
