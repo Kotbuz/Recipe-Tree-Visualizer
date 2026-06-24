@@ -105,25 +105,34 @@
     gap: 0.15rem;
     padding: 0.55rem 0.75rem;
     border-radius: 10px;
-    background: #f8fafc;
-    color: #111827;
     font-size: 0.95rem;
     cursor: crosshair;
     border: 1px solid transparent;
     transition: background 0.15s ease, border-color 0.15s ease;
 }
 
-.recipe-node-item:hover {
-    background: #eef2ff;
-    border-color: #c7d2fe;
-}
-
 .recipe-node-item--input {
     align-items: flex-start;
+    background: #fde8e8;
+    color: #7f1d1d;
+    border-color: #f5c6c6;
+}
+
+.recipe-node-item--input:hover {
+    background: #fcd9d9;
+    border-color: #e8a0a0;
 }
 
 .recipe-node-item--output {
     align-items: flex-end;
+    background: #e3f5e8;
+    color: #14532d;
+    border-color: #b8dfc4;
+}
+
+.recipe-node-item--output:hover {
+    background: #d4efdc;
+    border-color: #94cba6;
 }
 
 .recipe-node-item-name {
@@ -131,9 +140,15 @@
     text-align: center;
 }
 
-.recipe-node-item-amount {
+.recipe-node-item--input .recipe-node-item-amount {
     font-size: 0.78rem;
-    color: #6b7280;
+    color: #991b1b;
+    font-weight: 600;
+}
+
+.recipe-node-item--output .recipe-node-item-amount {
+    font-size: 0.78rem;
+    color: #166534;
     font-weight: 600;
 }
 

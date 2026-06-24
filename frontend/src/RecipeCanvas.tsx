@@ -153,7 +153,7 @@ export default function RecipeCanvas() {
     const itemDragRef = useRef<ItemDragState | null>(null);
 
     useEffect(() => {
-        fetch('/recipes?version=26.2')
+        fetch('/recipes/?version=26.2')
             .then((response) => response.json())
             .then((data: RecipeListResponse) => {
                 setRecipes(data.recipes);
