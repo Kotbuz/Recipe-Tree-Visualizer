@@ -98,6 +98,16 @@
     cursor: grabbing;
 }
 
+.recipe-node-machine--chest {
+    background: #fef3c7;
+    color: #92400e;
+}
+
+.recipe-node-machine--outpost {
+    background: #ede9fe;
+    color: #5b21b6;
+}
+
 .recipe-node-item {
     display: flex;
     flex-direction: column;
@@ -133,6 +143,17 @@
 .recipe-node-item--output:hover {
     background: #d4efdc;
     border-color: #94cba6;
+}
+
+.recipe-node-item--empty {
+    cursor: default;
+    border-style: dashed;
+    opacity: 0.9;
+}
+
+.recipe-node-item--empty .recipe-node-item-name {
+    color: #9ca3af;
+    font-style: italic;
 }
 
 .recipe-node-item-name {
@@ -178,7 +199,7 @@
 
 .recipe-context-panel {
     position: absolute;
-    width: min(360px, calc(100% - 2rem));
+    width: min(600px, calc(100% - 2rem));
     max-height: min(80vh, 560px);
     padding: 1rem;
     background: #ffffff;
@@ -187,6 +208,69 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
+}
+
+.recipe-context-body {
+    display: grid;
+    grid-template-columns: 140px 1fr;
+    gap: 0.85rem;
+    flex: 1;
+    min-height: 0;
+}
+
+.recipe-context-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    min-height: 0;
+}
+
+.recipe-context-sidebar-title,
+.recipe-context-main-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin-bottom: 0.15rem;
+}
+
+.recipe-context-terminal {
+    width: 100%;
+    padding: 0.85rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    text-align: left;
+    cursor: pointer;
+    font-size: 0.95rem;
+    font-weight: 600;
+    color: #111827;
+    transition: background 0.15s ease, border-color 0.15s ease;
+}
+
+.recipe-context-terminal--chest {
+    background: #fef3c7;
+    border-color: #fcd34d;
+}
+
+.recipe-context-terminal--chest:hover {
+    background: #fde68a;
+}
+
+.recipe-context-terminal--outpost {
+    background: #ede9fe;
+    border-color: #c4b5fd;
+}
+
+.recipe-context-terminal--outpost:hover {
+    background: #ddd6fe;
+}
+
+.recipe-context-main {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
 }
 
 .recipe-context-header {

@@ -15,6 +15,8 @@ export interface RecipeListResponse {
     recipes: RecipeSummary[];
 }
 
+export type NodeKind = 'recipe' | 'chest' | 'outpost';
+
 export type SlotType = 'input' | 'output';
 
 export interface NodeSlot {

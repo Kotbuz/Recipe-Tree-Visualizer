@@ -6,12 +6,14 @@ import type {
     SlotType,
     NodeSlot,
     RecipeConnection,
+    NodeKind,
 } from './types/recipe';
 import './styles/RecipeCanvas.css';
 
 interface RecipeNode {
     id: string;
-    recipeId: string;
+    kind: NodeKind;
+    recipeId?: string;
     x: number;
     y: number;
     machineName: string;
@@ -65,6 +67,8 @@ type ItemRecipeContextMenu = {
 
 type ContextMenu = RecipeContextMenu | NodeContextMenu | ItemRecipeContextMenu;
 
+type TerminalKind = 'chest' | 'outpost';
+
 const MIN_ITEM_DRAG_DISTANCE = 8;
 const SLOT_HIT_RADIUS = 28;
 
@@ -80,12 +84,31 @@ const machineNameMap: Record<string, string> = {
     'minecraft:stonecutting': 'Наковальня',
 };
 
+const TERMINAL_LABELS: Record<TerminalKind, string> = {
+    chest: 'Сундук',
+    outpost: 'Аванпост',
+};
+
 const mapMachineName = (typeName: string) =>
     machineNameMap[typeName] ??
     typeName
         .replace(/.*:/, '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
+
+const getChestPassthroughItem = (node: RecipeNode) =>
+    node.inputs[0]?.name || node.outputs[0]?.name || '';
+
+const getSlotItemName = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        return getChestPassthroughItem(node);
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.name ?? '';
+};
 
 const slotKey = (nodeId: string, slotType: SlotType, index: number) =>
     `${nodeId}:${slotType}:${index}`;
@@ -142,6 +165,20 @@ const filterRecipesByResultName = (recipes: RecipeSummary[], query: string) => {
     return recipes.filter((recipe) =>
         recipe.outputs.some((output) => output.name.toLowerCase().includes(needle)),
     );
+};
+
+const isSlotCompatible = (
+    node: RecipeNode,
+    slotType: SlotType,
+    index: number,
+    itemName: string,
+) => {
+    const slotName = getSlotItemName(node, slotType, index);
+    if (!slotName) {
+        return isTerminalNode(node);
+    }
+
+    return slotName === itemName;
 };
 
 export default function RecipeCanvas() {
@@ -226,6 +263,50 @@ export default function RecipeCanvas() {
         bumpLayout();
     }, [nodes, connections, scale, offsetX, offsetY, bumpLayout]);
 
+    const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
+        setNodes((current) =>
+            current.map((node) => {
+                if (node.id !== nodeId || node.kind !== 'chest') return node;
+
+                return {
+                    ...node,
+                    inputs: node.inputs.map((item, index) =>
+                        index === 0 ? { ...item, name: itemName } : item,
+                    ),
+                    outputs: node.outputs.map((item, index) =>
+                        index === 0 ? { ...item, name: itemName } : item,
+                    ),
+                };
+            }),
+        );
+    }, []);
+
+    const populateTerminalSlot = useCallback(
+        (nodeId: string, slotType: SlotType, itemIndex: number, itemName: string) => {
+            setNodes((current) =>
+                current.map((node) => {
+                    if (node.id !== nodeId || node.kind !== 'outpost') return node;
+
+                    const items = slotType === 'input' ? node.inputs : node.outputs;
+                    const item = items[itemIndex];
+                    if (!item || item.name) return node;
+
+                    const updatedItem = { ...item, name: itemName };
+                    if (slotType === 'input') {
+                        const inputs = [...node.inputs];
+                        inputs[itemIndex] = updatedItem;
+                        return { ...node, inputs };
+                    }
+
+                    const outputs = [...node.outputs];
+                    outputs[itemIndex] = updatedItem;
+                    return { ...node, outputs };
+                }),
+            );
+        },
+        [],
+    );
+
     const addConnection = useCallback((from: NodeSlot, to: NodeSlot) => {
         const id = connectionId(from, to);
         setConnections((current) => {
@@ -260,7 +341,9 @@ export default function RecipeCanvas() {
 
                 const items = targetSlotType === 'input' ? node.inputs : node.outputs;
                 for (let index = 0; index < items.length; index += 1) {
-                    if (items[index].name !== itemName) continue;
+                    if (!isSlotCompatible(node, targetSlotType, index, itemName)) {
+                        continue;
+                    }
 
                     const anchor = getSlotAnchor(node.id, targetSlotType, index);
                     if (!anchor) continue;
@@ -302,8 +385,13 @@ export default function RecipeCanvas() {
             } else {
                 addConnection(source, target);
             }
+
+            syncChestPassthrough(target.nodeId, itemName);
+            syncChestPassthrough(source.nodeId, itemName);
+            populateTerminalSlot(target.nodeId, target.slotType, target.itemIndex, itemName);
+            populateTerminalSlot(source.nodeId, source.slotType, source.itemIndex, itemName);
         },
-        [addConnection],
+        [addConnection, syncChestPassthrough, populateTerminalSlot],
     );
 
     const closeMenu = () => {
@@ -331,6 +419,7 @@ export default function RecipeCanvas() {
     const createNodeFromRecipe = (recipe: RecipeSummary, x: number, y: number) => {
         const node: RecipeNode = {
             id: `${recipe.recipe_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: 'recipe',
             recipeId: recipe.recipe_id,
             x,
             y,
@@ -341,6 +430,59 @@ export default function RecipeCanvas() {
         setNodes((current) => [...current, node]);
         setSelectedRecipe(recipe);
         return node;
+    };
+
+    const createTerminalNode = (
+        terminalKind: TerminalKind,
+        x: number,
+        y: number,
+        prefilledSlot?: { slotType: SlotType; itemName: string },
+    ) => {
+        const node: RecipeNode = {
+            id: `${terminalKind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: terminalKind,
+            x,
+            y,
+            machineName: TERMINAL_LABELS[terminalKind],
+            inputs: [
+                {
+                    name:
+                        prefilledSlot?.slotType === 'input' ? prefilledSlot.itemName : '',
+                    amount: 1,
+                },
+            ],
+            outputs: [
+                {
+                    name:
+                        prefilledSlot?.slotType === 'output' ? prefilledSlot.itemName : '',
+                    amount: 1,
+                },
+            ],
+        };
+        setNodes((current) => [...current, node]);
+        return node;
+    };
+
+    const connectItemDragToTerminal = (
+        menu: ItemRecipeContextMenu,
+        terminalNode: RecipeNode,
+    ) => {
+        const targetSlotType: SlotType =
+            menu.sourceSlotType === 'input' ? 'output' : 'input';
+        const targetIndex = 0;
+
+        connectSlots(
+            menu.sourceNodeId,
+            menu.sourceSlotType,
+            menu.sourceItemIndex,
+            menu.itemName,
+            {
+                nodeId: terminalNode.id,
+                slotType: targetSlotType,
+                itemIndex: targetIndex,
+                itemName: menu.itemName,
+            },
+        );
     };
 
     const handleRecipeClick = (recipe: RecipeSummary) => {
@@ -380,6 +522,37 @@ export default function RecipeCanvas() {
         closeMenu();
     };
 
+    const handleTerminalNodeClick = (terminalKind: TerminalKind) => {
+        if (!contextMenu || (contextMenu.type !== 'recipe' && contextMenu.type !== 'item-recipe')) {
+            return;
+        }
+
+        if (contextMenu.type === 'recipe') {
+            createTerminalNode(terminalKind, contextMenu.contentX, contextMenu.contentY);
+            closeMenu();
+            return;
+        }
+
+        const prefilledSlot =
+            terminalKind === 'outpost'
+                ? {
+                      slotType: (contextMenu.sourceSlotType === 'input'
+                          ? 'output'
+                          : 'input') as SlotType,
+                      itemName: contextMenu.itemName,
+                  }
+                : undefined;
+
+        const terminalNode = createTerminalNode(
+            terminalKind,
+            contextMenu.contentX,
+            contextMenu.contentY,
+            prefilledSlot,
+        );
+        connectItemDragToTerminal(contextMenu, terminalNode);
+        closeMenu();
+    };
+
     const handleMachineMouseDown = (nodeId: string, event: React.MouseEvent<HTMLDivElement>) => {
         event.preventDefault();
         event.stopPropagation();
@@ -401,9 +574,14 @@ export default function RecipeCanvas() {
         nodeId: string,
         slotType: SlotType,
         itemIndex: number,
-        itemName: string,
         event: React.MouseEvent<HTMLDivElement>,
     ) => {
+        const node = nodes.find((entry) => entry.id === nodeId);
+        if (!node) return;
+
+        const itemName = getSlotItemName(node, slotType, itemIndex);
+        if (!itemName) return;
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -632,30 +810,40 @@ export default function RecipeCanvas() {
     }, [contextMenu]);
 
     const renderItemSlot = (
-        nodeId: string,
+        node: RecipeNode,
         slotType: SlotType,
         item: RecipeItem,
         index: number,
-    ) => (
-        <div
-            key={slotKey(nodeId, slotType, index)}
-            ref={(element) => {
-                const key = slotKey(nodeId, slotType, index);
-                if (element) {
-                    itemRefs.current.set(key, element);
-                } else {
-                    itemRefs.current.delete(key);
+    ) => {
+        const displayName = getSlotItemName(node, slotType, index);
+        const isEmpty = !displayName;
+        const placeholder = slotType === 'input' ? 'Вход' : 'Выход';
+
+        return (
+            <div
+                key={slotKey(node.id, slotType, index)}
+                ref={(element) => {
+                    const key = slotKey(node.id, slotType, index);
+                    if (element) {
+                        itemRefs.current.set(key, element);
+                    } else {
+                        itemRefs.current.delete(key);
+                    }
+                }}
+                className={`recipe-node-item recipe-node-item--${slotType}${
+                    isEmpty ? ' recipe-node-item--empty' : ''
+                }`}
+                onMouseDown={(event) =>
+                    handleItemMouseDown(node.id, slotType, index, event)
                 }
-            }}
-            className={`recipe-node-item recipe-node-item--${slotType}`}
-            onMouseDown={(event) =>
-                handleItemMouseDown(nodeId, slotType, index, item.name, event)
-            }
-        >
-            <span className="recipe-node-item-name">{item.name}</span>
-            <span className="recipe-node-item-amount">×{item.amount}</span>
-        </div>
-    );
+            >
+                <span className="recipe-node-item-name">{isEmpty ? placeholder : displayName}</span>
+                {!isEmpty && (
+                    <span className="recipe-node-item-amount">×{item.amount}</span>
+                )}
+            </div>
+        );
+    };
 
     const dragPreviewPath =
         itemDragState &&
@@ -732,17 +920,13 @@ export default function RecipeCanvas() {
                             onContextMenu={(event) => handleNodeContextMenu(node.id, event)}
                         >
                             <div className="recipe-node-column recipe-node-column--inputs">
-                                {node.inputs.length > 0 ? (
-                                    node.inputs.map((input, index) =>
-                                        renderItemSlot(node.id, 'input', input, index),
-                                    )
-                                ) : (
-                                    <div className="recipe-node-empty">Нет входов</div>
+                                {node.inputs.map((input, index) =>
+                                    renderItemSlot(node, 'input', input, index),
                                 )}
                             </div>
                             <div className="recipe-node-column recipe-node-column--machine">
                                 <div
-                                    className="recipe-node-machine"
+                                    className={`recipe-node-machine recipe-node-machine--${node.kind}`}
                                     onMouseDown={(event) =>
                                         handleMachineMouseDown(node.id, event)
                                     }
@@ -751,12 +935,8 @@ export default function RecipeCanvas() {
                                 </div>
                             </div>
                             <div className="recipe-node-column recipe-node-column--outputs">
-                                {node.outputs.length > 0 ? (
-                                    node.outputs.map((output, index) =>
-                                        renderItemSlot(node.id, 'output', output, index),
-                                    )
-                                ) : (
-                                    <div className="recipe-node-empty">Нет результата</div>
+                                {node.outputs.map((output, index) =>
+                                    renderItemSlot(node, 'output', output, index),
                                 )}
                             </div>
                         </div>
@@ -776,44 +956,67 @@ export default function RecipeCanvas() {
                         >
                             <div className="recipe-context-header">
                                 {contextMenu.type === 'recipe'
-                                    ? 'Выберите рецепт'
+                                    ? 'Добавить на холст'
                                     : itemRecipeHeader}
                             </div>
-                            <input
-                                ref={recipeSearchRef}
-                                className="recipe-context-search"
-                                type="search"
-                                placeholder="Поиск по результату..."
-                                value={recipeSearchQuery}
-                                onChange={(event) => setRecipeSearchQuery(event.target.value)}
-                            />
-                            <div className="recipe-context-list">
-                                {filteredRecipePickerOptions.length > 0 ? (
-                                    filteredRecipePickerOptions.map((recipe) => (
-                                        <button
-                                            key={recipe.recipe_id}
-                                            className="recipe-context-item"
-                                            onClick={() =>
-                                                contextMenu.type === 'recipe'
-                                                    ? handleRecipeClick(recipe)
-                                                    : handleItemRecipeClick(recipe)
-                                            }
-                                        >
-                                            <span className="recipe-context-item-title">
-                                                {formatRecipeResultLabel(recipe)}
-                                            </span>
-                                            {contextMenu.type === 'item-recipe' && (
-                                                <span className="recipe-context-item-meta">
-                                                    {mapMachineName(recipe.machine_type)}
-                                                </span>
-                                            )}
-                                        </button>
-                                    ))
-                                ) : (
-                                    <div className="recipe-context-empty">
-                                        {recipePickerEmptyMessage}
+                            <div className="recipe-context-body">
+                                <div className="recipe-context-sidebar">
+                                    <div className="recipe-context-sidebar-title">Блоки</div>
+                                    <button
+                                        type="button"
+                                        className="recipe-context-terminal recipe-context-terminal--chest"
+                                        onClick={() => handleTerminalNodeClick('chest')}
+                                    >
+                                        Сундук
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-context-terminal recipe-context-terminal--outpost"
+                                        onClick={() => handleTerminalNodeClick('outpost')}
+                                    >
+                                        Аванпост
+                                    </button>
+                                </div>
+                                <div className="recipe-context-main">
+                                    <div className="recipe-context-main-title">Рецепты</div>
+                                    <input
+                                        ref={recipeSearchRef}
+                                        className="recipe-context-search"
+                                        type="search"
+                                        placeholder="Поиск по результату..."
+                                        value={recipeSearchQuery}
+                                        onChange={(event) =>
+                                            setRecipeSearchQuery(event.target.value)
+                                        }
+                                    />
+                                    <div className="recipe-context-list">
+                                        {filteredRecipePickerOptions.length > 0 ? (
+                                            filteredRecipePickerOptions.map((recipe) => (
+                                                <button
+                                                    key={recipe.recipe_id}
+                                                    type="button"
+                                                    className="recipe-context-item"
+                                                    onClick={() =>
+                                                        contextMenu.type === 'recipe'
+                                                            ? handleRecipeClick(recipe)
+                                                            : handleItemRecipeClick(recipe)
+                                                    }
+                                                >
+                                                    <span className="recipe-context-item-title">
+                                                        {formatRecipeResultLabel(recipe)}
+                                                    </span>
+                                                    <span className="recipe-context-item-meta">
+                                                        {mapMachineName(recipe.machine_type)}
+                                                    </span>
+                                                </button>
+                                            ))
+                                        ) : (
+                                            <div className="recipe-context-empty">
+                                                {recipePickerEmptyMessage}
+                                            </div>
+                                        )}
                                     </div>
-                                )}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -834,6 +1037,7 @@ export default function RecipeCanvas() {
                             onClick={(event) => event.stopPropagation()}
                         >
                             <button
+                                type="button"
                                 className="recipe-node-context-item"
                                 onClick={() => {
                                     removeNode(contextMenu.nodeId);
