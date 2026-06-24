@@ -1,5 +1,6 @@
 from dataclasses import dataclass, field
 
+from app.parser.loaders import ModLoader
 from app.schemas.domain import Item, Machine, ModSummary, Recipe
 
 
@@ -7,18 +8,22 @@ from app.schemas.domain import Item, Machine, ModSummary, Recipe
 class ModIndex:
     mod_id: str
     name: str
+    loader: ModLoader
     items: dict[str, Item] = field(default_factory=dict)
     recipes: dict[str, Recipe] = field(default_factory=dict)
     machines: dict[str, Machine] = field(default_factory=dict)
     recipes_by_output: dict[str, list[str]] = field(default_factory=dict)
+    skipped_recipe_count: int = 0
 
     def to_summary(self) -> ModSummary:
         return ModSummary(
             mod_id=self.mod_id,
             name=self.name,
+            loader=self.loader.value,
             item_count=len(self.items),
             recipe_count=len(self.recipes),
             machine_count=len(self.machines),
+            skipped_recipe_count=self.skipped_recipe_count,
         )
 
 
