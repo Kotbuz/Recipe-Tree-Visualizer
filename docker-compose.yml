@@ -6,10 +6,10 @@ services:
     env_file:
       - .env
     environment:
-      MINECRAFT_VERSIONS_DIR: /app/Minecraft versions
+      MINECRAFT_VERSIONS_DIR: /app/MinecraftVersions
       CORS_ORIGINS: http://localhost:5173,http://localhost
     volumes:
-      - ./Minecraft versions:/app/Minecraft versions:ro
+      - ./MinecraftVersions:/app/MinecraftVersions:ro
       - ./backend/logs:/app/backend/logs
       - ./backend/data/mods:/app/backend/data/mods
     ports:
@@ -23,8 +23,8 @@ services:
     ports:
       - "5173:80"
     volumes:
-      - ./Minecraft versions/26.2/item-textures:/usr/share/nginx/minecraft/item-textures:ro
-      - ./Minecraft versions/26.2/block-textures:/usr/share/nginx/minecraft/block-textures:ro
+      - ./MinecraftVersions/26.2/item-textures:/usr/share/nginx/minecraft/item-textures:ro
+      - ./MinecraftVersions/26.2/block-textures:/usr/share/nginx/minecraft/block-textures:ro
     depends_on:
       - backend
     restart: unless-stopped

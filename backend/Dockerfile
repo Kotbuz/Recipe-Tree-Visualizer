@@ -18,7 +18,7 @@ RUN mkdir -p logs data/mods
 ENV PYTHONUNBUFFERED=1
 ENV LOG_DIR=logs
 ENV MODS_STORAGE_DIR=data/mods
-ENV MINECRAFT_VERSIONS_DIR=/app/Minecraft versions
+ENV MINECRAFT_VERSIONS_DIR=/app/MinecraftVersions
 
 EXPOSE 8000
 
