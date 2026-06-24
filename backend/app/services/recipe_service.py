@@ -4,10 +4,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from app.schemas.recipe_file import RecipeSummary, RecipeItem
-
-ROOT_DIR = Path(__file__).resolve().parents[2]
-MINECRAFT_VERSIONS_DIR = ROOT_DIR.parent / "Minecraft versions"
+from app.core.config import get_settings
+from app.schemas.recipe_file import RecipeItem, RecipeSummary
 
 
 def _pretty_item_name(item_id: str | None) -> str:
@@ -168,7 +166,7 @@ def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
 
 class RecipeService:
     def list_recipes(self, version: str = "26.2") -> list[RecipeSummary]:
-        recipe_dir = MINECRAFT_VERSIONS_DIR / version / "recipe"
+        recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
         if not recipe_dir.exists() or not recipe_dir.is_dir():
             return []
 
