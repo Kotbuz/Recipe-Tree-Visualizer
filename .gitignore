@@ -229,6 +229,9 @@ MinecraftVersions/*
 # PlantUML local JAR (source .puml and rendered .png are committed)
 docs/uml/plantuml.jar
 
+# Local working files (folder tracked, contents ignored)
+LocalFiles/*
+!LocalFiles/.gitkeep
 
 #
 

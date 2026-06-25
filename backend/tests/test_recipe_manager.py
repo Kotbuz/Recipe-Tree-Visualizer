@@ -97,6 +97,24 @@ def test_recipe_service_still_returns_summaries() -> None:
     assert any("oak planks" in output.name.lower() for recipe in results for output in recipe.outputs)
 
 
+def test_recipe_manager_focus_matches_tag_inputs() -> None:
+    _require_recipe_source()
+    registry = recipe_manager.get_ingredient_registry("26.2")
+    if not registry.resolve_tag("tag:minecraft:planks"):
+        pytest.skip("Tag data is not available in the local jar")
+
+    results = (
+        recipe_manager.lookup("26.2")
+        .focus("oak planks", RecipeIngredientRole.INPUT)
+        .limit(10)
+        .all()
+    )
+    assert results
+    assert any(
+        any(part.item_id.startswith("tag:") for part in recipe.inputs) for recipe in results
+    )
+
+
 def test_vanilla_provider_skips_unsupported_recipes() -> None:
     provider = VanillaJarProvider()
     result = provider.load("missing-version-xyz")
