@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import json
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from app.core.config import get_settings
 from app.schemas.recipe_file import RecipeItem, RecipeSummary
+from app.services.item_matching import items_match
 
 
 def _pretty_item_name(item_id: str | None) -> str:
@@ -166,18 +168,63 @@ def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
     )
 
 
+def _load_recipes_for_version(version: str) -> tuple[RecipeSummary, ...]:
+    recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
+    if not recipe_dir.exists() or not recipe_dir.is_dir():
+        return ()
+
+    recipes: list[RecipeSummary] = []
+    for json_file in sorted(recipe_dir.glob("*.json")):
+        recipe = _load_recipe_file(json_file)
+        if recipe is not None:
+            recipes.append(recipe)
+    return tuple(recipes)
+
+
 class RecipeService:
-    def list_recipes(self, version: str = "26.2") -> list[RecipeSummary]:
-        recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
-        if not recipe_dir.exists() or not recipe_dir.is_dir():
+    def search_recipes(
+        self,
+        version: str = "26.2",
+        query: str | None = None,
+        uses_item: str | None = None,
+        produces_item: str | None = None,
+        limit: int = 50,
+    ) -> list[RecipeSummary]:
+        recipes = self._get_recipes(version)
+        normalized_query = query.strip().lower() if query else ""
+        normalized_uses_item = uses_item.strip() if uses_item else ""
+        normalized_produces_item = produces_item.strip() if produces_item else ""
+
+        if not normalized_query and not normalized_uses_item and not normalized_produces_item:
             return []
 
-        recipes: list[RecipeSummary] = []
-        for json_file in sorted(recipe_dir.glob("*.json")):
-            recipe = _load_recipe_file(json_file)
-            if recipe is not None:
-                recipes.append(recipe)
-        return recipes
+        results: list[RecipeSummary] = []
+        for recipe in recipes:
+            if normalized_uses_item and not any(
+                items_match(normalized_uses_item, item.name) for item in recipe.inputs
+            ):
+                continue
+
+            if normalized_produces_item and not any(
+                items_match(normalized_produces_item, item.name) for item in recipe.outputs
+            ):
+                continue
+
+            if normalized_query and not any(
+                normalized_query in item.name.lower() for item in recipe.outputs
+            ):
+                continue
+
+            results.append(recipe)
+            if len(results) >= limit:
+                break
+
+        return results
+
+    @staticmethod
+    @lru_cache(maxsize=8)
+    def _get_recipes(version: str) -> tuple[RecipeSummary, ...]:
+        return _load_recipes_for_version(version)
 
 
 recipe_service = RecipeService()

@@ -1,0 +1,43 @@
+.recipe-picker-row {
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    align-items: center;
+    gap: 0.35rem;
+    width: 100%;
+    padding: 0.4rem 0.3rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    background: #ffffff;
+    text-align: left;
+    cursor: pointer;
+}
+
+.recipe-picker-row:hover {
+    border-color: #c7d2fe;
+    background: #f8faff;
+}
+
+.recipe-picker-row-center {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.15rem;
+    min-width: 0;
+    max-width: 160px;
+    text-align: center;
+}
+
+.recipe-picker-row-title {
+    font-size: 0.88rem;
+    font-weight: 700;
+    color: #111827;
+    line-height: 1.2;
+    word-break: break-word;
+}
+
+.recipe-picker-row-machine {
+    font-size: 0.72rem;
+    color: #6b7280;
+    line-height: 1.2;
+}

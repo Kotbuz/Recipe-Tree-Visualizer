@@ -1,0 +1,21 @@
+.virtual-list {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+}
+
+.virtual-list-spacer {
+    position: relative;
+    width: 100%;
+}
+
+.virtual-list-window {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+}
+
+.virtual-list-item {
+    box-sizing: border-box;
+}
