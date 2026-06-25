@@ -18,12 +18,15 @@ def test_list_mods_empty() -> None:
     assert response.json() == {"mods": []}
 
 
-def test_search_items_empty() -> None:
-    response = client.get("/items/search", params={"q": "stick"})
+def test_search_items_no_matches() -> None:
+    response = client.get(
+        "/items/search",
+        params={"q": "zzznonexistentitem999", "version": "26.2"},
+    )
 
     assert response.status_code == 200
     body = response.json()
-    assert body["query"] == "stick"
+    assert body["query"] == "zzznonexistentitem999"
     assert body["items"] == []
 
 

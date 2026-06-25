@@ -1,6 +1,7 @@
 from pydantic import BaseModel
 
-from app.schemas.domain import Item, ModSummary, Recipe
+from app.schemas.domain import Item, ModSummary
+from app.schemas.recipe_file import RecipeSummary
 
 
 class ModListResponse(BaseModel):
@@ -14,4 +15,4 @@ class ItemSearchResponse(BaseModel):
 
 class ItemRecipesResponse(BaseModel):
     item_id: str
-    recipes: list[Recipe]
+    recipes: list[RecipeSummary]

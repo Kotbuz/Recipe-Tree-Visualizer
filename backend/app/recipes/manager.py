@@ -146,6 +146,8 @@ class RecipeManager:
         query: str | None = None,
         uses_item: str | None = None,
         produces_item: str | None = None,
+        focus_item: str | None = None,
+        focus_role: RecipeIngredientRole | None = None,
         limit: int = 50,
         include_mods: bool = True,
     ) -> list[RecipeSummary]:
@@ -153,14 +155,24 @@ class RecipeManager:
         normalized_query = query.strip() if query else ""
         normalized_uses_item = uses_item.strip() if uses_item else ""
         normalized_produces_item = produces_item.strip() if produces_item else ""
+        normalized_focus_item = focus_item.strip() if focus_item else ""
 
-        if not normalized_query and not normalized_uses_item and not normalized_produces_item:
+        if (
+            not normalized_query
+            and not normalized_uses_item
+            and not normalized_produces_item
+            and not normalized_focus_item
+        ):
             return []
 
-        if normalized_uses_item:
-            lookup = lookup.focus(normalized_uses_item, RecipeIngredientRole.INPUT)
-        if normalized_produces_item:
-            lookup = lookup.focus(normalized_produces_item, RecipeIngredientRole.OUTPUT)
+        if normalized_focus_item and focus_role is not None:
+            lookup = lookup.focus(normalized_focus_item, focus_role)
+        else:
+            if normalized_uses_item:
+                lookup = lookup.focus(normalized_uses_item, RecipeIngredientRole.INPUT)
+            if normalized_produces_item:
+                lookup = lookup.focus(normalized_produces_item, RecipeIngredientRole.OUTPUT)
+
         if normalized_query:
             lookup = lookup.query(normalized_query)
 

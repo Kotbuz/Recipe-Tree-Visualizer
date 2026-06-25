@@ -13,14 +13,22 @@ from app.parser.recipe_types import (
     normalize_recipe_type,
 )
 from app.recipes.category import category_for_canonical_type
+from app.recipes.extensions import CategoryExtensionRegistry, default_category_extensions
 from app.recipes.models import Recipe, RecipeIO
 from app.recipes.types import RecipeType
 
 
 class JsonRecipeParser:
+    def __init__(self, extensions: CategoryExtensionRegistry | None = None) -> None:
+        self._extensions = extensions or default_category_extensions()
+
     def can_parse(self, data: dict[str, object]) -> bool:
         recipe_type = data.get("type")
-        return isinstance(recipe_type, str) and is_supported_recipe_type(recipe_type)
+        if not isinstance(recipe_type, str):
+            return False
+        if is_supported_recipe_type(recipe_type):
+            return True
+        return self._extensions.matches(recipe_type)
 
     def parse(
         self,
@@ -33,10 +41,43 @@ class JsonRecipeParser:
         raw_type = data.get("type")
         if not isinstance(raw_type, str):
             return None
-        if not is_supported_recipe_type(raw_type):
+
+        if is_supported_recipe_type(raw_type):
+            canonical_type = normalize_recipe_type(raw_type)
+            return self._parse_recipe(
+                recipe_id,
+                data,
+                canonical_type=canonical_type,
+                raw_type=raw_type,
+                source=source,
+                mod_id=mod_id,
+            )
+
+        extension = self._extensions.find(raw_type)
+        if extension is None:
             return None
 
-        canonical_type = normalize_recipe_type(raw_type)
+        return extension.parse(recipe_id, data, source=source, mod_id=mod_id)
+
+    def skip_reason(self, data: dict[str, object]) -> str | None:
+        raw_type = data.get("type")
+        if not isinstance(raw_type, str):
+            return None
+        extension = self._extensions.find(raw_type)
+        if extension is None:
+            return None
+        return extension.skip_reason(data)
+
+    def _parse_recipe(
+        self,
+        recipe_id: str,
+        data: dict[str, object],
+        *,
+        canonical_type: str,
+        raw_type: str,
+        source: str,
+        mod_id: str | None,
+    ) -> Recipe | None:
         category = category_for_canonical_type(canonical_type)
 
         try:

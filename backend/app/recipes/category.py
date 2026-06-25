@@ -32,7 +32,14 @@ def category_for_canonical_type(canonical_type: str) -> RecipeCategory:
     )
 
 
+from app.recipes.extensions import default_category_extensions
+
+
 def display_name_for_raw_type(raw_type: str) -> str:
+    extension_name = default_category_extensions().display_name(raw_type)
+    if extension_name:
+        return extension_name
+
     mapping = {
         "minecraft:crafting_shaped": "Верстак",
         "minecraft:crafting_shapeless": "Верстак",

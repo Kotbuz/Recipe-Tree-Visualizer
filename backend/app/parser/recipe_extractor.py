@@ -9,7 +9,12 @@ class RecipeExtractor:
         self._parser = parser or JsonRecipeParser()
 
     def can_extract(self, recipe_file: RawRecipeFile) -> bool:
-        return self._parser.can_parse(recipe_file.data)
+        data = recipe_file.data
+        if not self._parser.can_parse(data):
+            return False
+        if self._parser.skip_reason(data):
+            return False
+        return True
 
     def extract(self, recipe_file: RawRecipeFile, mod_id: str) -> Recipe:
         parsed = self._parser.parse(

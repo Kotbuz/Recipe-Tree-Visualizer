@@ -17,11 +17,19 @@ def to_recipe_summary(recipe: Recipe) -> RecipeSummary:
         machine_type=machine_type,
         machine_name=display_name_for_raw_type(machine_type),
         inputs=[
-            RecipeItem(name=item_id_to_display_name(part.item_id), amount=int(part.amount))
+            RecipeItem(
+                name=item_id_to_display_name(part.item_id),
+                amount=int(part.amount),
+                item_id=part.item_id,
+            )
             for part in recipe.inputs
         ],
         outputs=[
-            RecipeItem(name=item_id_to_display_name(part.item_id), amount=int(part.amount))
+            RecipeItem(
+                name=item_id_to_display_name(part.item_id),
+                amount=int(part.amount),
+                item_id=part.item_id,
+            )
             for part in recipe.outputs
         ],
     )

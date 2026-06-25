@@ -31,11 +31,12 @@ def try_add_recipe(
 
     recipe = parser.parse(recipe_id, data, source=source, mod_id=mod_id)
     if recipe is None:
+        skip_reason = parser.skip_reason(data)
         result.skipped.append(
             SkippedRecipe(
                 recipe_id=recipe_id,
                 raw_type=raw_type if isinstance(raw_type, str) else None,
-                reason="parse failed",
+                reason=skip_reason or "parse failed",
             )
         )
         return

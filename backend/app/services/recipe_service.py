@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.recipes.focus import RecipeIngredientRole
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.schemas.recipe_file import RecipeSummary
@@ -11,6 +12,17 @@ def _resolve_vanilla_jar_path(version: str):
     return _vanilla_provider.resolve_jar_path(version)
 
 
+def _parse_focus_role(raw: str | None) -> RecipeIngredientRole | None:
+    if raw is None:
+        return None
+    normalized = raw.strip().lower()
+    if normalized == RecipeIngredientRole.INPUT.value:
+        return RecipeIngredientRole.INPUT
+    if normalized == RecipeIngredientRole.OUTPUT.value:
+        return RecipeIngredientRole.OUTPUT
+    return None
+
+
 class RecipeService:
     def search_recipes(
         self,
@@ -18,6 +30,8 @@ class RecipeService:
         query: str | None = None,
         uses_item: str | None = None,
         produces_item: str | None = None,
+        focus_item: str | None = None,
+        focus_role: str | None = None,
         limit: int = 50,
         include_mods: bool = True,
     ) -> list[RecipeSummary]:
@@ -26,6 +40,8 @@ class RecipeService:
             query=query,
             uses_item=uses_item,
             produces_item=produces_item,
+            focus_item=focus_item,
+            focus_role=_parse_focus_role(focus_role),
             limit=limit,
             include_mods=include_mods,
         )
