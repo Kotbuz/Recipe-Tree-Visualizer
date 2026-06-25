@@ -1,3 +1,4 @@
+from app.graph.errors import GraphValidationError
 from fastapi import APIRouter, HTTPException
 
 from app.schemas.graph import CalculateProductionRequest, ProductionPlan
@@ -10,5 +11,5 @@ router = APIRouter(prefix="/graph", tags=["graph"])
 def calculate_production(request: CalculateProductionRequest) -> ProductionPlan:
     try:
         return graph_service.calculate_production(request)
-    except NotImplementedError as exc:
-        raise HTTPException(status_code=501, detail=str(exc)) from exc
+    except GraphValidationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc

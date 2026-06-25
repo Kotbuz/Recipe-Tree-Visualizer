@@ -30,7 +30,7 @@ def test_search_items_no_matches() -> None:
     assert body["items"] == []
 
 
-def test_calculate_production_not_implemented() -> None:
+def test_calculate_production_rejects_empty_graph() -> None:
     response = client.post(
         "/graph/calculate",
         json={
@@ -40,4 +40,5 @@ def test_calculate_production_not_implemented() -> None:
         },
     )
 
-    assert response.status_code == 501
+    assert response.status_code == 400
+    assert "No recipe in graph produces" in response.json()["detail"]

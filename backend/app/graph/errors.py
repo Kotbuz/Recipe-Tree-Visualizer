@@ -1,0 +1,2 @@
+class GraphValidationError(ValueError):
+    pass
