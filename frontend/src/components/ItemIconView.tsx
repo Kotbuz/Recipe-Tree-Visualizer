@@ -1,3 +1,4 @@
+import { useEffect, useState } from 'react';
 import { useMinecraftVersion } from '../context/MinecraftVersionContext';
 import '../styles/ItemIconView.css';
 
@@ -22,8 +23,13 @@ export default function ItemIconView({ itemName, title, className = '' }: ItemIc
     const { itemIconUrl } = useMinecraftVersion();
     const iconUrl = itemIconUrl(itemName);
     const label = title ?? itemName;
+    const [imageFailed, setImageFailed] = useState(false);
 
-    if (iconUrl) {
+    useEffect(() => {
+        setImageFailed(false);
+    }, [itemName, iconUrl]);
+
+    if (iconUrl && !imageFailed) {
         return (
             <img
                 className={`item-icon-view item-icon-view--image ${className}`.trim()}
@@ -31,6 +37,9 @@ export default function ItemIconView({ itemName, title, className = '' }: ItemIc
                 alt={label}
                 title={label}
                 draggable={false}
+                onError={() => {
+                    setImageFailed(true);
+                }}
             />
         );
     }

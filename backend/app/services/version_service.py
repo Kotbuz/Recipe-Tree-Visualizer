@@ -1,13 +1,21 @@
 from __future__ import annotations
 
+import zipfile
 from functools import lru_cache
 from pathlib import Path
+from typing import Literal
 
 from app.core.config import get_settings
+from app.services.icon_name_resolver import resolve_icon_item_name
 
 
 def item_name_to_texture_id(name: str) -> str:
-    return name.strip().lower().replace(" ", "_")
+    return resolve_icon_item_name(name).strip().lower().replace(" ", "_")
+
+
+def texture_id_from_icon_filename(filename: str) -> str:
+    display_name = Path(filename).name.removesuffix(".png").replace("_", " ")
+    return item_name_to_texture_id(display_name)
 
 
 class VersionService:
@@ -47,6 +55,10 @@ class VersionService:
                 continue
             for path in directory.glob("*.png"):
                 icons.add(path.name)
+
+        if self.resolve_jar_path(version) is not None:
+            icons.update(self._recipe_icon_filenames(version))
+
         return sorted(icons)
 
     def resolve_item_icon_path(self, version: str, filename: str) -> Path | None:
@@ -54,12 +66,58 @@ class VersionService:
         if safe_name != filename or not safe_name.endswith(".png"):
             return None
 
+        texture_id = texture_id_from_icon_filename(safe_name)
+        resolved_filename = f"{texture_id}.png"
+
         for directory in (self._rendered_icons_dir(version), self._legacy_textures_dir(version)):
             if directory is None:
                 continue
-            candidate = directory / safe_name
-            if candidate.is_file():
-                return candidate
+            for candidate_name in {safe_name, resolved_filename}:
+                candidate = directory / candidate_name
+                if candidate.is_file():
+                    return candidate
+        return None
+
+    def resolve_item_icon(
+        self,
+        version: str,
+        filename: str,
+    ) -> tuple[Literal["file", "bytes"], Path | bytes] | None:
+        icon_path = self.resolve_item_icon_path(version, filename)
+        if icon_path is not None:
+            return ("file", icon_path)
+
+        jar_bytes = self.read_jar_texture_bytes(version, filename)
+        if jar_bytes is not None:
+            return ("bytes", jar_bytes)
+
+        return None
+
+    def read_jar_texture_bytes(self, version: str, filename: str) -> bytes | None:
+        jar_path = self.resolve_jar_path(version)
+        if jar_path is None:
+            return None
+
+        safe_name = Path(filename).name
+        if safe_name != filename or not safe_name.endswith(".png"):
+            return None
+
+        icon_id = texture_id_from_icon_filename(safe_name)
+        candidates = (
+            f"assets/minecraft/textures/item/{icon_id}.png",
+            f"assets/minecraft/textures/block/{icon_id}.png",
+        )
+
+        try:
+            with zipfile.ZipFile(jar_path) as archive:
+                for asset_path in candidates:
+                    try:
+                        return archive.read(asset_path)
+                    except KeyError:
+                        continue
+        except (OSError, zipfile.BadZipFile):
+            return None
+
         return None
 
     def renderer_jar_path(self, version: str) -> str | None:
@@ -113,6 +171,16 @@ class VersionService:
         if directory.is_dir():
             return directory
         return None
+
+    def _recipe_icon_filenames(self, version: str) -> set[str]:
+        from app.services.recipe_service import recipe_service
+
+        filenames: set[str] = set()
+        for recipe in recipe_service.get_recipes(version):
+            for item in recipe.inputs + recipe.outputs:
+                texture_id = item_name_to_texture_id(item.name)
+                filenames.add(f"{texture_id}.png")
+        return filenames
 
 
 @lru_cache
