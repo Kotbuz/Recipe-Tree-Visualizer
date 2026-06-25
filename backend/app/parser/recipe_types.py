@@ -5,6 +5,9 @@ BLASTING = "blasting"
 SMOKING = "smoking"
 CAMPFIRE_COOKING = "campfire_cooking"
 STONECUTTING = "stonecutting"
+BREWING = "brewing"
+COMPOSTING = "composting"
+ANVIL_REPAIR = "anvil_repair"
 
 SUPPORTED_RECIPE_TYPES: frozenset[str] = frozenset(
     {
@@ -26,6 +29,9 @@ MACHINE_BY_TYPE: dict[str, str] = {
     SMOKING: "minecraft:smoker",
     CAMPFIRE_COOKING: "minecraft:campfire",
     STONECUTTING: "minecraft:stonecutter",
+    BREWING: "minecraft:brewing_stand",
+    COMPOSTING: "minecraft:composter",
+    ANVIL_REPAIR: "minecraft:anvil",
 }
 
 

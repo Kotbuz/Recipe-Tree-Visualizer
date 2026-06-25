@@ -42,6 +42,7 @@ interface ItemDragState {
     sourceSlotType: SlotType;
     sourceItemIndex: number;
     itemName: string;
+    itemId?: string;
     startX: number;
     startY: number;
     startClientX: number;
@@ -66,6 +67,7 @@ type NodeContextMenu = {
 type ItemRecipeContextMenu = {
     type: 'item-recipe';
     itemName: string;
+    itemId?: string;
     sourceNodeId: string;
     sourceSlotType: SlotType;
     sourceItemIndex: number;
@@ -118,6 +120,16 @@ const getSlotItemName = (node: RecipeNode, slotType: SlotType, index: number) =>
     return items[index]?.name ?? '';
 };
 
+const getSlotItemId = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        const items = node.inputs[0] ?? node.outputs[0];
+        return items?.item_id;
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.item_id;
+};
+
 const slotKey = (nodeId: string, slotType: SlotType, index: number) =>
     `${nodeId}:${slotType}:${index}`;
 
@@ -167,13 +179,15 @@ export default function RecipeCanvas() {
         }
 
         if (contextMenu.type === 'item-recipe') {
+            const focusItem = contextMenu.itemId ?? contextMenu.itemName;
+            const focusRole =
+                contextMenu.sourceSlotType === 'input' ? ('output' as const) : ('input' as const);
             return {
                 enabled: true,
                 query: recipeSearchQuery,
-                producesItem:
-                    contextMenu.sourceSlotType === 'input' ? contextMenu.itemName : undefined,
-                usesItem:
-                    contextMenu.sourceSlotType === 'output' ? contextMenu.itemName : undefined,
+                focusItem,
+                focusRole,
+                includeMods: true,
             };
         }
 
@@ -426,8 +440,16 @@ export default function RecipeCanvas() {
             x,
             y,
             machineName: mapMachineName(recipe.machine_type),
-            inputs: recipe.inputs,
-            outputs: recipe.outputs,
+            inputs: recipe.inputs.map((item) => ({
+                name: item.name,
+                amount: item.amount,
+                item_id: item.item_id,
+            })),
+            outputs: recipe.outputs.map((item) => ({
+                name: item.name,
+                amount: item.amount,
+                item_id: item.item_id,
+            })),
         };
         setNodes((current) => [...current, node]);
         setSelectedRecipe(recipe);
@@ -588,6 +610,8 @@ export default function RecipeCanvas() {
         const itemName = getSlotItemName(node, slotType, itemIndex);
         if (!itemName) return;
 
+        const itemId = getSlotItemId(node, slotType, itemIndex);
+
         event.preventDefault();
         event.stopPropagation();
 
@@ -599,6 +623,7 @@ export default function RecipeCanvas() {
             sourceSlotType: slotType,
             sourceItemIndex: itemIndex,
             itemName,
+            itemId,
             startX: anchor.x,
             startY: anchor.y,
             startClientX: event.clientX,
@@ -659,6 +684,7 @@ export default function RecipeCanvas() {
             setContextMenu({
                 type: 'item-recipe',
                 itemName: drag.itemName,
+                itemId: drag.itemId,
                 sourceNodeId: drag.sourceNodeId,
                 sourceSlotType: drag.sourceSlotType,
                 sourceItemIndex: drag.sourceItemIndex,

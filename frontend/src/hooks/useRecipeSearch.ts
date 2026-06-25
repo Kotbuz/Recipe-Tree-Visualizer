@@ -2,11 +2,18 @@ import { useEffect, useState } from 'react';
 import type { RecipeListResponse, RecipeSummary } from '../types/recipe';
 import { RECIPE_SEARCH_DEBOUNCE_MS, RECIPE_SEARCH_LIMIT } from '../utils/itemIcon';
 
+export type RecipeFocusRole = 'input' | 'output';
+
 export type RecipeSearchParams = {
     enabled: boolean;
     query: string;
+    /** @deprecated use focusItem + focusRole */
     producesItem?: string;
+    /** @deprecated use focusItem + focusRole */
     usesItem?: string;
+    focusItem?: string;
+    focusRole?: RecipeFocusRole;
+    includeMods?: boolean;
 };
 
 export function useRecipeSearch(version: string, params: RecipeSearchParams) {
@@ -21,10 +28,13 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         }
 
         const trimmedQuery = params.query.trim();
+        const focusItem = params.focusItem?.trim() ?? '';
+        const focusRole = params.focusRole;
         const producesItem = params.producesItem?.trim() ?? '';
         const usesItem = params.usesItem?.trim() ?? '';
+        const includeMods = params.includeMods ?? true;
 
-        if (!trimmedQuery && !producesItem && !usesItem) {
+        if (!trimmedQuery && !focusItem && !producesItem && !usesItem) {
             setRecipes([]);
             setLoading(false);
             return;
@@ -37,14 +47,21 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
             const url = new URL('/recipes', window.location.origin);
             url.searchParams.set('version', version);
             url.searchParams.set('limit', String(RECIPE_SEARCH_LIMIT));
+            url.searchParams.set('include_mods', String(includeMods));
+
             if (trimmedQuery) {
                 url.searchParams.set('q', trimmedQuery);
             }
-            if (producesItem) {
-                url.searchParams.set('produces_item', producesItem);
-            }
-            if (usesItem) {
-                url.searchParams.set('uses_item', usesItem);
+            if (focusItem && focusRole) {
+                url.searchParams.set('focus_item', focusItem);
+                url.searchParams.set('focus_role', focusRole);
+            } else {
+                if (producesItem) {
+                    url.searchParams.set('produces_item', producesItem);
+                }
+                if (usesItem) {
+                    url.searchParams.set('uses_item', usesItem);
+                }
             }
 
             fetch(url.toString(), { signal: controller.signal })
@@ -69,7 +86,16 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
             window.clearTimeout(timeoutId);
             controller.abort();
         };
-    }, [version, params.enabled, params.query, params.producesItem, params.usesItem]);
+    }, [
+        version,
+        params.enabled,
+        params.query,
+        params.focusItem,
+        params.focusRole,
+        params.producesItem,
+        params.usesItem,
+        params.includeMods,
+    ]);
 
     return { recipes, loading };
 }

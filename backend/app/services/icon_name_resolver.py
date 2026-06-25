@@ -1,15 +1,10 @@
 from __future__ import annotations
 
-# Теги и обобщённые названия из рецептов → конкретный предмет для иконки.
-_ICON_ALIASES: dict[str, str] = {
-    "planks": "oak planks",
-    "logs": "oak logs",
-    "logs that burn": "oak logs",
-    "wooden tool materials": "oak planks",
-    "stone tool materials": "cobblestone",
-}
+from app.recipes.registry import DEFAULT_ALIASES, get_version_ingredient_registry
 
 
-def resolve_icon_item_name(item_name: str) -> str:
+def resolve_icon_item_name(item_name: str, version: str | None = None) -> str:
     normalized = item_name.strip().lower()
-    return _ICON_ALIASES.get(normalized, item_name)
+    if version is not None:
+        return get_version_ingredient_registry(version).resolve_alias(item_name)
+    return DEFAULT_ALIASES.get(normalized, item_name)

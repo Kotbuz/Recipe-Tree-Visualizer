@@ -6,8 +6,8 @@ import httpx
 from loguru import logger
 
 from app.core.config import get_settings
-from app.services.recipe_service import recipe_service
-from app.services.version_service import item_name_to_texture_id, version_service
+from app.services.icon_registry import collect_recipe_icon_ids
+from app.services.version_service import version_service
 
 
 @dataclass(frozen=True)
@@ -26,11 +26,7 @@ class VanillaIconService:
         self._settings = get_settings()
 
     def collect_required_icon_ids(self, version: str) -> list[str]:
-        icon_ids: set[str] = set()
-        for recipe in recipe_service.get_recipes(version):
-            for item in recipe.inputs + recipe.outputs:
-                icon_ids.add(item_name_to_texture_id(item.name))
-        return sorted(icon_ids)
+        return collect_recipe_icon_ids(version)
 
     def ensure_icons(self, version: str) -> VanillaIconRenderResult:
         jar_path = version_service.resolve_jar_path(version)

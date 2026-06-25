@@ -7,6 +7,9 @@ class CalculateProductionRequest(BaseModel):
     target_item_id: str
     target_rate_per_minute: float = Field(gt=0)
     graph: CanvasGraph
+    version: str = "26.2"
+    include_mods: bool = True
+    include_synthetic: bool = True
 
 
 class ProductionStage(BaseModel):
