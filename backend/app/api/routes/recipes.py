@@ -17,6 +17,7 @@ def search_recipes(
     uses_item: str | None = Query(default=None, min_length=1),
     produces_item: str | None = Query(default=None, min_length=1),
     limit: int = Query(default=DEFAULT_LIMIT, ge=1, le=MAX_LIMIT),
+    include_mods: bool = Query(default=True),
 ) -> RecipeListResponse:
     recipes = recipe_service.search_recipes(
         version=version,
@@ -24,5 +25,6 @@ def search_recipes(
         uses_item=uses_item,
         produces_item=produces_item,
         limit=limit,
+        include_mods=include_mods,
     )
     return RecipeListResponse(recipes=recipes)

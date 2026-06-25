@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from functools import lru_cache
+from pathlib import Path
 
 from app.recipes.adapters import item_id_to_display_name
 from app.recipes.ingredient import IngredientKind
@@ -43,6 +44,12 @@ class IngredientRegistry:
         if jar_path is None:
             return
         self._tag_members = self._tag_loader.load_from_jar(jar_path)
+
+    def merge_tags_from_jar(self, jar_path: Path | str) -> None:
+        loaded = self._tag_loader.load_from_jar(Path(jar_path))
+        if not loaded:
+            return
+        self._tag_members = self._tag_loader.merge_tag_maps(self._tag_members, loaded)
 
     def register_from_recipes(self, recipes: tuple[Recipe, ...] | list[Recipe]) -> None:
         for recipe in recipes:
@@ -153,9 +160,11 @@ _default_tag_loader = TagLoader()
 
 @lru_cache(maxsize=8)
 def get_version_ingredient_registry(version: str) -> IngredientRegistry:
-    from app.recipes.manager import _load_default_version_recipes
+    from app.recipes.manager import recipe_manager
 
     registry = IngredientRegistry(_default_tag_loader)
     registry.load_version(version)
-    registry.register_from_recipes(_load_default_version_recipes(version))
+    for jar_path in recipe_manager.mod_jar_paths:
+        registry.merge_tags_from_jar(jar_path)
+    registry.register_from_recipes(recipe_manager.get_version_recipes(version))
     return registry

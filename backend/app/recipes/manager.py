@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 from functools import lru_cache
+from pathlib import Path
 
 from app.recipes.adapters import item_id_to_display_name, to_recipe_summary
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.models import Recipe
+from app.recipes.models import ProviderResult, Recipe
+from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.recipes.registry import IngredientRegistry, get_version_ingredient_registry
 from app.recipes.types import RecipeType
@@ -12,10 +14,11 @@ from app.schemas.recipe_file import RecipeSummary
 from app.services.item_matching import items_match
 
 _default_vanilla_provider = VanillaJarProvider()
+_default_mod_provider = ModJarProvider()
 
 
 @lru_cache(maxsize=8)
-def _load_default_version_recipes(version: str) -> tuple[Recipe, ...]:
+def _load_vanilla_version_recipes(version: str) -> tuple[Recipe, ...]:
     result = _default_vanilla_provider.load(version)
     return tuple(result.recipes)
 
@@ -77,16 +80,56 @@ class RecipeLookup:
 
 
 class RecipeManager:
-    def __init__(self, vanilla_provider: VanillaJarProvider | None = None) -> None:
+    def __init__(
+        self,
+        vanilla_provider: VanillaJarProvider | None = None,
+        mod_provider: ModJarProvider | None = None,
+    ) -> None:
         self._vanilla_provider = vanilla_provider or _default_vanilla_provider
+        self._mod_provider = mod_provider or _default_mod_provider
+        self._mod_recipes: dict[str, Recipe] = {}
+        self._mod_jar_paths: tuple[str, ...] = ()
 
-    def get_version_recipes(self, version: str) -> tuple[Recipe, ...]:
-        if self._vanilla_provider is _default_vanilla_provider:
-            return _load_default_version_recipes(version)
-        return tuple(self._vanilla_provider.load(version).recipes)
+    @property
+    def mod_jar_paths(self) -> tuple[str, ...]:
+        return self._mod_jar_paths
 
-    def lookup(self, version: str, recipe_type: RecipeType | None = None) -> RecipeLookup:
-        recipes = self.get_version_recipes(version)
+    def load_mod_jar(self, jar_path: str) -> ProviderResult:
+        result = self._mod_provider.load(jar_path)
+        for recipe in result.recipes:
+            self._mod_recipes[recipe.id] = recipe
+
+        paths = set(self._mod_jar_paths)
+        paths.add(str(Path(jar_path).resolve()))
+        self._mod_jar_paths = tuple(sorted(paths))
+        self._clear_caches()
+        return result
+
+    def clear_mods(self) -> None:
+        self._mod_recipes.clear()
+        self._mod_jar_paths = ()
+        self._clear_caches()
+
+    def get_mod_recipes(self) -> tuple[Recipe, ...]:
+        return tuple(self._mod_recipes.values())
+
+    def get_version_recipes(self, version: str, *, include_mods: bool = True) -> tuple[Recipe, ...]:
+        vanilla = self._load_vanilla_recipes(version)
+        if not include_mods or not self._mod_recipes:
+            return vanilla
+
+        merged: dict[str, Recipe] = {recipe.id: recipe for recipe in vanilla}
+        merged.update(self._mod_recipes)
+        return tuple(merged.values())
+
+    def lookup(
+        self,
+        version: str,
+        recipe_type: RecipeType | None = None,
+        *,
+        include_mods: bool = True,
+    ) -> RecipeLookup:
+        recipes = self.get_version_recipes(version, include_mods=include_mods)
         registry = get_version_ingredient_registry(version)
         if recipe_type is None:
             return RecipeLookup(recipes, registry)
@@ -104,8 +147,9 @@ class RecipeManager:
         uses_item: str | None = None,
         produces_item: str | None = None,
         limit: int = 50,
+        include_mods: bool = True,
     ) -> list[RecipeSummary]:
-        lookup = self.lookup(version)
+        lookup = self.lookup(version, include_mods=include_mods)
         normalized_query = query.strip() if query else ""
         normalized_uses_item = uses_item.strip() if uses_item else ""
         normalized_produces_item = produces_item.strip() if produces_item else ""
@@ -121,6 +165,16 @@ class RecipeManager:
             lookup = lookup.query(normalized_query)
 
         return lookup.limit(limit).summaries()
+
+    def _load_vanilla_recipes(self, version: str) -> tuple[Recipe, ...]:
+        if self._vanilla_provider is _default_vanilla_provider:
+            return _load_vanilla_version_recipes(version)
+        return tuple(self._vanilla_provider.load(version).recipes)
+
+    @staticmethod
+    def _clear_caches() -> None:
+        _load_vanilla_version_recipes.cache_clear()
+        get_version_ingredient_registry.cache_clear()
 
 
 recipe_manager = RecipeManager()

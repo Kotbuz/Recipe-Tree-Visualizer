@@ -1,16 +1,13 @@
 from __future__ import annotations
 
 import json
-import re
 import zipfile
 from pathlib import Path, PurePosixPath
 
 from app.core.config import get_settings
 from app.recipes.models import ProviderResult, SkippedRecipe
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
-
-RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
-ADVANCEMENT_SEGMENT = "/advancement/"
+from app.recipes.providers.jar_recipe_loader import ADVANCEMENT_SEGMENT, RECIPE_PATH, try_add_recipe
 
 
 class VanillaJarProvider:
@@ -55,7 +52,14 @@ class VanillaJarProvider:
                 continue
 
             recipe_id = f"minecraft:{json_file.stem}"
-            self._try_add_recipe(recipes, recipe_id, data, source=source, mod_id="minecraft")
+            try_add_recipe(
+                self._parser,
+                recipes,
+                recipe_id,
+                data,
+                source=source,
+                mod_id="minecraft",
+            )
 
         return recipes
 
@@ -93,44 +97,18 @@ class VanillaJarProvider:
                     if not isinstance(data, dict):
                         continue
 
-                    self._try_add_recipe(recipes, recipe_id, data, source=source, mod_id="minecraft")
+                    try_add_recipe(
+                        self._parser,
+                        recipes,
+                        recipe_id,
+                        data,
+                        source=source,
+                        mod_id="minecraft",
+                    )
         except (OSError, zipfile.BadZipFile):
             return ProviderResult()
 
         return recipes
-
-    def _try_add_recipe(
-        self,
-        result: ProviderResult,
-        recipe_id: str,
-        data: dict[str, object],
-        *,
-        source: str,
-        mod_id: str,
-    ) -> None:
-        raw_type = data.get("type")
-        if not self._parser.can_parse(data):
-            result.skipped.append(
-                SkippedRecipe(
-                    recipe_id=recipe_id,
-                    raw_type=raw_type if isinstance(raw_type, str) else None,
-                    reason="unsupported or invalid recipe",
-                )
-            )
-            return
-
-        recipe = self._parser.parse(recipe_id, data, source=source, mod_id=mod_id)
-        if recipe is None:
-            result.skipped.append(
-                SkippedRecipe(
-                    recipe_id=recipe_id,
-                    raw_type=raw_type if isinstance(raw_type, str) else None,
-                    reason="parse failed",
-                )
-            )
-            return
-
-        result.recipes.append(recipe)
 
     def resolve_jar_path(self, version: str) -> Path | None:
         root = get_settings().minecraft_versions_path

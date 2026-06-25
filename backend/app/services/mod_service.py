@@ -7,6 +7,7 @@ from app.indexer.mod_indexer import ModIndexer
 from app.indexer.mod_registry import ModRegistry, registry
 from app.parser.jar_parser import JarParser
 from app.parser.jar_reader import JarReader
+from app.recipes.manager import recipe_manager
 from app.schemas.domain import ModSummary
 
 
@@ -30,6 +31,7 @@ class ModService:
             destination.write_bytes(await file.read())
             index = self._jar_parser.parse_mod(str(destination))
             summaries.append(self._registry.register(index))
+            recipe_manager.load_mod_jar(str(destination))
         return summaries
 
     def upload_mods_from_paths(self, jar_paths: list[str]) -> list[ModSummary]:
@@ -37,6 +39,7 @@ class ModService:
         for jar_path in jar_paths:
             index = self._jar_parser.parse_mod(jar_path)
             summaries.append(self._registry.register(index))
+            recipe_manager.load_mod_jar(jar_path)
         return summaries
 
     def upload_modpack(self, archive_path: str) -> list[ModSummary]:
