@@ -20,12 +20,16 @@ def _load_mods_on_startup() -> None:
     if not settings.mods_auto_load_on_startup:
         return
 
-    summaries = mod_service.scan_storage_mods()
+    default_version = version_service.resolve_default_version()
+    if default_version is None:
+        return
+
+    summaries = mod_service.scan_storage_mods(default_version)
     if summaries:
         logger.info(
-            "Loaded {} mod(s) from {} ({} recipes total)",
+            "Loaded {} mod(s) for Minecraft {} ({} recipes total)",
             len(summaries),
-            settings.mods_storage_dir,
+            default_version,
             sum(summary.recipe_count for summary in summaries),
         )
 
@@ -35,19 +39,23 @@ async def _render_vanilla_icons_on_startup() -> None:
     if not settings.vanilla_icon_render_on_startup:
         return
 
-    for game_version in version_service.list_versions():
-        if version_service.resolve_jar_path(game_version) is None:
-            continue
-        try:
-            result = await asyncio.to_thread(vanilla_icon_service.ensure_icons, game_version)
-            if result.errors:
-                logger.warning(
-                    "Vanilla icon render for {} finished with errors: {}",
-                    game_version,
-                    "; ".join(result.errors),
-                )
-        except Exception:
-            logger.exception("Failed to render vanilla icons for {}", game_version)
+    default_version = version_service.resolve_default_version()
+    if default_version is None:
+        return
+
+    if version_service.resolve_jar_path(default_version) is None:
+        return
+
+    try:
+        result = await asyncio.to_thread(vanilla_icon_service.ensure_icons, default_version)
+        if result.errors:
+            logger.warning(
+                "Vanilla icon render for {} finished with errors: {}",
+                default_version,
+                "; ".join(result.errors),
+            )
+    except Exception:
+        logger.exception("Failed to render vanilla icons for {}", default_version)
 
 
 @asynccontextmanager

@@ -28,7 +28,7 @@ RUN sed -i 's/\r$//' /app/start-renderer.sh && chmod +x /app/start-renderer.sh
 
 ENV PORT=3001
 ENV DISPLAY=:99
-ENV ALLOWED_ROOTS=/data/mods,/data/rendered,/data/minecraft
+ENV ALLOWED_ROOTS=/data/minecraft
 ENV RENDER_TIMEOUT_MS=600000
 ENV MINECRAFT_VERSION=1.21.4
 

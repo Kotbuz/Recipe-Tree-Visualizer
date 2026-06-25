@@ -5,11 +5,9 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: 3001
-      ALLOWED_ROOTS: /data/mods,/data/rendered,/data/minecraft
+      ALLOWED_ROOTS: /data/minecraft
       RENDER_TIMEOUT_MS: 600000
     volumes:
-      - ./backend/data/mods:/data/mods:ro
-      - ./backend/data/rendered:/data/rendered:rw
       - ./MinecraftVersions:/data/minecraft:rw
     ports:
       - "3001:3001"
@@ -25,14 +23,12 @@ services:
       MINECRAFT_VERSIONS_DIR: /app/MinecraftVersions
       RENDERER_URL: http://renderer:3001
       RENDERER_MINECRAFT_ROOT: /data/minecraft
-      MINECRAFT_RENDER_VERSION: "1.21.4"
+      MINECRAFT_DEFAULT_VERSION: "26.2"
       VANILLA_ICON_RENDER_ON_STARTUP: "true"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:rw
       - ./backend/logs:/app/backend/logs
-      - ./backend/data/mods:/app/backend/data/mods
-      - ./backend/data/rendered:/app/backend/data/rendered:rw
     ports:
       - "8000:8000"
     depends_on:
@@ -46,9 +42,6 @@ services:
       dockerfile: frontend/Dockerfile
     ports:
       - "5173:80"
-    volumes:
-      - ./MinecraftVersions/26.2/item-textures:/usr/share/nginx/minecraft/item-textures:ro
-      - ./MinecraftVersions/26.2/block-textures:/usr/share/nginx/minecraft/block-textures:ro
     depends_on:
       - backend
     restart: unless-stopped

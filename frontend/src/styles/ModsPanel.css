@@ -128,6 +128,24 @@
     font-size: 0.92rem;
 }
 
+.mods-panel-version-row {
+    display: grid;
+    grid-template-columns: 1fr auto;
+    gap: 0.5rem;
+}
+
+.mods-panel-version-manager {
+    padding: 0.55rem 0.7rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 10px;
+    background: #ffffff;
+    color: #4338ca;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
 .mods-panel-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;

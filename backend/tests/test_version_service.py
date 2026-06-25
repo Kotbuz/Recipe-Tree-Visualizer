@@ -7,11 +7,11 @@ def test_item_name_to_texture_id() -> None:
     assert item_name_to_texture_id("Oak Planks") == "oak_planks"
 
 
-def test_resolve_jar_path_flat_layout() -> None:
+def test_resolve_jar_path_prefers_version_client_jar() -> None:
     jar_path = version_service.resolve_jar_path("26.2")
     if jar_path is None:
-        pytest.skip("26.2.jar is not present in MinecraftVersions")
-    assert jar_path.name == "26.2.jar"
+        pytest.skip("26.2 is not installed in MinecraftVersions")
+    assert jar_path.name in {"client.jar", "26.2.jar"}
 
 
 def test_list_versions_includes_jar_version() -> None:
@@ -21,10 +21,14 @@ def test_list_versions_includes_jar_version() -> None:
     assert "26.2" in versions
 
 
-def test_renderer_jar_path_for_flat_jar() -> None:
+def test_renderer_jar_path_for_installed_version() -> None:
     if version_service.resolve_jar_path("26.2") is None:
-        pytest.skip("26.2.jar is not present in MinecraftVersions")
-    assert version_service.renderer_jar_path("26.2") == "/data/minecraft/26.2.jar"
+        pytest.skip("26.2 is not installed in MinecraftVersions")
+    renderer_path = version_service.renderer_jar_path("26.2")
+    assert renderer_path in {
+        "/data/minecraft/26.2.jar",
+        "/data/minecraft/26.2/client.jar",
+    }
 
 
 def test_resolve_item_icon_prefers_rendered_icons(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -9,6 +9,7 @@ import {
     type NodeKind,
 } from './types/recipe';
 import ModsPanel from './components/ModsPanel';
+import VersionManagerModal from './components/VersionManagerModal';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
@@ -242,8 +243,10 @@ const isSlotCompatible = (
 };
 
 export default function RecipeCanvas() {
-    const { version, versions, setVersion, ingredientIndex, reloadCatalog } = useMinecraftVersion();
+    const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
+        useMinecraftVersion();
     const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods(version);
+    const [versionManagerOpen, setVersionManagerOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -1196,7 +1199,23 @@ export default function RecipeCanvas() {
                 modsError={modsError}
                 onModsUpload={handleModsUpload}
                 onModsRefresh={refreshMods}
+                onOpenVersionManager={() => setVersionManagerOpen(true)}
                 gameVersion={version}
+                versionsEmpty={versions.length === 0}
+            />
+
+            <VersionManagerModal
+                open={versionManagerOpen}
+                onClose={() => setVersionManagerOpen(false)}
+                onInstalled={async (installedVersion) => {
+                    const installed = await refreshInstalledVersions();
+                    if (installed.includes(installedVersion)) {
+                        setVersion(installedVersion);
+                    }
+                    await reloadCatalog();
+                    await refreshMods();
+                    setVersionManagerOpen(false);
+                }}
             />
         </div>
     );

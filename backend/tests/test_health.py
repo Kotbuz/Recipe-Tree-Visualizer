@@ -11,8 +11,8 @@ def test_health_returns_ok() -> None:
     assert response.json() == {"status": "ok", "service": "recipe-tree-visualizer"}
 
 
-def test_list_mods_empty() -> None:
-    response = client.get("/mods")
+def test_list_mods_empty(isolated_minecraft_versions) -> None:
+    response = client.get("/mods", params={"version": "26.2"})
 
     assert response.status_code == 200
     assert response.json() == {"mods": []}

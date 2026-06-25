@@ -50,8 +50,8 @@ def test_natures_compass_builds_mod_recipes() -> None:
     }
 
 
-def test_natures_compass_registers_in_registry() -> None:
-    summary = mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)])[0]
+def test_natures_compass_registers_in_registry(isolated_minecraft_versions) -> None:
+    summary = mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")[0]
 
     assert summary.loader == "neoforge"
     assert summary.recipe_count == 2
@@ -82,8 +82,8 @@ def test_storage_drawers_indexes_vanilla_recipes_only() -> None:
     assert recipe.outputs[0].item_id == "storagedrawers:acacia_full_drawers_1"
 
 
-def test_storage_drawers_search_and_recipes() -> None:
-    mod_service.upload_mods_from_paths([str(STORAGE_DRAWERS_JAR)])
+def test_storage_drawers_search_and_recipes(isolated_minecraft_versions) -> None:
+    mod_service.upload_mods_from_paths([str(STORAGE_DRAWERS_JAR)], "1.21.11")
 
     items = item_service.search_items("acacia_full", version="1.21.11")
     assert any(item.id == "storagedrawers:acacia_full_drawers_1" for item in items.items)

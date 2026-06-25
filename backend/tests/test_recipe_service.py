@@ -4,10 +4,7 @@ import pytest
 
 
 def _require_recipe_source(version: str = "26.2") -> None:
-    recipes = recipe_service.get_recipes(version)
-    if recipes:
-        return
-    if _resolve_vanilla_jar_path(version) is not None:
+    if recipe_service.get_recipes(version):
         return
     pytest.skip(f"No recipe source found for Minecraft version {version}")
 

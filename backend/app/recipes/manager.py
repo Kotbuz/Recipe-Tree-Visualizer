@@ -98,6 +98,7 @@ class _ModLoad:
     jar_path: str
     meta: RawModMeta
     recipes: dict[str, Recipe]
+    storage_version: str
 
 
 class RecipeManager:
@@ -121,21 +122,43 @@ class RecipeManager:
             sorted(
                 jar_path
                 for jar_path, load in self._mod_loads.items()
-                if self._mod_load_compatible(load, version)
+                if load.storage_version == version
             )
         )
 
-    def load_mod_jar(self, jar_path: str, *, meta: RawModMeta) -> ProviderResult:
+    def load_mod_jar(
+        self,
+        jar_path: str,
+        *,
+        meta: RawModMeta,
+        storage_version: str,
+    ) -> ProviderResult:
         result = self._mod_provider.load(jar_path)
         resolved = str(Path(jar_path).resolve())
         recipes = {recipe.id: recipe for recipe in result.recipes}
-        self._mod_loads[resolved] = _ModLoad(jar_path=resolved, meta=meta, recipes=recipes)
+        self._mod_loads[resolved] = _ModLoad(
+            jar_path=resolved,
+            meta=meta,
+            recipes=recipes,
+            storage_version=storage_version,
+        )
         self._clear_caches()
         return result
 
     def clear_mods(self) -> None:
         self._mod_loads.clear()
         self._clear_caches()
+
+    def clear_mods_for_version(self, version: str) -> None:
+        to_remove = [
+            jar_path
+            for jar_path, load in self._mod_loads.items()
+            if load.storage_version == version
+        ]
+        for jar_path in to_remove:
+            del self._mod_loads[jar_path]
+        if to_remove:
+            self._clear_caches()
 
     def get_mod_recipes(self, version: str | None = None) -> tuple[Recipe, ...]:
         if version is None:
@@ -147,18 +170,9 @@ class RecipeManager:
     def _mod_recipes_for_version(self, version: str) -> tuple[Recipe, ...]:
         recipes: list[Recipe] = []
         for load in self._mod_loads.values():
-            if self._mod_load_compatible(load, version):
+            if load.storage_version == version:
                 recipes.extend(load.recipes.values())
         return tuple(recipes)
-
-    @staticmethod
-    def _mod_load_compatible(load: _ModLoad, version: str) -> bool:
-        return mod_supports_game_version(
-            minecraft_version=load.meta.minecraft_version,
-            minecraft_version_range=load.meta.minecraft_version_range,
-            jar_path=load.jar_path,
-            game_version=version,
-        )
 
     def get_version_recipes(
         self,
@@ -189,6 +203,11 @@ class RecipeManager:
         include_mods: bool = True,
         include_synthetic: bool = True,
     ) -> RecipeLookup:
+        from app.services.mod_service import mod_service
+
+        if include_mods:
+            mod_service.ensure_version_mods_loaded(version)
+
         recipes = self.get_version_recipes(
             version,
             include_mods=include_mods,

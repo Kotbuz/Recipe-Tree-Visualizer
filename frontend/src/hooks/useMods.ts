@@ -25,6 +25,12 @@ export function useMods(gameVersion: string) {
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
+        if (!gameVersion) {
+            setMods([]);
+            setLoading(false);
+            return;
+        }
+
         setLoading(true);
         setError(null);
         try {
@@ -52,7 +58,7 @@ export function useMods(gameVersion: string) {
 
     const upload = useCallback(
         async (files: FileList) => {
-            if (files.length === 0) {
+            if (files.length === 0 || !gameVersion) {
                 return;
             }
 
@@ -64,7 +70,9 @@ export function useMods(gameVersion: string) {
                     formData.append('files', file);
                 }
 
-                const response = await fetch('/mods/upload', {
+                const url = new URL('/mods/upload', window.location.origin);
+                url.searchParams.set('version', gameVersion);
+                const response = await fetch(url, {
                     method: 'POST',
                     body: formData,
                 });
@@ -92,7 +100,7 @@ export function useMods(gameVersion: string) {
                 setUploading(false);
             }
         },
-        [refresh],
+        [gameVersion, refresh],
     );
 
     const compatibleMods = mods.filter((mod) => mod.compatible !== false);

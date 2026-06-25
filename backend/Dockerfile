@@ -12,13 +12,12 @@ COPY backend/pyproject.toml backend/uv.lock ./
 RUN uv sync --frozen --no-dev
 
 COPY backend/app ./app
-COPY backend/data ./data
-RUN mkdir -p logs data/mods
+RUN mkdir -p logs
 
 ENV PYTHONUNBUFFERED=1
 ENV LOG_DIR=logs
-ENV MODS_STORAGE_DIR=data/mods
 ENV MINECRAFT_VERSIONS_DIR=/app/MinecraftVersions
+ENV MINECRAFT_DEFAULT_VERSION=26.2
 
 EXPOSE 8000
 

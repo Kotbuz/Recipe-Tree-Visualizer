@@ -15,8 +15,9 @@ class Settings(BaseSettings):
     api_port: int = 8000
     log_level: str = "INFO"
     log_dir: str = "logs"
-    mods_storage_dir: str = "data/mods"
     mods_auto_load_on_startup: bool = True
+    minecraft_default_version: str = "26.2"
+    version_catalog_cache_ttl_seconds: int = 86_400
     minecraft_versions_dir: str = "../MinecraftVersions"
     renderer_url: str = "http://localhost:3001"
     renderer_minecraft_root: str = "/data/minecraft"

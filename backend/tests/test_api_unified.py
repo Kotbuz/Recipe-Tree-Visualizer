@@ -14,10 +14,7 @@ NATURES_COMPASS_JAR = Path(__file__).parent / "fixtures" / "NaturesCompass-26.2-
 
 
 def _require_recipe_source(version: str = "26.2") -> None:
-    recipes = recipe_service.get_recipes(version)
-    if recipes:
-        return
-    if _resolve_vanilla_jar_path(version) is not None:
+    if recipe_service.get_recipes(version):
         return
     pytest.skip(f"No recipe source found for Minecraft version {version}")
 
@@ -92,8 +89,8 @@ def test_items_search_returns_version_ingredients() -> None:
     assert body["items"]
 
 
-def test_items_recipes_via_recipe_manager() -> None:
-    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)])
+def test_items_recipes_via_recipe_manager(isolated_minecraft_versions) -> None:
+    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")
 
     response = client.get(
         "/items/naturescompass:naturescompass/recipes",

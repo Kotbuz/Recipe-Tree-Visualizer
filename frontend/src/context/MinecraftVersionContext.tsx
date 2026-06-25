@@ -31,6 +31,7 @@ type MinecraftVersionContextValue = {
     version: string;
     versions: string[];
     setVersion: (version: string) => void;
+    refreshInstalledVersions: () => Promise<string[]>;
     hasIcon: (itemName: string, iconId?: string) => boolean;
     itemIconUrl: (itemName: string, iconId?: string) => string | null;
     iconsReady: boolean;
@@ -49,18 +50,29 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
     const [iconsReady, setIconsReady] = useState(false);
     const [ingredientIndex, setIngredientIndex] = useState<IngredientIndex | null>(null);
 
-    useEffect(() => {
-        fetch('/versions')
-            .then((response) => response.json())
-            .then((data: VersionListResponse) => {
-                if (data.versions?.length) {
-                    setVersions(data.versions);
-                }
-            })
-            .catch(() => {
-                // оставляем версию по умолчанию
-            });
+    const refreshInstalledVersions = useCallback(async () => {
+        try {
+            const response = await fetch('/versions');
+            if (!response.ok) {
+                return [];
+            }
+            const data = (await response.json()) as VersionListResponse;
+            const installed = data.versions ?? [];
+            setVersions(installed);
+            if (installed.length > 0) {
+                setVersionState((current) =>
+                    installed.includes(current) ? current : installed[0],
+                );
+            }
+            return installed;
+        } catch {
+            return [];
+        }
     }, []);
+
+    useEffect(() => {
+        void refreshInstalledVersions();
+    }, [refreshInstalledVersions]);
 
     const loadIcons = useCallback(async (targetVersion: string) => {
         setIconsReady(false);
@@ -194,6 +206,7 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             version,
             versions,
             setVersion,
+            refreshInstalledVersions,
             hasIcon,
             itemIconUrl,
             iconsReady,
@@ -201,7 +214,7 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             ingredientIndex,
             reloadCatalog,
         }),
-        [version, versions, setVersion, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex, reloadCatalog],
+        [version, versions, setVersion, refreshInstalledVersions, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex, reloadCatalog],
     );
 
     return (

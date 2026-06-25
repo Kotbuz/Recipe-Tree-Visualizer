@@ -26,7 +26,7 @@ def texture_id_from_icon_filename(filename: str) -> str:
 
 
 class VersionService:
-    def list_versions(self) -> list[str]:
+    def list_installed_versions(self) -> list[str]:
         root = get_settings().minecraft_versions_path
         if not root.exists():
             return []
@@ -36,24 +36,66 @@ class VersionService:
             versions.add(jar_path.stem)
 
         for entry in sorted(root.iterdir()):
-            if not entry.is_dir():
+            if not entry.is_dir() or entry.name.startswith("."):
                 continue
-            if self._has_version_data(entry.name):
+            if self.is_version_installed(entry.name):
                 versions.add(entry.name)
 
         return sorted(versions)
 
+    def list_versions(self) -> list[str]:
+        return self.list_installed_versions()
+
+    def is_version_installed(self, version: str) -> bool:
+        return self.resolve_jar_path(version) is not None
+
+    def client_jar_path(self, version: str) -> Path:
+        return self._version_dir(version) / "client.jar"
+
+    def mods_dir(self, version: str) -> Path:
+        return self._version_dir(version) / "mods"
+
+    def recipe_dir(self, version: str) -> Path:
+        return self._version_dir(version) / "recipe"
+
+    def ensure_version_layout(self, version: str) -> Path:
+        version_dir = self._version_dir(version)
+        version_dir.mkdir(parents=True, exist_ok=True)
+        (version_dir / "mods").mkdir(exist_ok=True)
+        (version_dir / "recipe").mkdir(exist_ok=True)
+        (version_dir / "rendered-icons").mkdir(exist_ok=True)
+        return version_dir
+
+    def resolve_default_version(self) -> str | None:
+        configured = get_settings().minecraft_default_version.strip()
+        installed = self.list_installed_versions()
+        if configured and configured in installed:
+            return configured
+        if configured:
+            for version in installed:
+                if version == configured:
+                    return version
+        return installed[0] if installed else None
+
     def resolve_jar_path(self, version: str) -> Path | None:
         root = get_settings().minecraft_versions_path
         candidates = (
-            root / f"{version}.jar",
-            root / version / f"{version}.jar",
             root / version / "client.jar",
+            root / version / f"{version}.jar",
+            root / f"{version}.jar",
         )
+
+        best: Path | None = None
+        best_size = 0
         for candidate in candidates:
-            if candidate.is_file():
-                return candidate
-        return None
+            if not candidate.is_file():
+                continue
+            size = candidate.stat().st_size
+            if size > best_size:
+                best = candidate
+                best_size = size
+
+        return best if best_size > 1024 else None
 
     def list_item_icons(self, version: str) -> list[str]:
         icons: set[str] = set()
@@ -188,15 +230,7 @@ class VersionService:
         return {path.stem for path in directory.glob("*.png")}
 
     def _has_version_data(self, version: str) -> bool:
-        version_dir = self._version_dir(version)
-        if not version_dir.is_dir():
-            return False
-        return (
-            self.resolve_jar_path(version) is not None
-            or (version_dir / "recipe").is_dir()
-            or (version_dir / "rendered-icons").is_dir()
-            or (version_dir / "item-textures").is_dir()
-        )
+        return self.is_version_installed(version)
 
     def _version_dir(self, version: str) -> Path:
         return get_settings().minecraft_versions_path / version

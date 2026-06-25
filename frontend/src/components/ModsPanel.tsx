@@ -14,7 +14,9 @@ type ModsPanelProps = {
     modsError: string | null;
     onModsUpload: (files: FileList) => void;
     onModsRefresh: () => void;
+    onOpenVersionManager: () => void;
     gameVersion: string;
+    versionsEmpty: boolean;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -52,7 +54,9 @@ export default function ModsPanel({
     modsError,
     onModsUpload,
     onModsRefresh,
+    onOpenVersionManager,
     gameVersion,
+    versionsEmpty,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -96,23 +100,45 @@ export default function ModsPanel({
 
             <label className="mods-panel-field">
                 <span className="mods-panel-field-label">Версия Minecraft</span>
-                <select
-                    className="mods-panel-select"
-                    value={version}
-                    onChange={(event) => onVersionChange(event.target.value)}
-                >
-                    {versions.map((entry) => (
-                        <option key={entry} value={entry}>
-                            {entry}
-                        </option>
-                    ))}
-                </select>
+                <div className="mods-panel-version-row">
+                    <select
+                        className="mods-panel-select"
+                        value={version}
+                        onChange={(event) => onVersionChange(event.target.value)}
+                        disabled={versionsEmpty}
+                    >
+                        {versions.length === 0 ? (
+                            <option value="">Нет установленных версий</option>
+                        ) : (
+                            versions.map((entry) => (
+                                <option key={entry} value={entry}>
+                                    {entry}
+                                </option>
+                            ))
+                        )}
+                    </select>
+                    <button
+                        type="button"
+                        className="mods-panel-version-manager"
+                        onClick={onOpenVersionManager}
+                    >
+                        Версии…
+                    </button>
+                </div>
             </label>
 
             <p className="mods-panel-hint">
-                Для версии <strong>{gameVersion}</strong> активны моды с совпадающим диапазоном
-                Minecraft из метаданных JAR. Остальные остаются в каталоге, но их рецепты не
-                попадают в поиск и холст.
+                {versionsEmpty ? (
+                    <>
+                        Установите версию Minecraft в менеджере версий, чтобы работать с рецептами
+                        и загружать моды в <code>MinecraftVersions/&#123;версия&#125;/mods/</code>.
+                    </>
+                ) : (
+                    <>
+                        Для версии <strong>{gameVersion}</strong> используются моды из папки этой
+                        версии. Несовместимые по метаданным JAR отмечены, но остаются в каталоге.
+                    </>
+                )}
             </p>
 
             <div className="mods-panel-actions">
@@ -202,7 +228,7 @@ export default function ModsPanel({
                 <button
                     type="button"
                     className="mods-panel-button mods-panel-button--upload"
-                    disabled={modsUploading}
+                    disabled={modsUploading || versionsEmpty}
                     onClick={() => fileInputRef.current?.click()}
                 >
                     {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
