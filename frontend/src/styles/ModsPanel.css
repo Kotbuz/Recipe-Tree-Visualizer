@@ -173,3 +173,115 @@
     color: #6b7280;
     font-size: 0.9rem;
 }
+
+.mods-panel-catalog {
+    flex: 1;
+    min-height: 120px;
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    padding: 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 14px;
+    background: #f8fafc;
+}
+
+.mods-panel-catalog-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.mods-panel-catalog-title {
+    font-weight: 700;
+    color: #374151;
+}
+
+.mods-panel-refresh {
+    padding: 0.35rem 0.55rem;
+    border: 1px solid #cbd5e1;
+    border-radius: 8px;
+    background: #ffffff;
+    color: #475569;
+    font-size: 0.82rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.mods-panel-refresh:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+.mods-panel-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    overflow-y: auto;
+    max-height: 40vh;
+}
+
+.mods-panel-list-item {
+    padding: 0.65rem 0.75rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    background: #ffffff;
+}
+
+.mods-panel-mod-name {
+    font-weight: 600;
+    color: #111827;
+    margin-bottom: 0.2rem;
+}
+
+.mods-panel-mod-meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.45rem;
+    color: #6b7280;
+    font-size: 0.82rem;
+}
+
+.mods-panel-mod-loader {
+    padding: 0.1rem 0.4rem;
+    border-radius: 999px;
+    background: #eef2ff;
+    color: #4338ca;
+    font-weight: 600;
+}
+
+.mods-panel-mod-skipped {
+    color: #b45309;
+}
+
+.mods-panel-status {
+    color: #6b7280;
+    font-size: 0.9rem;
+}
+
+.mods-panel-error {
+    padding: 0.55rem 0.65rem;
+    border-radius: 8px;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 0.85rem;
+}
+
+.mods-panel-file-input {
+    display: none;
+}
+
+.mods-panel-button--upload {
+    width: 100%;
+    border-color: #6366f1;
+    color: #4338ca;
+    background: #eef2ff;
+}
+
+.mods-panel-hint code {
+    font-size: 0.82em;
+}

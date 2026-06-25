@@ -44,8 +44,11 @@ class JarReader:
         if "META-INF/mods.toml" in names:
             meta = self._read_mods_toml(archive.read("META-INF/mods.toml"))
             return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FORGE)
+        if "mcmod.info" in names:
+            meta = self._read_mcmod_info(archive.read("mcmod.info"))
+            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FORGE)
         raise JarParseError(
-            "Mod metadata not found (expected neoforge.mods.toml, fabric.mod.json, or mods.toml)"
+            "Mod metadata not found (expected neoforge.mods.toml, fabric.mod.json, mods.toml, or mcmod.info)"
         )
 
     def _read_mods_toml(self, raw: bytes) -> tuple[str, str]:
@@ -66,6 +69,19 @@ class JarReader:
         if not mod_id:
             raise JarParseError("fabric.mod.json is missing id")
         name = data.get("name") or mod_id
+        return mod_id, name
+
+    def _read_mcmod_info(self, raw: bytes) -> tuple[str, str]:
+        data = orjson.loads(raw)
+        if not isinstance(data, list) or not data:
+            raise JarParseError("mcmod.info must be a non-empty JSON array")
+        first = data[0]
+        if not isinstance(first, dict):
+            raise JarParseError("mcmod.info entry must be an object")
+        mod_id = first.get("modid")
+        if not mod_id:
+            raise JarParseError("mcmod.info is missing modid")
+        name = first.get("name") or mod_id
         return mod_id, name
 
     def _discover_recipes(self, archive: zipfile.ZipFile) -> list[RawRecipeFile]:

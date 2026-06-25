@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("MODS_AUTO_LOAD_ON_STARTUP", "false")
+
 import pytest
 from app.indexer.mod_registry import registry
 from app.recipes.manager import recipe_manager

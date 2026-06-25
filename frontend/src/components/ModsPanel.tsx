@@ -1,4 +1,5 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
+import type { ModSummary } from '../hooks/useMods';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
@@ -7,8 +8,26 @@ type ModsPanelProps = {
     onVersionChange: (version: string) => void;
     onSave: () => void;
     onLoad: () => void;
-    modCount?: number;
+    mods: ModSummary[];
+    modsLoading: boolean;
+    modsUploading: boolean;
+    modsError: string | null;
+    onModsUpload: (files: FileList) => void;
+    onModsRefresh: () => void;
 };
+
+function loaderLabel(loader: string): string {
+    switch (loader) {
+        case 'neoforge':
+            return 'NeoForge';
+        case 'fabric':
+            return 'Fabric';
+        case 'forge':
+            return 'Forge';
+        default:
+            return loader;
+    }
+}
 
 export default function ModsPanel({
     versions,
@@ -16,9 +35,15 @@ export default function ModsPanel({
     onVersionChange,
     onSave,
     onLoad,
-    modCount = 0,
+    mods,
+    modsLoading,
+    modsUploading,
+    modsError,
+    onModsUpload,
+    onModsRefresh,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
+    const fileInputRef = useRef<HTMLInputElement>(null);
 
     if (!expanded) {
         return (
@@ -30,7 +55,7 @@ export default function ModsPanel({
                 onClick={() => setExpanded(true)}
             >
                 <span className="mods-panel-toggle-label">Моды</span>
-                <span className="mods-panel-badge">{modCount}</span>
+                <span className="mods-panel-badge">{mods.length}</span>
             </button>
         );
     }
@@ -44,7 +69,7 @@ export default function ModsPanel({
             <div className="mods-panel-header">
                 <h2 className="mods-panel-title">Моды</h2>
                 <div className="mods-panel-header-actions">
-                    <span className="mods-panel-badge">{modCount}</span>
+                    <span className="mods-panel-badge">{mods.length}</span>
                     <button
                         type="button"
                         className="mods-panel-collapse"
@@ -72,8 +97,8 @@ export default function ModsPanel({
             </label>
 
             <p className="mods-panel-hint">
-                Здесь будет список подключённых модов и управление ими. Панель не влияет на размер
-                холста.
+                Моды из <code>backend/data/mods</code> подгружаются при старте API. Рецепты
+                объединяются с vanilla через RecipeManager (как в JEI).
             </p>
 
             <div className="mods-panel-actions">
@@ -89,9 +114,70 @@ export default function ModsPanel({
                 </button>
             </div>
 
-            <div className="mods-panel-placeholder">
-                <div className="mods-panel-placeholder-title">Каталог модов</div>
-                <div className="mods-panel-placeholder-text">Скоро: импорт .jar и modpack</div>
+            <div className="mods-panel-catalog">
+                <div className="mods-panel-catalog-header">
+                    <div className="mods-panel-catalog-title">Подключённые моды</div>
+                    <button
+                        type="button"
+                        className="mods-panel-refresh"
+                        onClick={onModsRefresh}
+                        disabled={modsLoading || modsUploading}
+                    >
+                        Обновить
+                    </button>
+                </div>
+
+                {modsError ? <div className="mods-panel-error">{modsError}</div> : null}
+
+                {modsLoading ? (
+                    <div className="mods-panel-status">Загрузка списка…</div>
+                ) : mods.length === 0 ? (
+                    <div className="mods-panel-status">Нет подключённых модов</div>
+                ) : (
+                    <ul className="mods-panel-list">
+                        {mods.map((mod) => (
+                            <li key={mod.mod_id} className="mods-panel-list-item">
+                                <div className="mods-panel-mod-name">{mod.name}</div>
+                                <div className="mods-panel-mod-meta">
+                                    <span className="mods-panel-mod-loader">
+                                        {loaderLabel(mod.loader)}
+                                    </span>
+                                    <span>
+                                        {mod.recipe_count} рец. · {mod.item_count} предм.
+                                    </span>
+                                    {mod.skipped_recipe_count > 0 ? (
+                                        <span className="mods-panel-mod-skipped">
+                                            {mod.skipped_recipe_count} пропущено
+                                        </span>
+                                    ) : null}
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                )}
+
+                <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".jar"
+                    multiple
+                    className="mods-panel-file-input"
+                    onChange={(event) => {
+                        const files = event.target.files;
+                        if (files && files.length > 0) {
+                            onModsUpload(files);
+                        }
+                        event.target.value = '';
+                    }}
+                />
+                <button
+                    type="button"
+                    className="mods-panel-button mods-panel-button--upload"
+                    disabled={modsUploading}
+                    onClick={() => fileInputRef.current?.click()}
+                >
+                    {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
+                </button>
             </div>
         </aside>
     );

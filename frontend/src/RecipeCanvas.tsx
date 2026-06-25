@@ -12,6 +12,7 @@ import ModsPanel from './components/ModsPanel';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
+import { useMods } from './hooks/useMods';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import {
     ingredientsCompatible,
@@ -241,7 +242,8 @@ const isSlotCompatible = (
 };
 
 export default function RecipeCanvas() {
-    const { version, versions, setVersion, ingredientIndex } = useMinecraftVersion();
+    const { version, versions, setVersion, ingredientIndex, reloadCatalog } = useMinecraftVersion();
+    const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -891,6 +893,18 @@ export default function RecipeCanvas() {
         }
     }, [setViewportTransform]);
 
+    const handleModsUpload = useCallback(
+        async (files: FileList) => {
+            try {
+                await uploadMods(files);
+                await reloadCatalog();
+            } catch {
+                // ошибка уже отображается в панели модов
+            }
+        },
+        [uploadMods, reloadCatalog],
+    );
+
     const renderConnectionPath = (from: NodeSlot, to: NodeSlot) => {
         const fromAnchor = getSlotAnchor(from.nodeId, from.slotType, from.itemIndex);
         const toAnchor = getSlotAnchor(to.nodeId, to.slotType, to.itemIndex);
@@ -1176,7 +1190,12 @@ export default function RecipeCanvas() {
                 onVersionChange={handleVersionChange}
                 onSave={handleSaveCanvas}
                 onLoad={handleLoadCanvas}
-                modCount={0}
+                mods={mods}
+                modsLoading={modsLoading}
+                modsUploading={modsUploading}
+                modsError={modsError}
+                onModsUpload={handleModsUpload}
+                onModsRefresh={refreshMods}
             />
         </div>
     );

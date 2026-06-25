@@ -130,6 +130,18 @@ export default defineConfig({
                 target: 'http://localhost:8000',
                 changeOrigin: true,
             },
+            '/mods': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            },
+            '/items': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            },
+            '/graph': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            },
         },
         fs: {
             allow: [assetRoot, resolve(__dirname)]

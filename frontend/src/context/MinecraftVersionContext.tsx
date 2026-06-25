@@ -36,6 +36,7 @@ type MinecraftVersionContextValue = {
     iconsReady: boolean;
     iconsRevision: string;
     ingredientIndex: IngredientIndex | null;
+    reloadCatalog: () => Promise<void>;
 };
 
 const MinecraftVersionContext = createContext<MinecraftVersionContextValue | null>(null);
@@ -184,6 +185,10 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
         [iconNames, iconsRevision, version],
     );
 
+    const reloadCatalog = useCallback(async () => {
+        await Promise.all([loadIcons(version), loadIngredientIndex(version)]);
+    }, [loadIcons, loadIngredientIndex, version]);
+
     const value = useMemo(
         () => ({
             version,
@@ -194,8 +199,9 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             iconsReady,
             iconsRevision,
             ingredientIndex,
+            reloadCatalog,
         }),
-        [version, versions, setVersion, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex],
+        [version, versions, setVersion, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex, reloadCatalog],
     );
 
     return (

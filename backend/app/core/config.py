@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_dir: str = "logs"
     mods_storage_dir: str = "data/mods"
+    mods_auto_load_on_startup: bool = True
     minecraft_versions_dir: str = "../MinecraftVersions"
     renderer_url: str = "http://localhost:3001"
     renderer_minecraft_root: str = "/data/minecraft"
