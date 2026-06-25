@@ -226,5 +226,8 @@ class RecipeService:
     def _get_recipes(version: str) -> tuple[RecipeSummary, ...]:
         return _load_recipes_for_version(version)
 
+    def get_recipes(self, version: str) -> tuple[RecipeSummary, ...]:
+        return self._get_recipes(version)
+
 
 recipe_service = RecipeService()

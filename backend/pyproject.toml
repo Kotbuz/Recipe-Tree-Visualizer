@@ -11,6 +11,7 @@ dependencies = [
     "orjson>=3.10",
     "networkx>=3.4",
     "python-multipart>=0.0.17",
+    "httpx>=0.28",
 ]
 
 [dependency-groups]
