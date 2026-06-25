@@ -16,6 +16,7 @@ class Settings(BaseSettings):
     log_level: str = "INFO"
     log_dir: str = "logs"
     mods_auto_load_on_startup: bool = True
+    mod_upload_max_bytes: int = 256 * 1024 * 1024
     minecraft_default_version: str = "26.2"
     version_catalog_cache_ttl_seconds: int = 86_400
     minecraft_versions_dir: str = "../MinecraftVersions"

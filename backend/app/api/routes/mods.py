@@ -2,7 +2,7 @@ from fastapi import APIRouter, HTTPException, Query, UploadFile
 
 from app.parser.exceptions import JarParseError
 from app.schemas.items import ModListResponse
-from app.services.mod_service import ModVersionNotInstalledError, mod_service
+from app.services.mod_service import ModUploadTooLargeError, ModVersionNotInstalledError, mod_service
 
 router = APIRouter(prefix="/mods", tags=["mods"])
 
@@ -33,6 +33,8 @@ async def upload_mods(
                 "Сначала установите её в менеджере версий."
             ),
         ) from exc
+    except ModUploadTooLargeError as exc:
+        raise HTTPException(status_code=413, detail=str(exc)) from exc
     except JarParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
     return ModListResponse(mods=mod_service.list_mods(game_version=version))

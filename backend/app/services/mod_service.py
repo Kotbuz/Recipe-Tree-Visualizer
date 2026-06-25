@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import UploadFile
 from loguru import logger
 
+from app.core.config import get_settings
 from app.indexer.mod_registry import ModRegistry, registry
 from app.indexer.mod_summary import build_mod_summary
 from app.parser.exceptions import JarParseError
@@ -20,6 +21,18 @@ class ModVersionNotInstalledError(Exception):
     def __init__(self, version: str) -> None:
         super().__init__(f"Minecraft version is not installed: {version}")
         self.version = version
+
+
+class ModUploadTooLargeError(Exception):
+    def __init__(self, filename: str, size_bytes: int, max_bytes: int) -> None:
+        size_mb = size_bytes / (1024 * 1024)
+        max_mb = max_bytes / (1024 * 1024)
+        super().__init__(
+            f"Файл {filename} слишком большой ({size_mb:.1f} МБ, лимит {max_mb:.0f} МБ)"
+        )
+        self.filename = filename
+        self.size_bytes = size_bytes
+        self.max_bytes = max_bytes
 
 
 class ModService:
@@ -70,12 +83,17 @@ class ModService:
     async def upload_mods(self, files: list[UploadFile], version: str) -> list[ModSummary]:
         self._require_installed_version(version)
         mods_dir = version_service.mods_dir(version)
+        max_bytes = get_settings().mod_upload_max_bytes
 
         summaries: list[ModSummary] = []
         for file in files:
             filename = file.filename or "mod.jar"
+            content = await file.read()
+            if len(content) > max_bytes:
+                raise ModUploadTooLargeError(filename, len(content), max_bytes)
+
             destination = mods_dir / filename
-            destination.write_bytes(await file.read())
+            destination.write_bytes(content)
             summaries.append(self._register_jar(str(destination), version))
         return summaries
 
