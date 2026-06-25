@@ -2,7 +2,11 @@ from fastapi import APIRouter, HTTPException
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
-from app.schemas.versions import ItemIconManifestResponse, VersionListResponse
+from app.schemas.versions import (
+    IngredientIndexResponse,
+    ItemIconManifestResponse,
+    VersionListResponse,
+)
 from app.schemas.vanilla_icons import VanillaIconRenderResponse
 from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.version_service import version_service
@@ -21,7 +25,19 @@ def list_item_icons(version: str) -> ItemIconManifestResponse:
     icons = version_service.list_item_icons(version)
     if not icons and version not in version_service.list_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
-    return ItemIconManifestResponse(version=version, icons=icons)
+    return ItemIconManifestResponse(
+        version=version,
+        icons=icons,
+        revision=version_service.icons_revision(version),
+    )
+
+
+@router.get("/{version}/ingredient-index", response_model=IngredientIndexResponse)
+def get_ingredient_index(version: str) -> IngredientIndexResponse:
+    if version not in version_service.list_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    payload = version_service.build_ingredient_index(version)
+    return IngredientIndexResponse.model_validate(payload)
 
 
 @router.get("/{version}/items/{filename}", response_model=None)

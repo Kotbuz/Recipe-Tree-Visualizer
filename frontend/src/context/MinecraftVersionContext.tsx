@@ -8,7 +8,8 @@ import {
     useState,
     type ReactNode,
 } from 'react';
-import { DEFAULT_MINECRAFT_VERSION, itemIconFileName } from '../utils/itemIcon';
+import { DEFAULT_MINECRAFT_VERSION, resolveItemIconFileName } from '../utils/itemIcon';
+import type { IngredientIndex } from '../utils/ingredientMatch';
 
 type VersionListResponse = {
     versions: string[];
@@ -17,15 +18,24 @@ type VersionListResponse = {
 type ItemIconManifestResponse = {
     version: string;
     icons: string[];
+    revision?: string;
+};
+
+type IngredientIndexResponse = {
+    version: string;
+    tags: Record<string, string[]>;
+    aliases: Record<string, string>;
 };
 
 type MinecraftVersionContextValue = {
     version: string;
     versions: string[];
     setVersion: (version: string) => void;
-    hasIcon: (itemName: string) => boolean;
-    itemIconUrl: (itemName: string) => string | null;
+    hasIcon: (itemName: string, iconId?: string) => boolean;
+    itemIconUrl: (itemName: string, iconId?: string) => string | null;
     iconsReady: boolean;
+    iconsRevision: string;
+    ingredientIndex: IngredientIndex | null;
 };
 
 const MinecraftVersionContext = createContext<MinecraftVersionContextValue | null>(null);
@@ -34,7 +44,9 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
     const [version, setVersionState] = useState(DEFAULT_MINECRAFT_VERSION);
     const [versions, setVersions] = useState<string[]>([DEFAULT_MINECRAFT_VERSION]);
     const [iconNames, setIconNames] = useState<ReadonlySet<string>>(new Set());
+    const [iconsRevision, setIconsRevision] = useState('0');
     const [iconsReady, setIconsReady] = useState(false);
+    const [ingredientIndex, setIngredientIndex] = useState<IngredientIndex | null>(null);
 
     useEffect(() => {
         fetch('/versions')
@@ -62,6 +74,7 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
 
             const data = (await response.json()) as ItemIconManifestResponse;
             setIconNames(new Set(data.icons.map((fileName) => fileName.toLowerCase())));
+            setIconsRevision(data.revision ?? '0');
         } catch {
             setIconNames(new Set());
         } finally {
@@ -73,15 +86,70 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
         loadIcons(version);
     }, [version, loadIcons]);
 
-    const pollAttemptsRef = useRef(0);
+    const loadIngredientIndex = useCallback(async (targetVersion: string) => {
+        const maxAttempts = 5;
+
+        for (let attempt = 0; attempt < maxAttempts; attempt += 1) {
+            try {
+                const response = await fetch(
+                    `/versions/${encodeURIComponent(targetVersion)}/ingredient-index`,
+                );
+                if (response.ok) {
+                    const data = (await response.json()) as IngredientIndexResponse;
+                    if (data.tags && Object.keys(data.tags).length > 0) {
+                        setIngredientIndex({
+                            tags: data.tags,
+                            aliases: data.aliases ?? {},
+                        });
+                        return;
+                    }
+                }
+            } catch {
+                // retry
+            }
+
+            if (attempt < maxAttempts - 1) {
+                await new Promise((resolve) => {
+                    window.setTimeout(resolve, 1000 * (attempt + 1));
+                });
+            }
+        }
+
+        setIngredientIndex(null);
+    }, []);
 
     useEffect(() => {
-        if (!iconsReady || iconNames.size > 0) {
-            pollAttemptsRef.current = 0;
+        void loadIngredientIndex(version);
+    }, [version, loadIngredientIndex]);
+
+    const pollAttemptsRef = useRef(0);
+    const lastIconCountRef = useRef(0);
+    const stablePollsRef = useRef(0);
+
+    useEffect(() => {
+        pollAttemptsRef.current = 0;
+        lastIconCountRef.current = 0;
+        stablePollsRef.current = 0;
+    }, [version]);
+
+    useEffect(() => {
+        if (!iconsReady) {
             return;
         }
 
-        if (pollAttemptsRef.current >= 24) {
+        if (pollAttemptsRef.current >= 48) {
+            return;
+        }
+
+        const iconCount = iconNames.size;
+        if (iconCount > lastIconCountRef.current) {
+            lastIconCountRef.current = iconCount;
+            stablePollsRef.current = 0;
+        } else if (iconCount > 0) {
+            stablePollsRef.current += 1;
+        }
+
+        if (iconCount > 0 && stablePollsRef.current >= 3) {
             return;
         }
 
@@ -93,26 +161,27 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [iconsReady, iconNames.size, version, loadIcons]);
+    }, [iconsReady, iconNames.size, iconsRevision, version, loadIcons]);
 
     const setVersion = useCallback((nextVersion: string) => {
         setVersionState(nextVersion);
     }, []);
 
     const hasIcon = useCallback(
-        (itemName: string) => iconNames.has(itemIconFileName(itemName)),
+        (itemName: string, iconId?: string) =>
+            iconNames.has(resolveItemIconFileName(itemName, iconId)),
         [iconNames],
     );
 
     const itemIconUrl = useCallback(
-        (itemName: string) => {
-            const fileName = itemIconFileName(itemName);
+        (itemName: string, iconId?: string) => {
+            const fileName = resolveItemIconFileName(itemName, iconId);
             if (!iconNames.has(fileName)) {
                 return null;
             }
-            return `/versions/${encodeURIComponent(version)}/items/${fileName}`;
+            return `/versions/${encodeURIComponent(version)}/items/${fileName}?v=${encodeURIComponent(iconsRevision)}`;
         },
-        [iconNames, version],
+        [iconNames, iconsRevision, version],
     );
 
     const value = useMemo(
@@ -123,8 +192,10 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             hasIcon,
             itemIconUrl,
             iconsReady,
+            iconsRevision,
+            ingredientIndex,
         }),
-        [version, versions, setVersion, hasIcon, itemIconUrl, iconsReady],
+        [version, versions, setVersion, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex],
     );
 
     return (

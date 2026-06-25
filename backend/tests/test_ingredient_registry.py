@@ -51,7 +51,24 @@ def test_ingredient_registry_matches_tag_members() -> None:
 
     assert registry.ingredient_matches("oak planks", "tag:minecraft:planks")
     assert registry.ingredient_matches("spruce planks", "tag:minecraft:planks")
+    assert registry.ingredient_matches("tag:minecraft:planks", "minecraft:oak_planks")
+    assert registry.ingredient_matches("tag:minecraft:planks", "minecraft:spruce_planks")
+    assert registry.ingredient_matches("planks", "minecraft:birch_planks")
     assert not registry.ingredient_matches("diamond", "tag:minecraft:planks")
+
+
+def test_ingredient_registry_matches_stone_tags() -> None:
+    from app.recipes.registry import get_version_ingredient_registry
+    from app.services.recipe_service import _resolve_vanilla_jar_path
+
+    if _resolve_vanilla_jar_path("26.2") is None:
+        pytest.skip("26.2.jar is not present")
+
+    registry = get_version_ingredient_registry("26.2")
+    assert registry.ingredient_matches("tag:minecraft:stone_crafting_materials", "minecraft:cobblestone")
+    assert registry.ingredient_matches("minecraft:cobblestone", "tag:minecraft:stone_crafting_materials")
+    assert registry.ingredient_matches("tag:minecraft:stone_crafting_materials", "cobblestone")
+    assert registry.ingredient_matches("stone tool materials", "minecraft:cobblestone")
 
 
 def test_ingredient_registry_resolve_alias() -> None:

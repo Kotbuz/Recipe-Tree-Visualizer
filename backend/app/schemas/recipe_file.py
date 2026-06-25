@@ -5,6 +5,7 @@ class RecipeItem(BaseModel):
     name: str
     amount: int = 1
     item_id: str | None = None
+    icon_id: str | None = None
 
 
 class RecipeSummary(BaseModel):

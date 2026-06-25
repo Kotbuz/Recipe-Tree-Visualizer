@@ -74,7 +74,10 @@ class RecipeLookup:
         return list(self._recipes)
 
     def summaries(self) -> list[RecipeSummary]:
-        return [to_recipe_summary(recipe) for recipe in self._recipes]
+        return [
+            to_recipe_summary(recipe, ingredient_registry=self._ingredient_registry)
+            for recipe in self._recipes
+        ]
 
     def _ingredient_matches(self, needle: str, item_id: str) -> bool:
         if self._ingredient_registry is not None:

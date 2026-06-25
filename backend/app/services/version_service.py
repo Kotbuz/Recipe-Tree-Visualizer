@@ -9,8 +9,15 @@ from app.core.config import get_settings
 from app.services.icon_name_resolver import resolve_icon_item_name
 
 
-def item_name_to_texture_id(name: str) -> str:
-    return resolve_icon_item_name(name).strip().lower().replace(" ", "_")
+def item_name_to_texture_id(name: str, version: str | None = None) -> str:
+    return resolve_icon_item_name(name, version=version).strip().lower().replace(" ", "_")
+
+
+def _texture_id_variants(icon_id: str) -> tuple[str, ...]:
+    variants = [icon_id]
+    if icon_id.endswith("s") and not icon_id.endswith("ss"):
+        variants.append(icon_id[:-1])
+    return tuple(dict.fromkeys(variants))
 
 
 def texture_id_from_icon_filename(filename: str) -> str:
@@ -50,16 +57,47 @@ class VersionService:
 
     def list_item_icons(self, version: str) -> list[str]:
         icons: set[str] = set()
-        for directory in (self._rendered_icons_dir(version), self._legacy_textures_dir(version)):
+        rendered_dir = self._rendered_icons_dir(version)
+
+        for directory in (rendered_dir, self._legacy_textures_dir(version)):
             if directory is None:
                 continue
             for path in directory.glob("*.png"):
                 icons.add(path.name)
 
-        if self.resolve_jar_path(version) is not None:
+        # Пока renderer ещё не создал rendered-icons, даём манифест из рецептов
+        # (с jar-fallback). После появления папки — только реальные PNG, без
+        # «фантомных» имён, иначе браузер кэширует плоские текстуры из jar.
+        if not icons and self.resolve_jar_path(version) is not None:
             icons.update(self._recipe_icon_filenames(version))
 
         return sorted(icons)
+
+    def icons_revision(self, version: str) -> str:
+        rendered_dir = self._rendered_icons_dir(version)
+        if rendered_dir is None:
+            return "0"
+
+        files = list(rendered_dir.glob("*.png"))
+        if not files:
+            return "0"
+
+        latest_mtime = max(path.stat().st_mtime for path in files)
+        return f"{len(files)}-{int(latest_mtime)}"
+
+    def build_ingredient_index(self, version: str) -> dict[str, object]:
+        from app.recipes.registry import get_version_ingredient_registry
+
+        registry = get_version_ingredient_registry(version)
+        tags = {
+            tag_id: registry.resolve_tag(tag_id)
+            for tag_id in registry.list_tag_ids()
+        }
+        return {
+            "version": version,
+            "tags": tags,
+            "aliases": registry.aliases,
+        }
 
     def resolve_item_icon_path(self, version: str, filename: str) -> Path | None:
         safe_name = Path(filename).name
@@ -87,6 +125,9 @@ class VersionService:
         if icon_path is not None:
             return ("file", icon_path)
 
+        if self._rendered_icons_dir(version) is not None:
+            return None
+
         jar_bytes = self.read_jar_texture_bytes(version, filename)
         if jar_bytes is not None:
             return ("bytes", jar_bytes)
@@ -103,18 +144,18 @@ class VersionService:
             return None
 
         icon_id = texture_id_from_icon_filename(safe_name)
-        candidates = (
-            f"assets/minecraft/textures/item/{icon_id}.png",
-            f"assets/minecraft/textures/block/{icon_id}.png",
-        )
-
         try:
             with zipfile.ZipFile(jar_path) as archive:
-                for asset_path in candidates:
-                    try:
-                        return archive.read(asset_path)
-                    except KeyError:
-                        continue
+                for variant_id in _texture_id_variants(icon_id):
+                    candidates = (
+                        f"assets/minecraft/textures/item/{variant_id}.png",
+                        f"assets/minecraft/textures/block/{variant_id}.png",
+                    )
+                    for asset_path in candidates:
+                        try:
+                            return archive.read(asset_path)
+                        except KeyError:
+                            continue
         except (OSError, zipfile.BadZipFile):
             return None
 
@@ -173,14 +214,9 @@ class VersionService:
         return None
 
     def _recipe_icon_filenames(self, version: str) -> set[str]:
-        from app.services.recipe_service import recipe_service
+        from app.services.icon_registry import collect_recipe_icon_ids
 
-        filenames: set[str] = set()
-        for recipe in recipe_service.get_recipes(version):
-            for item in recipe.inputs + recipe.outputs:
-                texture_id = item_name_to_texture_id(item.name)
-                filenames.add(f"{texture_id}.png")
-        return filenames
+        return {f"{icon_id}.png" for icon_id in collect_recipe_icon_ids(version)}
 
 
 @lru_cache

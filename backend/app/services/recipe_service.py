@@ -48,9 +48,13 @@ class RecipeService:
 
     def get_recipes(self, version: str, *, include_mods: bool = True) -> tuple[RecipeSummary, ...]:
         from app.recipes.adapters import to_recipe_summary
+        from app.recipes.registry import get_version_ingredient_registry
 
         recipes = recipe_manager.get_version_recipes(version, include_mods=include_mods)
-        return tuple(to_recipe_summary(recipe) for recipe in recipes)
+        registry = get_version_ingredient_registry(version)
+        return tuple(
+            to_recipe_summary(recipe, ingredient_registry=registry) for recipe in recipes
+        )
 
 
 recipe_service = RecipeService()
