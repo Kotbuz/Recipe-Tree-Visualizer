@@ -220,6 +220,11 @@ __marimo__/
 # Runtime data
 backend/logs/
 backend/data/mods/*.jar
+backend/data/rendered/*
+!backend/data/rendered/.gitkeep
+# Minecraft versions — local data (jar, recipes, textures, rendered icons)
+MinecraftVersions/*
+!MinecraftVersions/.gitkeep
 
 # PlantUML local JAR (source .puml and rendered .png are committed)
 docs/uml/plantuml.jar

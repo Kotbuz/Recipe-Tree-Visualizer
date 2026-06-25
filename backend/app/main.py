@@ -1,3 +1,5 @@
+import asyncio
+import contextlib
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 
@@ -8,6 +10,28 @@ from loguru import logger
 from app.api.routes.router import api_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
+from app.services.vanilla_icon_service import vanilla_icon_service
+from app.services.version_service import version_service
+
+
+async def _render_vanilla_icons_on_startup() -> None:
+    settings = get_settings()
+    if not settings.vanilla_icon_render_on_startup:
+        return
+
+    for game_version in version_service.list_versions():
+        if version_service.resolve_jar_path(game_version) is None:
+            continue
+        try:
+            result = await asyncio.to_thread(vanilla_icon_service.ensure_icons, game_version)
+            if result.errors:
+                logger.warning(
+                    "Vanilla icon render for {} finished with errors: {}",
+                    game_version,
+                    "; ".join(result.errors),
+                )
+        except Exception:
+            logger.exception("Failed to render vanilla icons for {}", game_version)
 
 
 @asynccontextmanager
@@ -17,7 +41,11 @@ async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     logger.info(
         "Starting Recipe Tree Visualizer API on {}:{}", settings.api_host, settings.api_port
     )
+    render_task = asyncio.create_task(_render_vanilla_icons_on_startup())
     yield
+    render_task.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await render_task
     logger.info("Shutting down Recipe Tree Visualizer API")
 
 

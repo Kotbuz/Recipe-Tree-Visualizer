@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import re
+import zipfile
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -8,6 +10,9 @@ from typing import Any
 from app.core.config import get_settings
 from app.schemas.recipe_file import RecipeItem, RecipeSummary
 from app.services.item_matching import items_match
+
+VANILLA_RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
+ADVANCEMENT_SEGMENT = "/advancement/"
 
 
 def _pretty_item_name(item_id: str | None) -> str:
@@ -145,13 +150,7 @@ def _collect_outputs(recipe_data: dict[str, Any]) -> list[RecipeItem]:
     return [RecipeItem(name=name, amount=amount) for name, amount in outputs_dict.items()]
 
 
-def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
-    try:
-        with file_path.open("r", encoding="utf-8") as handle:
-            data = json.load(handle)
-    except (OSError, json.JSONDecodeError):
-        return None
-
+def _recipe_summary_from_data(recipe_id: str, data: dict[str, Any]) -> RecipeSummary | None:
     recipe_type = data.get("type", "unknown")
     inputs = _collect_inputs(data)
     outputs = _collect_outputs(data)
@@ -160,7 +159,7 @@ def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
         return None
 
     return RecipeSummary(
-        recipe_id=file_path.stem,
+        recipe_id=recipe_id,
         machine_type=recipe_type,
         machine_name=_map_machine_type(recipe_type),
         inputs=inputs,
@@ -168,17 +167,78 @@ def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
     )
 
 
-def _load_recipes_for_version(version: str) -> tuple[RecipeSummary, ...]:
-    recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
-    if not recipe_dir.exists() or not recipe_dir.is_dir():
+def _load_recipe_file(file_path: Path) -> RecipeSummary | None:
+    try:
+        with file_path.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, json.JSONDecodeError):
+        return None
+
+    if not isinstance(data, dict):
+        return None
+
+    return _recipe_summary_from_data(file_path.stem, data)
+
+
+def _resolve_vanilla_jar_path(version: str) -> Path | None:
+    root = get_settings().minecraft_versions_path
+    candidates = (
+        root / f"{version}.jar",
+        root / version / f"{version}.jar",
+        root / version / "client.jar",
+    )
+    for candidate in candidates:
+        if candidate.is_file():
+            return candidate
+    return None
+
+
+def _load_recipes_from_jar(jar_path: Path) -> tuple[RecipeSummary, ...]:
+    recipes: list[RecipeSummary] = []
+    try:
+        with zipfile.ZipFile(jar_path) as archive:
+            for entry in archive.namelist():
+                if ADVANCEMENT_SEGMENT in entry:
+                    continue
+                match = VANILLA_RECIPE_PATH.match(entry)
+                if not match:
+                    continue
+                namespace, relative_path = match.groups()
+                if namespace != "minecraft":
+                    continue
+                recipe_id = Path(relative_path).stem
+                try:
+                    raw = archive.read(entry)
+                    data = json.loads(raw)
+                except (OSError, json.JSONDecodeError):
+                    continue
+                if not isinstance(data, dict):
+                    continue
+                recipe = _recipe_summary_from_data(recipe_id, data)
+                if recipe is not None:
+                    recipes.append(recipe)
+    except (OSError, zipfile.BadZipFile):
         return ()
 
-    recipes: list[RecipeSummary] = []
-    for json_file in sorted(recipe_dir.glob("*.json")):
-        recipe = _load_recipe_file(json_file)
-        if recipe is not None:
-            recipes.append(recipe)
     return tuple(recipes)
+
+
+def _load_recipes_for_version(version: str) -> tuple[RecipeSummary, ...]:
+    recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
+    if recipe_dir.exists() and recipe_dir.is_dir():
+        recipes: list[RecipeSummary] = []
+        for json_file in sorted(recipe_dir.glob("*.json")):
+            recipe = _load_recipe_file(json_file)
+            if recipe is not None:
+                recipes.append(recipe)
+        if recipes:
+            return tuple(recipes)
+
+    jar_path = _resolve_vanilla_jar_path(version)
+    if jar_path is not None:
+        return _load_recipes_from_jar(jar_path)
+
+    return ()
 
 
 class RecipeService:
@@ -225,6 +285,9 @@ class RecipeService:
     @lru_cache(maxsize=8)
     def _get_recipes(version: str) -> tuple[RecipeSummary, ...]:
         return _load_recipes_for_version(version)
+
+    def get_recipes(self, version: str) -> tuple[RecipeSummary, ...]:
+        return self._get_recipes(version)
 
 
 recipe_service = RecipeService()

@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     log_dir: str = "logs"
     mods_storage_dir: str = "data/mods"
     minecraft_versions_dir: str = "../MinecraftVersions"
+    renderer_url: str = "http://localhost:3001"
+    renderer_minecraft_root: str = "/data/minecraft"
+    minecraft_render_version: str = "1.21.4"
+    renderer_icon_size: int = 128
+    renderer_batch_size: int = 25
+    renderer_timeout_seconds: float = 600.0
+    vanilla_icon_render_on_startup: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property

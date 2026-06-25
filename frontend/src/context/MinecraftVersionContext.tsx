@@ -4,6 +4,7 @@ import {
     useContext,
     useEffect,
     useMemo,
+    useRef,
     useState,
     type ReactNode,
 } from 'react';
@@ -71,6 +72,28 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
     useEffect(() => {
         loadIcons(version);
     }, [version, loadIcons]);
+
+    const pollAttemptsRef = useRef(0);
+
+    useEffect(() => {
+        if (!iconsReady || iconNames.size > 0) {
+            pollAttemptsRef.current = 0;
+            return;
+        }
+
+        if (pollAttemptsRef.current >= 24) {
+            return;
+        }
+
+        const timeoutId = window.setTimeout(() => {
+            pollAttemptsRef.current += 1;
+            void loadIcons(version);
+        }, 5000);
+
+        return () => {
+            window.clearTimeout(timeoutId);
+        };
+    }, [iconsReady, iconNames.size, version, loadIcons]);
 
     const setVersion = useCallback((nextVersion: string) => {
         setVersionState(nextVersion);
