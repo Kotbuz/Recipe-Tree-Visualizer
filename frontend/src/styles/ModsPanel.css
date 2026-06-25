@@ -258,6 +258,29 @@
     color: #b45309;
 }
 
+.mods-panel-mod-version {
+    color: #475569;
+}
+
+.mods-panel-mod-active {
+    color: #047857;
+    font-weight: 600;
+}
+
+.mods-panel-mod-inactive {
+    color: #9ca3af;
+    font-weight: 600;
+}
+
+.mods-panel-list-item--inactive {
+    opacity: 0.72;
+    background: #f8fafc;
+}
+
+.mods-panel-hint strong {
+    color: #1f2937;
+}
+
 .mods-panel-status {
     color: #6b7280;
     font-size: 0.9rem;

@@ -220,7 +220,7 @@ def get_version_ingredient_registry(version: str) -> IngredientRegistry:
 
     registry = IngredientRegistry(_default_tag_loader)
     registry.load_version(version)
-    for jar_path in recipe_manager.mod_jar_paths:
+    for jar_path in recipe_manager.mod_jar_paths_for_version(version):
         registry.merge_tags_from_jar(jar_path)
     registry.register_from_recipes(recipe_manager.get_version_recipes(version))
     return registry

@@ -1,3 +1,5 @@
+from pathlib import Path
+
 from app.parser.models import RawModData
 from app.recipes.models import ProviderResult
 from app.schemas.domain import ModSummary
@@ -16,6 +18,9 @@ def build_mod_summary(raw: RawModData, result: ProviderResult) -> ModSummary:
         mod_id=raw.meta.mod_id,
         name=raw.meta.name,
         loader=raw.meta.loader.value,
+        minecraft_version=raw.meta.minecraft_version,
+        minecraft_version_range=raw.meta.minecraft_version_range,
+        jar_filename=Path(raw.jar_path).name,
         item_count=len(item_ids),
         recipe_count=len(result.recipes),
         machine_count=len(machine_ids),

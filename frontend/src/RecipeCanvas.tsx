@@ -243,7 +243,7 @@ const isSlotCompatible = (
 
 export default function RecipeCanvas() {
     const { version, versions, setVersion, ingredientIndex, reloadCatalog } = useMinecraftVersion();
-    const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods();
+    const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods(version);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -1196,6 +1196,7 @@ export default function RecipeCanvas() {
                 modsError={modsError}
                 onModsUpload={handleModsUpload}
                 onModsRefresh={refreshMods}
+                gameVersion={version}
             />
         </div>
     );

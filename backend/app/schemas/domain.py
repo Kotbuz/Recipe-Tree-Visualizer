@@ -45,6 +45,10 @@ class ModSummary(BaseModel):
     mod_id: str
     name: str
     loader: str = "unknown"
+    minecraft_version: str | None = None
+    minecraft_version_range: str | None = None
+    jar_filename: str | None = None
+    compatible: bool | None = None
     item_count: int = 0
     recipe_count: int = 0
     machine_count: int = 0

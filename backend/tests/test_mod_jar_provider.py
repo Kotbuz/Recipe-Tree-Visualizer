@@ -1,5 +1,6 @@
 from pathlib import Path
 
+from app.parser.jar_reader import JarReader
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.services.mod_service import mod_service
@@ -37,7 +38,8 @@ def test_mod_jar_provider_skips_unsupported_types() -> None:
 
 
 def test_recipe_manager_merges_mod_recipes() -> None:
-    recipe_manager.load_mod_jar(str(NATURES_COMPASS_JAR))
+    raw = JarReader().read(str(NATURES_COMPASS_JAR))
+    recipe_manager.load_mod_jar(str(NATURES_COMPASS_JAR), meta=raw.meta)
 
     merged = recipe_manager.get_version_recipes("26.2", include_mods=True)
     mod_recipe_ids = {recipe.id for recipe in recipe_manager.get_mod_recipes()}

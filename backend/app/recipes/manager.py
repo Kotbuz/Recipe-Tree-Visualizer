@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from app.parser.minecraft_version import mod_supports_game_version
+from app.parser.models import RawModMeta
 from app.recipes.adapters import item_id_to_display_name, to_recipe_summary
 from app.recipes.focus import RecipeIngredientRole
 from app.recipes.models import ProviderResult, Recipe
@@ -90,6 +93,13 @@ class RecipeLookup:
         return items_match(needle, display_name) or items_match(needle, item_id)
 
 
+@dataclass(frozen=True)
+class _ModLoad:
+    jar_path: str
+    meta: RawModMeta
+    recipes: dict[str, Recipe]
+
+
 class RecipeManager:
     def __init__(
         self,
@@ -100,31 +110,55 @@ class RecipeManager:
         self._vanilla_provider = vanilla_provider or _default_vanilla_provider
         self._mod_provider = mod_provider or _default_mod_provider
         self._synthetic_provider = synthetic_provider or _default_synthetic_provider
-        self._mod_recipes: dict[str, Recipe] = {}
-        self._mod_jar_paths: tuple[str, ...] = ()
+        self._mod_loads: dict[str, _ModLoad] = {}
 
     @property
     def mod_jar_paths(self) -> tuple[str, ...]:
-        return self._mod_jar_paths
+        return tuple(sorted(self._mod_loads))
 
-    def load_mod_jar(self, jar_path: str) -> ProviderResult:
+    def mod_jar_paths_for_version(self, version: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                jar_path
+                for jar_path, load in self._mod_loads.items()
+                if self._mod_load_compatible(load, version)
+            )
+        )
+
+    def load_mod_jar(self, jar_path: str, *, meta: RawModMeta) -> ProviderResult:
         result = self._mod_provider.load(jar_path)
-        for recipe in result.recipes:
-            self._mod_recipes[recipe.id] = recipe
-
-        paths = set(self._mod_jar_paths)
-        paths.add(str(Path(jar_path).resolve()))
-        self._mod_jar_paths = tuple(sorted(paths))
+        resolved = str(Path(jar_path).resolve())
+        recipes = {recipe.id: recipe for recipe in result.recipes}
+        self._mod_loads[resolved] = _ModLoad(jar_path=resolved, meta=meta, recipes=recipes)
         self._clear_caches()
         return result
 
     def clear_mods(self) -> None:
-        self._mod_recipes.clear()
-        self._mod_jar_paths = ()
+        self._mod_loads.clear()
         self._clear_caches()
 
-    def get_mod_recipes(self) -> tuple[Recipe, ...]:
-        return tuple(self._mod_recipes.values())
+    def get_mod_recipes(self, version: str | None = None) -> tuple[Recipe, ...]:
+        if version is None:
+            return tuple(
+                recipe for load in self._mod_loads.values() for recipe in load.recipes.values()
+            )
+        return self._mod_recipes_for_version(version)
+
+    def _mod_recipes_for_version(self, version: str) -> tuple[Recipe, ...]:
+        recipes: list[Recipe] = []
+        for load in self._mod_loads.values():
+            if self._mod_load_compatible(load, version):
+                recipes.extend(load.recipes.values())
+        return tuple(recipes)
+
+    @staticmethod
+    def _mod_load_compatible(load: _ModLoad, version: str) -> bool:
+        return mod_supports_game_version(
+            minecraft_version=load.meta.minecraft_version,
+            minecraft_version_range=load.meta.minecraft_version_range,
+            jar_path=load.jar_path,
+            game_version=version,
+        )
 
     def get_version_recipes(
         self,
@@ -141,8 +175,9 @@ class RecipeManager:
             for recipe in self._load_synthetic_recipes(version):
                 merged[recipe.id] = recipe
 
-        if include_mods and self._mod_recipes:
-            merged.update(self._mod_recipes)
+        if include_mods:
+            for recipe in self._mod_recipes_for_version(version):
+                merged[recipe.id] = recipe
 
         return tuple(merged.values())
 

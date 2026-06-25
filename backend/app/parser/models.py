@@ -8,6 +8,8 @@ class RawModMeta:
     mod_id: str
     name: str
     loader: ModLoader
+    minecraft_version: str | None = None
+    minecraft_version_range: str | None = None
 
 
 @dataclass(frozen=True)

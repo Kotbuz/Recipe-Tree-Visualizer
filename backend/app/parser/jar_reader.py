@@ -1,3 +1,5 @@
+from __future__ import annotations
+
 import re
 import tomllib
 import zipfile
@@ -17,7 +19,7 @@ class JarReader:
     def read(self, jar_path: str) -> RawModData:
         try:
             with zipfile.ZipFile(jar_path) as archive:
-                meta = self._read_mod_meta(archive)
+                meta = self._read_mod_meta(archive, jar_path)
                 recipe_files = self._discover_recipes(archive)
                 texture_paths = [
                     name
@@ -33,25 +35,27 @@ class JarReader:
         except zipfile.BadZipFile as exc:
             raise JarParseError(f"Invalid jar archive: {jar_path}") from exc
 
-    def _read_mod_meta(self, archive: zipfile.ZipFile) -> RawModMeta:
+    def _read_mod_meta(self, archive: zipfile.ZipFile, jar_path: str) -> RawModMeta:
         names = set(archive.namelist())
         if "META-INF/neoforge.mods.toml" in names:
-            meta = self._read_mods_toml(archive.read("META-INF/neoforge.mods.toml"))
-            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.NEOFORGE)
+            return self._read_mods_toml(
+                archive.read("META-INF/neoforge.mods.toml"),
+                loader=ModLoader.NEOFORGE,
+            )
         if "fabric.mod.json" in names:
-            meta = self._read_fabric_meta(archive.read("fabric.mod.json"))
-            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FABRIC)
+            return self._read_fabric_meta(archive.read("fabric.mod.json"))
         if "META-INF/mods.toml" in names:
-            meta = self._read_mods_toml(archive.read("META-INF/mods.toml"))
-            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FORGE)
+            return self._read_mods_toml(
+                archive.read("META-INF/mods.toml"),
+                loader=ModLoader.FORGE,
+            )
         if "mcmod.info" in names:
-            meta = self._read_mcmod_info(archive.read("mcmod.info"))
-            return RawModMeta(mod_id=meta[0], name=meta[1], loader=ModLoader.FORGE)
+            return self._read_mcmod_info(archive.read("mcmod.info"))
         raise JarParseError(
             "Mod metadata not found (expected neoforge.mods.toml, fabric.mod.json, mods.toml, or mcmod.info)"
         )
 
-    def _read_mods_toml(self, raw: bytes) -> tuple[str, str]:
+    def _read_mods_toml(self, raw: bytes, *, loader: ModLoader) -> RawModMeta:
         data = tomllib.loads(raw.decode("utf-8"))
         mods = data.get("mods")
         if not mods:
@@ -61,17 +65,34 @@ class JarReader:
         if not mod_id:
             raise JarParseError("mods.toml is missing modId")
         name = first.get("displayName") or mod_id
-        return mod_id, name
+        minecraft_version_range = self._extract_minecraft_range(data, mod_id)
+        return RawModMeta(
+            mod_id=mod_id,
+            name=name,
+            loader=loader,
+            minecraft_version_range=minecraft_version_range,
+        )
 
-    def _read_fabric_meta(self, raw: bytes) -> tuple[str, str]:
+    def _read_fabric_meta(self, raw: bytes) -> RawModMeta:
         data = orjson.loads(raw)
         mod_id = data.get("id")
         if not mod_id:
             raise JarParseError("fabric.mod.json is missing id")
         name = data.get("name") or mod_id
-        return mod_id, name
+        depends = data.get("depends")
+        minecraft_version_range = None
+        if isinstance(depends, dict):
+            minecraft_dep = depends.get("minecraft")
+            if isinstance(minecraft_dep, str):
+                minecraft_version_range = minecraft_dep
+        return RawModMeta(
+            mod_id=mod_id,
+            name=name,
+            loader=ModLoader.FABRIC,
+            minecraft_version_range=minecraft_version_range,
+        )
 
-    def _read_mcmod_info(self, raw: bytes) -> tuple[str, str]:
+    def _read_mcmod_info(self, raw: bytes) -> RawModMeta:
         data = orjson.loads(raw)
         if not isinstance(data, list) or not data:
             raise JarParseError("mcmod.info must be a non-empty JSON array")
@@ -82,7 +103,36 @@ class JarReader:
         if not mod_id:
             raise JarParseError("mcmod.info is missing modid")
         name = first.get("name") or mod_id
-        return mod_id, name
+        mcversion = first.get("mcversion")
+        minecraft_version = mcversion if isinstance(mcversion, str) and mcversion else None
+        return RawModMeta(
+            mod_id=mod_id,
+            name=name,
+            loader=ModLoader.FORGE,
+            minecraft_version=minecraft_version,
+        )
+
+    @staticmethod
+    def _extract_minecraft_range(data: dict[str, object], mod_id: str) -> str | None:
+        dependencies = data.get("dependencies")
+        if not isinstance(dependencies, dict):
+            return None
+
+        groups: list[object] = []
+        mod_entries = dependencies.get(mod_id)
+        if isinstance(mod_entries, list):
+            groups.append(mod_entries)
+        groups.extend(entry for entry in dependencies.values() if isinstance(entry, list))
+
+        for entries in groups:
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                if entry.get("modId") == "minecraft":
+                    version_range = entry.get("versionRange")
+                    if isinstance(version_range, str) and version_range.strip():
+                        return version_range.strip()
+        return None
 
     def _discover_recipes(self, archive: zipfile.ZipFile) -> list[RawRecipeFile]:
         recipes: list[RawRecipeFile] = []

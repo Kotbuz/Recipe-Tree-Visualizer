@@ -14,7 +14,18 @@ type ModsPanelProps = {
     modsError: string | null;
     onModsUpload: (files: FileList) => void;
     onModsRefresh: () => void;
+    gameVersion: string;
 };
+
+function formatModVersion(mod: ModSummary): string | null {
+    if (mod.minecraft_version) {
+        return mod.minecraft_version;
+    }
+    if (mod.minecraft_version_range) {
+        return mod.minecraft_version_range;
+    }
+    return null;
+}
 
 function loaderLabel(loader: string): string {
     switch (loader) {
@@ -41,9 +52,11 @@ export default function ModsPanel({
     modsError,
     onModsUpload,
     onModsRefresh,
+    gameVersion,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
+    const compatibleCount = mods.filter((mod) => mod.compatible !== false).length;
 
     if (!expanded) {
         return (
@@ -55,7 +68,7 @@ export default function ModsPanel({
                 onClick={() => setExpanded(true)}
             >
                 <span className="mods-panel-toggle-label">Моды</span>
-                <span className="mods-panel-badge">{mods.length}</span>
+                <span className="mods-panel-badge">{compatibleCount}/{mods.length}</span>
             </button>
         );
     }
@@ -69,7 +82,7 @@ export default function ModsPanel({
             <div className="mods-panel-header">
                 <h2 className="mods-panel-title">Моды</h2>
                 <div className="mods-panel-header-actions">
-                    <span className="mods-panel-badge">{mods.length}</span>
+                    <span className="mods-panel-badge">{compatibleCount}/{mods.length}</span>
                     <button
                         type="button"
                         className="mods-panel-collapse"
@@ -97,8 +110,9 @@ export default function ModsPanel({
             </label>
 
             <p className="mods-panel-hint">
-                Моды из <code>backend/data/mods</code> подгружаются при старте API. Рецепты
-                объединяются с vanilla через RecipeManager (как в JEI).
+                Для версии <strong>{gameVersion}</strong> активны моды с совпадающим диапазоном
+                Minecraft из метаданных JAR. Остальные остаются в каталоге, но их рецепты не
+                попадают в поиск и холст.
             </p>
 
             <div className="mods-panel-actions">
@@ -136,15 +150,30 @@ export default function ModsPanel({
                 ) : (
                     <ul className="mods-panel-list">
                         {mods.map((mod) => (
-                            <li key={mod.mod_id} className="mods-panel-list-item">
+                            <li
+                                key={mod.mod_id}
+                                className={`mods-panel-list-item${mod.compatible === false ? ' mods-panel-list-item--inactive' : ''}`}
+                            >
                                 <div className="mods-panel-mod-name">{mod.name}</div>
                                 <div className="mods-panel-mod-meta">
                                     <span className="mods-panel-mod-loader">
                                         {loaderLabel(mod.loader)}
                                     </span>
+                                    {formatModVersion(mod) ? (
+                                        <span className="mods-panel-mod-version">
+                                            MC {formatModVersion(mod)}
+                                        </span>
+                                    ) : null}
                                     <span>
                                         {mod.recipe_count} рец. · {mod.item_count} предм.
                                     </span>
+                                    {mod.compatible === false ? (
+                                        <span className="mods-panel-mod-inactive">
+                                            не для {gameVersion}
+                                        </span>
+                                    ) : (
+                                        <span className="mods-panel-mod-active">активен</span>
+                                    )}
                                     {mod.skipped_recipe_count > 0 ? (
                                         <span className="mods-panel-mod-skipped">
                                             {mod.skipped_recipe_count} пропущено

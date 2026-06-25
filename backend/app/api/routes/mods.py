@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, UploadFile
+from fastapi import APIRouter, HTTPException, Query, UploadFile
 
 from app.parser.exceptions import JarParseError
 from app.schemas.items import ModListResponse
@@ -8,8 +8,8 @@ router = APIRouter(prefix="/mods", tags=["mods"])
 
 
 @router.get("", response_model=ModListResponse)
-def list_mods() -> ModListResponse:
-    return ModListResponse(mods=mod_service.list_mods())
+def list_mods(version: str | None = Query(default=None)) -> ModListResponse:
+    return ModListResponse(mods=mod_service.list_mods(game_version=version))
 
 
 @router.post("/upload", response_model=ModListResponse)
