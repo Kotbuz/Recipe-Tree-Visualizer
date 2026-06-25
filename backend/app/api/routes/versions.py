@@ -28,9 +28,17 @@ def list_installed_versions() -> VersionListResponse:
 @router.get("/catalog", response_model=VersionCatalogResponse)
 def list_version_catalog() -> VersionCatalogResponse:
     installed = set(version_service.list_installed_versions())
+    try:
+        catalog_entries = get_minecraft_version_catalog().list_releases()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=503,
+            detail=f"Version catalog is temporarily unavailable: {exc}",
+        ) from exc
+
     releases = [
         VersionCatalogEntryResponse(version=entry.version, installed=entry.version in installed)
-        for entry in get_minecraft_version_catalog().list_releases()
+        for entry in catalog_entries
     ]
     return VersionCatalogResponse(releases=releases)
 

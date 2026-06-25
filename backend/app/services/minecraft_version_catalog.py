@@ -17,10 +17,11 @@ GIST_RAW_URL = (
 
 _TABLE_ROW = re.compile(
     r"^\|\s*(?P<version>[^|]+?)\s*\|\s*"
-    r"(?P<server><https?://[^>|]+>)\s*\|\s*"
-    r"(?P<client><https?://[^>|]+>)\s*\|\s*$"
+    r"(?P<server>[^|]*?)\s*\|\s*"
+    r"(?P<client>[^|]*?)\s*\|\s*$"
 )
 _URL_IN_ANGLE = re.compile(r"<(https?://[^>]+)>")
+_URL_PLAIN = re.compile(r"(https?://\S+)")
 _PRERELEASE_MARKERS = (
   "snapshot",
   "-pre-",
@@ -36,6 +37,17 @@ class VersionCatalogEntry:
     version: str
     client_url: str
     server_url: str
+
+
+def _extract_url(cell: str) -> str | None:
+    bracket_match = _URL_IN_ANGLE.search(cell)
+    if bracket_match is not None:
+        return bracket_match.group(1)
+
+    plain_match = _URL_PLAIN.search(cell)
+    if plain_match is not None:
+        return plain_match.group(1).rstrip("|")
+    return None
 
 
 def is_release_version(version: str) -> bool:
@@ -58,9 +70,9 @@ def parse_catalog_markdown(markdown: str) -> list[VersionCatalogEntry]:
         if not is_release_version(version):
             continue
 
-        server_match = _URL_IN_ANGLE.search(match.group("server"))
-        client_match = _URL_IN_ANGLE.search(match.group("client"))
-        if server_match is None or client_match is None:
+        server_url = _extract_url(match.group("server"))
+        client_url = _extract_url(match.group("client"))
+        if server_url is None or client_url is None:
             continue
 
         if version in seen:
@@ -69,8 +81,8 @@ def parse_catalog_markdown(markdown: str) -> list[VersionCatalogEntry]:
         entries.append(
             VersionCatalogEntry(
                 version=version,
-                client_url=client_match.group(1),
-                server_url=server_match.group(1),
+                client_url=client_url,
+                server_url=server_url,
             )
         )
 
@@ -87,9 +99,22 @@ class MinecraftVersionCatalog:
             if cached is not None:
                 return cached
 
-        markdown = self._fetch_markdown()
+        try:
+            markdown = self._fetch_markdown()
+        except Exception:
+            stale = self._read_stale_cache()
+            if stale is not None:
+                return stale
+            raise
+
         entries = parse_catalog_markdown(markdown)
-        self._write_cache(markdown)
+        if entries:
+            self._write_cache(markdown)
+            return entries
+
+        stale = self._read_stale_cache()
+        if stale is not None:
+            return stale
         return entries
 
     def get_release(self, version: str) -> VersionCatalogEntry | None:
@@ -113,7 +138,18 @@ class MinecraftVersionCatalog:
         if age_seconds > self._settings.version_catalog_cache_ttl_seconds:
             return None
 
-        return parse_catalog_markdown(cache_path.read_text(encoding="utf-8"))
+        return self._parse_cache_file(cache_path)
+
+    def _read_stale_cache(self) -> list[VersionCatalogEntry] | None:
+        cache_path = self._cache_path()
+        if not cache_path.is_file():
+            return None
+        return self._parse_cache_file(cache_path)
+
+    @staticmethod
+    def _parse_cache_file(cache_path: Path) -> list[VersionCatalogEntry] | None:
+        entries = parse_catalog_markdown(cache_path.read_text(encoding="utf-8"))
+        return entries or None
 
     def _write_cache(self, markdown: str) -> None:
         self._cache_path().write_text(markdown, encoding="utf-8")
