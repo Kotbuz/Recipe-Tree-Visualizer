@@ -14,13 +14,19 @@ from app.parser.recipe_types import (
 )
 from app.recipes.category import category_for_canonical_type
 from app.recipes.extensions import CategoryExtensionRegistry, default_category_extensions
+from app.recipes.ingredients.resolver import IngredientResolver, ParsedIngredient
 from app.recipes.models import Recipe, RecipeIO
 from app.recipes.types import RecipeType
 
 
 class JsonRecipeParser:
-    def __init__(self, extensions: CategoryExtensionRegistry | None = None) -> None:
+    def __init__(
+        self,
+        extensions: CategoryExtensionRegistry | None = None,
+        resolver: IngredientResolver | None = None,
+    ) -> None:
         self._extensions = extensions or default_category_extensions()
+        self._resolver = resolver
 
     def can_parse(self, data: dict[str, object]) -> bool:
         recipe_type = data.get("type")
@@ -56,6 +62,21 @@ class JsonRecipeParser:
         extension = self._extensions.find(raw_type)
         if extension is None:
             return None
+
+        from app.recipes.extensions.forge import ForgeRecipeExtension
+
+        if isinstance(extension, ForgeRecipeExtension):
+            canonical_type = ForgeRecipeExtension.canonical_type_for(raw_type)
+            if canonical_type is None:
+                return None
+            return self._parse_recipe(
+                recipe_id,
+                data,
+                canonical_type=canonical_type,
+                raw_type=raw_type,
+                source=source,
+                mod_id=mod_id,
+            )
 
         return extension.parse(recipe_id, data, source=source, mod_id=mod_id)
 
@@ -121,7 +142,7 @@ class JsonRecipeParser:
         if not isinstance(pattern, list) or not isinstance(key, dict):
             raise JarParseError("Shaped recipe requires pattern and key")
 
-        counts: Counter[str] = Counter()
+        counts: Counter[tuple[str, int | None]] = Counter()
         for row in pattern:
             if not isinstance(row, str):
                 raise JarParseError("Shaped recipe pattern rows must be strings")
@@ -131,11 +152,12 @@ class JsonRecipeParser:
                 ingredient = key.get(symbol)
                 if ingredient is None:
                     raise JarParseError(f"Missing ingredient for symbol '{symbol}'")
-                item_id = self._parse_ingredient_id(ingredient)
-                counts[item_id] += 1
+                parsed = self._resolve_ingredient(ingredient)
+                counts[(parsed.item_id, parsed.metadata)] += 1
 
         return [
-            RecipeIO(item_id=item_id, amount=float(amount)) for item_id, amount in counts.items()
+            RecipeIO(item_id=item_id, amount=float(amount), metadata=metadata)
+            for (item_id, metadata), amount in counts.items()
         ]
 
     def _extract_shapeless_inputs(self, data: dict[str, object]) -> list[RecipeIO]:
@@ -143,21 +165,24 @@ class JsonRecipeParser:
         if not isinstance(ingredients, list):
             raise JarParseError("Shapeless recipe requires ingredients list")
 
-        counts: Counter[str] = Counter()
+        counts: Counter[tuple[str, int | None]] = Counter()
         for ingredient in ingredients:
-            item_id = self._parse_ingredient_id(ingredient)
-            counts[item_id] += 1
+            parsed = self._resolve_ingredient(ingredient)
+            counts[(parsed.item_id, parsed.metadata)] += 1
 
         return [
-            RecipeIO(item_id=item_id, amount=float(amount)) for item_id, amount in counts.items()
+            RecipeIO(item_id=item_id, amount=float(amount), metadata=metadata)
+            for (item_id, metadata), amount in counts.items()
         ]
 
     def _extract_single_input(self, data: dict[str, object], key: str) -> list[RecipeIO]:
         ingredient = data.get(key)
         if ingredient is None:
             raise JarParseError(f"Recipe is missing {key}")
-        item_id = self._parse_ingredient_id(ingredient)
-        return [RecipeIO(item_id=item_id, amount=1.0)]
+        parsed = self._resolve_ingredient(ingredient)
+        return [
+            RecipeIO(item_id=parsed.item_id, amount=1.0, metadata=parsed.metadata),
+        ]
 
     def _extract_result(self, data: dict[str, object]) -> RecipeIO:
         result = data.get("result")
@@ -165,7 +190,8 @@ class JsonRecipeParser:
             raise JarParseError("Recipe is missing result")
 
         if isinstance(result, str):
-            return RecipeIO(item_id=self._normalize_item_id(result), amount=1.0)
+            parsed = self._resolve_ingredient(result)
+            return RecipeIO(item_id=parsed.item_id, amount=1.0, metadata=parsed.metadata)
 
         if isinstance(result, dict):
             item_id = result.get("id") or result.get("item")
@@ -174,11 +200,28 @@ class JsonRecipeParser:
             count = result.get("count", 1)
             if not isinstance(count, int | float):
                 count = 1
-            return RecipeIO(item_id=self._normalize_item_id(item_id), amount=float(count))
+            metadata = result.get("metadata", result.get("data"))
+            if metadata is not None and not isinstance(metadata, int):
+                metadata = None
+            parsed = self._resolve_ingredient(
+                {"item": item_id, "metadata": metadata} if metadata is not None else item_id
+            )
+            return RecipeIO(
+                item_id=parsed.item_id,
+                amount=float(count),
+                metadata=parsed.metadata if parsed.metadata is not None else metadata,
+            )
 
         raise JarParseError("Unsupported recipe result format")
 
-    def _parse_ingredient_id(self, ingredient: object) -> str:
+    def _resolve_ingredient(self, ingredient: object) -> ParsedIngredient:
+        if self._resolver is not None:
+            return self._resolver.resolve(ingredient)
+
+        item_id = self._parse_ingredient_id_legacy(ingredient)
+        return ParsedIngredient(item_id=item_id)
+
+    def _parse_ingredient_id_legacy(self, ingredient: object) -> str:
         if isinstance(ingredient, str):
             return self._normalize_item_id(ingredient)
 
@@ -193,7 +236,7 @@ class JsonRecipeParser:
 
         if isinstance(ingredient, list):
             for option in ingredient:
-                return self._parse_ingredient_id(option)
+                return self._parse_ingredient_id_legacy(option)
 
         raise JarParseError(f"Unsupported ingredient format: {ingredient!r}")
 

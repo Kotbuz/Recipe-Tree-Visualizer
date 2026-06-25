@@ -1,18 +1,14 @@
 from __future__ import annotations
 
-import re
 import tomllib
 import zipfile
-from pathlib import PurePosixPath
 
 import orjson
 
 from app.parser.exceptions import JarParseError
 from app.parser.loaders import ModLoader
 from app.parser.models import RawModData, RawModMeta, RawRecipeFile
-
-RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
-ADVANCEMENT_SEGMENT = "/advancement/"
+from app.recipes.loaders.recipe_paths import discover_recipe_file, mod_jar_recipe_patterns
 
 
 class JarReader:
@@ -136,26 +132,26 @@ class JarReader:
 
     def _discover_recipes(self, archive: zipfile.ZipFile) -> list[RawRecipeFile]:
         recipes: list[RawRecipeFile] = []
+        patterns = mod_jar_recipe_patterns()
         for entry in archive.namelist():
-            if ADVANCEMENT_SEGMENT in entry:
+            if not any(pattern.match(entry) for pattern in patterns):
                 continue
-            match = RECIPE_PATH.match(entry)
-            if not match:
+
+            discovered = discover_recipe_file(entry)
+            if discovered is None:
                 continue
-            namespace, relative_path = match.groups()
-            recipe_name = PurePosixPath(relative_path).stem
-            recipe_id = f"{namespace}:{recipe_name}"
+
             try:
-                data = orjson.loads(archive.read(entry))
+                data = orjson.loads(archive.read(discovered.filename))
             except orjson.JSONDecodeError as exc:
-                raise JarParseError(f"Invalid recipe JSON: {entry}") from exc
+                raise JarParseError(f"Invalid recipe JSON: {discovered.filename}") from exc
             if not isinstance(data, dict):
-                raise JarParseError(f"Recipe root must be an object: {entry}")
+                raise JarParseError(f"Recipe root must be an object: {discovered.filename}")
             recipes.append(
                 RawRecipeFile(
-                    recipe_id=recipe_id,
-                    namespace=namespace,
-                    filename=entry,
+                    recipe_id=discovered.recipe_id,
+                    namespace=discovered.namespace,
+                    filename=discovered.filename,
                     data=data,
                 )
             )

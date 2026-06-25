@@ -8,6 +8,7 @@ class RecipeIO:
     item_id: str
     amount: float
     chance: float | None = None
+    metadata: int | None = None
 
 
 @dataclass(frozen=True)

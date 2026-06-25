@@ -12,6 +12,7 @@ class RecipeIO(BaseModel):
     item_id: str
     amount: float = Field(gt=0)
     chance: float | None = Field(default=None, ge=0, le=1)
+    metadata: int | None = None
 
 
 class Item(BaseModel):

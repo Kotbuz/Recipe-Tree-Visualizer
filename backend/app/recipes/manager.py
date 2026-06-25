@@ -12,6 +12,8 @@ from app.recipes.models import ProviderResult, Recipe
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
+from app.recipes.loaders.recipe_paths import recipe_layout_for_version
+from app.services.jvm_recipe_export_service import jvm_recipe_export_service
 from app.recipes.registry import IngredientRegistry, get_version_ingredient_registry
 from app.recipes.types import RecipeType
 from app.schemas.recipe_file import RecipeSummary
@@ -24,6 +26,8 @@ _default_synthetic_provider = SyntheticProvider()
 
 @lru_cache(maxsize=8)
 def _load_vanilla_version_recipes(version: str) -> tuple[Recipe, ...]:
+    if recipe_layout_for_version(version) == "jvm":
+        jvm_recipe_export_service.ensure_exported(version)
     result = _default_vanilla_provider.load(version)
     return tuple(result.recipes)
 
@@ -133,7 +137,7 @@ class RecipeManager:
         meta: RawModMeta,
         storage_version: str,
     ) -> ProviderResult:
-        result = self._mod_provider.load(jar_path)
+        result = self._mod_provider.load(jar_path, version=storage_version)
         resolved = str(Path(jar_path).resolve())
         recipes = {recipe.id: recipe for recipe in result.recipes}
         self._mod_loads[resolved] = _ModLoad(

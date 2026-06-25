@@ -2,11 +2,13 @@ from __future__ import annotations
 
 import re
 
+import re
+
 from app.recipes.models import ProviderResult, SkippedRecipe
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 
-RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
 ADVANCEMENT_SEGMENT = "/advancement/"
+RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
 
 
 def try_add_recipe(

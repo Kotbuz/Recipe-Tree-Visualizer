@@ -51,6 +51,7 @@ def to_recipe_summary(
                 name=item_id_to_display_name(part.item_id),
                 amount=int(part.amount),
                 item_id=part.item_id,
+                metadata=part.metadata,
                 icon_id=_icon_id_for_part(
                     part.item_id,
                     ingredient_registry=ingredient_registry,
@@ -64,6 +65,7 @@ def to_recipe_summary(
                 name=item_id_to_display_name(part.item_id),
                 amount=int(part.amount),
                 item_id=part.item_id,
+                metadata=part.metadata,
                 icon_id=_icon_id_for_part(
                     part.item_id,
                     ingredient_registry=ingredient_registry,
