@@ -1,8 +1,11 @@
 from enum import StrEnum
 
 from app.parser.recipe_types import (
+    ANVIL_REPAIR,
     BLASTING,
+    BREWING,
     CAMPFIRE_COOKING,
+    COMPOSTING,
     CRAFTING_SHAPED,
     CRAFTING_SHAPELESS,
     SMELTING,
@@ -28,6 +31,9 @@ class RecipeType(StrEnum):
     SMOKING = SMOKING
     CAMPFIRE_COOKING = CAMPFIRE_COOKING
     STONECUTTING = STONECUTTING
+    BREWING = BREWING
+    COMPOSTING = COMPOSTING
+    ANVIL_REPAIR = ANVIL_REPAIR
 
 
 CANONICAL_TO_RECIPE_TYPE: dict[str, RecipeType] = {
@@ -38,4 +44,7 @@ CANONICAL_TO_RECIPE_TYPE: dict[str, RecipeType] = {
     SMOKING: RecipeType.SMOKING,
     CAMPFIRE_COOKING: RecipeType.CAMPFIRE_COOKING,
     STONECUTTING: RecipeType.STONECUTTING,
+    BREWING: RecipeType.BREWING,
+    COMPOSTING: RecipeType.COMPOSTING,
+    ANVIL_REPAIR: RecipeType.ANVIL_REPAIR,
 }

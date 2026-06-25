@@ -10,6 +10,9 @@ _CATALYST_DISPLAY_NAMES: dict[str, str] = {
     "minecraft:smoker": "Печь",
     "minecraft:campfire": "Печь",
     "minecraft:stonecutter": "Наковальня",
+    "minecraft:brewing_stand": "Зельеварка",
+    "minecraft:composter": "Компостер",
+    "minecraft:anvil": "Наковальня",
 }
 
 
@@ -50,6 +53,9 @@ def display_name_for_raw_type(raw_type: str) -> str:
         "minecraft:smithing": "Наковальня",
         "minecraft:smithing_transform": "Наковальня",
         "minecraft:stonecutting": "Наковальня",
+        "minecraft:brewing": "Зельеварка",
+        "minecraft:composting": "Компостер",
+        "minecraft:anvil_repair": "Наковальня",
     }
     if raw_type in mapping:
         return mapping[raw_type]
