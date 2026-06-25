@@ -2,6 +2,7 @@ export interface RecipeItem {
     name: string;
     amount: number;
     item_id?: string;
+    icon_id?: string;
 }
 
 export interface RecipeSummary {

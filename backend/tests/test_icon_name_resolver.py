@@ -7,8 +7,8 @@ def test_resolve_planks_to_oak() -> None:
 
 
 def test_resolve_logs_to_oak() -> None:
-    assert resolve_icon_item_name("logs") == "oak logs"
-    assert resolve_icon_item_name("logs that burn") == "oak logs"
+    assert resolve_icon_item_name("logs") == "oak log"
+    assert resolve_icon_item_name("logs that burn") == "oak log"
 
 
 def test_resolve_stone_tool_materials_to_cobblestone() -> None:

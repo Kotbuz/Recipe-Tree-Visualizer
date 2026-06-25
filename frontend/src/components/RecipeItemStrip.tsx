@@ -11,7 +11,11 @@ export default function RecipeItemStrip({ items, className = '' }: RecipeItemStr
     return (
         <div className={`recipe-item-strip ${className}`.trim()}>
             {items.map((item, index) => (
-                <ItemIconView key={`${item.name}-${index}`} itemName={item.name} />
+                <ItemIconView
+                    key={`${item.name}-${index}`}
+                    itemName={item.name}
+                    iconId={item.icon_id}
+                />
             ))}
         </div>
     );

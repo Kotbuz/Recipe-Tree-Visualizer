@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-    itemsMatch,
     type RecipeSummary,
     type RecipeItem,
     type SlotType,
@@ -14,6 +13,11 @@ import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
+import {
+    ingredientsCompatible,
+    type IngredientIndex,
+    type IngredientRef,
+} from './utils/ingredientMatch';
 import {
     CANVAS_CONFIG,
     buildCanvasBezierPath,
@@ -130,37 +134,114 @@ const getSlotItemId = (node: RecipeNode, slotType: SlotType, index: number) => {
     return items[index]?.item_id;
 };
 
+const getSlotItemIconId = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        const items = node.inputs[0] ?? node.outputs[0];
+        return items?.icon_id;
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.icon_id;
+};
+
+const slotTypesForConnection = (
+    sourceSlotType: SlotType,
+): SlotType[] => (sourceSlotType === 'input' ? ['output', 'input'] : ['input', 'output']);
+
+const canConnectSlotTypes = (sourceSlotType: SlotType, targetSlotType: SlotType): boolean => {
+    if (sourceSlotType === 'output' && targetSlotType === 'input') {
+        return true;
+    }
+    if (sourceSlotType === 'input' && targetSlotType === 'output') {
+        return true;
+    }
+    if (sourceSlotType === 'input' && targetSlotType === 'input') {
+        return true;
+    }
+    return false;
+};
+
 const slotKey = (nodeId: string, slotType: SlotType, index: number) =>
     `${nodeId}:${slotType}:${index}`;
 
 const connectionId = (from: NodeSlot, to: NodeSlot) =>
     `${from.nodeId}:${from.slotType}:${from.itemIndex}->${to.nodeId}:${to.slotType}:${to.itemIndex}`;
 
+const getSlotIngredientRef = (
+    node: RecipeNode,
+    slotType: SlotType,
+    index: number,
+): IngredientRef => ({
+    name: getSlotItemName(node, slotType, index),
+    itemId: getSlotItemId(node, slotType, index),
+});
+
+const findCompatibleSlotOnNode = (
+    node: RecipeNode,
+    sourceSlotType: SlotType,
+    dragged: IngredientRef,
+    ingredientIndex: IngredientIndex | null,
+): NodeSlot | null => {
+    for (const targetSlotType of slotTypesForConnection(sourceSlotType)) {
+        if (!canConnectSlotTypes(sourceSlotType, targetSlotType)) {
+            continue;
+        }
+
+        const items = targetSlotType === 'input' ? node.inputs : node.outputs;
+        for (let index = 0; index < items.length; index += 1) {
+            if (!isSlotCompatible(node, targetSlotType, index, dragged, ingredientIndex)) {
+                continue;
+            }
+
+            return {
+                nodeId: node.id,
+                slotType: targetSlotType,
+                itemIndex: index,
+                itemName: dragged.name,
+            };
+        }
+    }
+
+    return null;
+};
+
 const findMatchingSlotIndex = (
     node: RecipeNode,
     slotType: SlotType,
-    itemName: string,
+    dragged: IngredientRef,
+    ingredientIndex: IngredientIndex | null,
 ) => {
     const items = slotType === 'input' ? node.inputs : node.outputs;
-    return items.findIndex((item) => itemsMatch(itemName, item.name));
+    return items.findIndex((item) =>
+        ingredientsCompatible(
+            dragged,
+            { name: item.name, itemId: item.item_id },
+            ingredientIndex,
+        ),
+    );
 };
 
 const isSlotCompatible = (
     node: RecipeNode,
     slotType: SlotType,
     index: number,
-    itemName: string,
+    dragged: IngredientRef,
+    ingredientIndex: IngredientIndex | null,
 ) => {
     const slotName = getSlotItemName(node, slotType, index);
     if (!slotName) {
         return isTerminalNode(node);
     }
 
-    return itemsMatch(itemName, slotName);
+    return ingredientsCompatible(
+        dragged,
+        getSlotIngredientRef(node, slotType, index),
+        ingredientIndex,
+    );
 };
 
 export default function RecipeCanvas() {
-    const { version, versions, setVersion } = useMinecraftVersion();
+    const { version, versions, setVersion, ingredientIndex } = useMinecraftVersion();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -344,39 +425,51 @@ export default function RecipeCanvas() {
     const findCompatibleSlotAt = useCallback(
         (
             point: { x: number; y: number },
-            itemName: string,
+            dragged: IngredientRef,
             sourceSlotType: SlotType,
             sourceNodeId: string,
         ): NodeSlot | null => {
-            const targetSlotType: SlotType = sourceSlotType === 'input' ? 'output' : 'input';
-
             for (const node of nodes) {
                 if (node.id === sourceNodeId) continue;
 
-                const items = targetSlotType === 'input' ? node.inputs : node.outputs;
-                for (let index = 0; index < items.length; index += 1) {
-                    if (!isSlotCompatible(node, targetSlotType, index, itemName)) {
+                for (const targetSlotType of slotTypesForConnection(sourceSlotType)) {
+                    if (!canConnectSlotTypes(sourceSlotType, targetSlotType)) {
                         continue;
                     }
 
-                    const anchor = getSlotAnchor(node.id, targetSlotType, index);
-                    if (!anchor) continue;
+                    const items = targetSlotType === 'input' ? node.inputs : node.outputs;
+                    for (let index = 0; index < items.length; index += 1) {
+                        if (
+                            !isSlotCompatible(
+                                node,
+                                targetSlotType,
+                                index,
+                                dragged,
+                                ingredientIndex,
+                            )
+                        ) {
+                            continue;
+                        }
 
-                    const distance = Math.hypot(anchor.x - point.x, anchor.y - point.y);
-                    if (distance <= SLOT_HIT_RADIUS) {
-                        return {
-                            nodeId: node.id,
-                            slotType: targetSlotType,
-                            itemIndex: index,
-                            itemName,
-                        };
+                        const anchor = getSlotAnchor(node.id, targetSlotType, index);
+                        if (!anchor) continue;
+
+                        const distance = Math.hypot(anchor.x - point.x, anchor.y - point.y);
+                        if (distance <= SLOT_HIT_RADIUS) {
+                            return {
+                                nodeId: node.id,
+                                slotType: targetSlotType,
+                                itemIndex: index,
+                                itemName: dragged.name,
+                            };
+                        }
                     }
                 }
             }
 
             return null;
         },
-        [nodes, getSlotAnchor],
+        [nodes, getSlotAnchor, ingredientIndex],
     );
 
     const connectSlots = useCallback(
@@ -394,8 +487,10 @@ export default function RecipeCanvas() {
                 itemName,
             };
 
-            if (sourceSlotType === 'input') {
+            if (sourceSlotType === 'input' && target.slotType === 'output') {
                 addConnection(target, source);
+            } else if (sourceSlotType === 'input' && target.slotType === 'input') {
+                addConnection(source, target);
             } else {
                 addConnection(source, target);
             }
@@ -444,11 +539,13 @@ export default function RecipeCanvas() {
                 name: item.name,
                 amount: item.amount,
                 item_id: item.item_id,
+                icon_id: item.icon_id,
             })),
             outputs: recipe.outputs.map((item) => ({
                 name: item.name,
                 amount: item.amount,
                 item_id: item.item_id,
+                icon_id: item.icon_id,
             })),
         };
         setNodes((current) => [...current, node]);
@@ -525,22 +622,24 @@ export default function RecipeCanvas() {
 
         const newNode = createNodeFromRecipe(recipe, coords.x, coords.y);
 
-        const targetSlotType: SlotType =
-            contextMenu.sourceSlotType === 'input' ? 'output' : 'input';
-        const targetIndex = findMatchingSlotIndex(newNode, targetSlotType, contextMenu.itemName);
+        const dragged: IngredientRef = {
+            name: contextMenu.itemName,
+            itemId: contextMenu.itemId,
+        };
+        const compatibleSlot = findCompatibleSlotOnNode(
+            newNode,
+            contextMenu.sourceSlotType,
+            dragged,
+            ingredientIndex,
+        );
 
-        if (targetIndex >= 0) {
+        if (compatibleSlot) {
             connectSlots(
                 contextMenu.sourceNodeId,
                 contextMenu.sourceSlotType,
                 contextMenu.sourceItemIndex,
                 contextMenu.itemName,
-                {
-                    nodeId: newNode.id,
-                    slotType: targetSlotType,
-                    itemIndex: targetIndex,
-                    itemName: contextMenu.itemName,
-                },
+                compatibleSlot,
             );
         }
 
@@ -665,7 +764,7 @@ export default function RecipeCanvas() {
 
             const compatibleSlot = findCompatibleSlotAt(
                 dropPoint,
-                drag.itemName,
+                { name: drag.itemName, itemId: drag.itemId },
                 drag.sourceSlotType,
                 drag.sourceNodeId,
             );
@@ -829,6 +928,7 @@ export default function RecipeCanvas() {
         index: number,
     ) => {
         const displayName = getSlotItemName(node, slotType, index);
+        const iconId = getSlotItemIconId(node, slotType, index);
         const isEmpty = !displayName;
 
         return (
@@ -855,7 +955,7 @@ export default function RecipeCanvas() {
                         {slotType === 'input' ? 'IN' : 'OUT'}
                     </span>
                 ) : (
-                    <ItemIconView itemName={displayName} />
+                    <ItemIconView itemName={displayName} iconId={iconId} />
                 )}
             </div>
         );

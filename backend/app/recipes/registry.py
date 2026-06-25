@@ -6,15 +6,15 @@ from pathlib import Path
 
 from app.recipes.adapters import item_id_to_display_name
 from app.recipes.ingredient import IngredientKind
-from app.recipes.loaders.tag_loader import TagLoader, normalize_tag_id
+from app.recipes.loaders.tag_loader import TagLoader, is_tag_id, normalize_tag_id
 from app.recipes.models import Recipe
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.services.item_matching import items_match
 
 DEFAULT_ALIASES: dict[str, str] = {
     "planks": "oak planks",
-    "logs": "oak logs",
-    "logs that burn": "oak logs",
+    "logs": "oak log",
+    "logs that burn": "oak log",
     "wooden tool materials": "oak planks",
     "stone tool materials": "cobblestone",
 }
@@ -68,7 +68,7 @@ class IngredientRegistry:
                 id=normalized_id,
                 kind=IngredientKind.TAG,
                 display_name=display,
-                icon_id=self._display_name_to_icon_id(self.resolve_alias(display)),
+                icon_id=self._tag_to_icon_id(normalized_id, display),
             )
         else:
             ingredient = Ingredient(
@@ -89,6 +89,9 @@ class IngredientRegistry:
         normalized = normalize_tag_id(tag_id)
         members = self._tag_loader.resolve_transitive(self._tag_members, normalized)
         return sorted(members)
+
+    def list_tag_ids(self) -> list[str]:
+        return sorted(self._tag_members.keys())
 
     def resolve_alias(self, name: str) -> str:
         normalized = name.strip().lower()
@@ -120,16 +123,12 @@ class IngredientRegistry:
             return False
 
         normalized_id = self._normalize_ingredient_id(ingredient_id)
-        display_name = item_id_to_display_name(normalized_id)
-        alias = self.resolve_alias(display_name).lower()
 
-        candidates = {
-            normalized_id.lower(),
-            display_name.lower(),
-            alias,
-        }
+        if self._matches_ingredient_candidates(normalized_needle, normalized_id):
+            return True
 
-        if any(items_match(normalized_needle, candidate) for candidate in candidates):
+        needle_tag_id = self._needle_to_tag_id(normalized_needle)
+        if needle_tag_id is not None and self._is_member_of_tag(normalized_id, needle_tag_id):
             return True
 
         if normalized_id.startswith("tag:"):
@@ -138,6 +137,52 @@ class IngredientRegistry:
                     return True
 
         return False
+
+    def _matches_ingredient_candidates(self, needle: str, ingredient_id: str) -> bool:
+        display_name = item_id_to_display_name(ingredient_id)
+        alias = self.resolve_alias(display_name).lower()
+        candidates = {
+            ingredient_id.lower(),
+            display_name.lower(),
+            alias,
+        }
+        return any(
+            items_match(needle, candidate) or self._item_ids_equivalent(needle, candidate)
+            for candidate in candidates
+        )
+
+    def _needle_to_tag_id(self, needle: str) -> str | None:
+        if is_tag_id(needle):
+            return normalize_tag_id(needle)
+
+        for ingredient in self._ingredients.values():
+            if ingredient.kind != IngredientKind.TAG:
+                continue
+            if needle == ingredient.display_name.lower():
+                return normalize_tag_id(ingredient.id)
+
+        return None
+
+    def _is_member_of_tag(self, item_id: str, tag_id: str) -> bool:
+        members = self.resolve_tag(tag_id)
+        if not members:
+            return False
+
+        normalized_item = self._normalize_item_id(item_id)
+        for member in members:
+            if self._item_ids_equivalent(normalized_item, self._normalize_item_id(member)):
+                return True
+        return False
+
+    @staticmethod
+    def _item_ids_equivalent(left: str, right: str) -> bool:
+        if left == right:
+            return True
+        return left.split(":", 1)[-1] == right.split(":", 1)[-1]
+
+    @staticmethod
+    def _normalize_item_id(item_id: str) -> str:
+        return item_id.strip().lower()
 
     @staticmethod
     def _normalize_ingredient_id(ingredient_id: str) -> str:
@@ -153,6 +198,17 @@ class IngredientRegistry:
     @staticmethod
     def _display_name_to_icon_id(display_name: str) -> str:
         return display_name.strip().lower().replace(" ", "_")
+
+    def _tag_to_icon_id(self, tag_id: str, display_name: str) -> str:
+        alias_target = self.resolve_alias(display_name)
+        if alias_target != display_name:
+            return self._display_name_to_icon_id(alias_target)
+
+        members = self.resolve_tag(tag_id)
+        if members:
+            return self._item_id_to_icon_id(members[0])
+
+        return self._display_name_to_icon_id(display_name)
 
 
 _default_tag_loader = TagLoader()

@@ -115,23 +115,25 @@ async function renderSingleIcon(assets, iconName, outputPath, width, height, min
         version: minecraftVersion,
     };
 
-    try {
-        await renderItem(baseOptions);
-        return { name: iconName, kind: 'item' };
-    } catch (itemError) {
+    // Блоки (доски, iron_block) — сначала 3D-модель блока; предметы (лодка) — item.
+    const attempts = [
+        ['block', renderBlock],
+        ['item', renderItem],
+    ];
+
+    let lastError = null;
+    for (const [, renderFn] of attempts) {
         try {
-            await renderBlock(baseOptions);
-            return { name: iconName, kind: 'block' };
-        } catch (blockError) {
-            const reason =
-                blockError instanceof Error
-                    ? blockError.message
-                    : itemError instanceof Error
-                      ? itemError.message
-                      : 'render failed';
-            return { name: iconName, skipped: reason };
+            await renderFn(baseOptions);
+            return { name: iconName };
+        } catch (error) {
+            lastError = error;
         }
     }
+
+    const reason =
+        lastError instanceof Error ? lastError.message : 'render failed';
+    return { name: iconName, skipped: reason };
 }
 
 async function renderIcons({

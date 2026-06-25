@@ -50,3 +50,48 @@ def test_resolve_item_icon_prefers_rendered_icons(tmp_path, monkeypatch: pytest.
 
     get_settings.cache_clear()
     version_service_module.get_version_service.cache_clear()
+
+
+def test_list_item_icons_skips_phantom_names_when_rendered_exists(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version_dir = tmp_path / "9.9"
+    rendered_dir = version_dir / "rendered-icons"
+    rendered_dir.mkdir(parents=True)
+    (rendered_dir / "oak_planks.png").write_bytes(b"rendered")
+
+    monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))
+    from app.core.config import get_settings
+    from app.services import version_service as version_service_module
+
+    get_settings.cache_clear()
+    version_service_module.get_version_service.cache_clear()
+    service = version_service_module.get_version_service()
+
+    icons = service.list_item_icons("9.9")
+    assert icons == ["oak_planks.png"]
+    assert "iron_block.png" not in icons
+
+    get_settings.cache_clear()
+    version_service_module.get_version_service.cache_clear()
+
+
+def test_resolve_item_icon_skips_jar_when_rendered_dir_exists(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    version_dir = tmp_path / "9.9"
+    rendered_dir = version_dir / "rendered-icons"
+    rendered_dir.mkdir(parents=True)
+
+    monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))
+    from app.core.config import get_settings
+    from app.services import version_service as version_service_module
+
+    get_settings.cache_clear()
+    version_service_module.get_version_service.cache_clear()
+    service = version_service_module.get_version_service()
+
+    assert service.resolve_item_icon("9.9", "oak_planks.png") is None
+
+    get_settings.cache_clear()
+    version_service_module.get_version_service.cache_clear()

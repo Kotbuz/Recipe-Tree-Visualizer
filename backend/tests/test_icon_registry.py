@@ -18,6 +18,11 @@ def test_icon_id_for_tag_uses_alias() -> None:
     assert icon_id_for_ingredient("tag:minecraft:planks", "26.2") == "oak_planks"
 
 
+def test_icon_id_for_acacia_logs_tag_uses_member() -> None:
+    _require_vanilla_jar()
+    assert icon_id_for_ingredient("tag:minecraft:acacia_logs", "26.2") == "acacia_log"
+
+
 def test_collect_recipe_icon_ids_includes_recipe_items() -> None:
     _require_vanilla_jar()
     icon_ids = collect_recipe_icon_ids("26.2")

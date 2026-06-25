@@ -43,6 +43,28 @@ def test_search_recipes_focus_item_output() -> None:
     )
 
 
+def test_search_recipes_focus_tag_planks_output() -> None:
+    _require_recipe_source()
+    response = client.get(
+        "/recipes",
+        params={
+            "version": "26.2",
+            "focus_item": "tag:minecraft:planks",
+            "focus_role": RecipeIngredientRole.OUTPUT.value,
+            "limit": 50,
+        },
+    )
+
+    assert response.status_code == 200
+    recipes = response.json()["recipes"]
+    assert recipes
+    assert any(
+        item.get("item_id", "").endswith("_planks")
+        for recipe in recipes
+        for item in recipe["outputs"]
+    )
+
+
 def test_search_recipes_focus_item_includes_item_id() -> None:
     _require_recipe_source()
     response = client.get(
