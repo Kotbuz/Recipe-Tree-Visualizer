@@ -1,0 +1,28 @@
+.slot-quantity-badge {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #475569;
+    line-height: 1;
+    white-space: nowrap;
+}
+
+.slot-quantity-badge--input {
+    margin-right: 0.2rem;
+}
+
+.slot-quantity-badge--output {
+    margin-left: 0.2rem;
+}
+
+.recipe-node-item--with-quantity {
+    display: inline-flex;
+    align-items: center;
+}
+
+.recipe-node-item--with-quantity.recipe-node-item--input {
+    flex-direction: row;
+}
+
+.recipe-node-item--with-quantity.recipe-node-item--output {
+    flex-direction: row;
+}
