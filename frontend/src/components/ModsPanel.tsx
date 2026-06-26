@@ -1,5 +1,7 @@
 import { useState } from 'react';
 import { DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from '../canvas';
+import type { FlowRateUnit } from '../types/production';
+import { FLOW_RATE_UNIT_LABELS } from '../utils/flowRate';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
@@ -11,6 +13,9 @@ type ModsPanelProps = {
     modCount?: number;
     defaultDurationTicks: number;
     onDefaultDurationTicksChange: (value: number) => void;
+    flowRateUnit: FlowRateUnit;
+    onFlowRateUnitChange: (unit: FlowRateUnit) => void;
+    calculationError?: string | null;
 };
 
 export default function ModsPanel({
@@ -22,6 +27,9 @@ export default function ModsPanel({
     modCount = 0,
     defaultDurationTicks,
     onDefaultDurationTicksChange,
+    flowRateUnit,
+    onFlowRateUnitChange,
+    calculationError,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -98,6 +106,27 @@ export default function ModsPanel({
                     {TICKS_PER_SECOND} тиков = 1 сек. Новые рецепты без времени в jar получают это
                     значение ({DEFAULT_DURATION_TICKS} по умолчанию).
                 </p>
+                <label className="mods-panel-field">
+                    <span className="mods-panel-field-label">Единица скорости на линиях</span>
+                    <select
+                        className="mods-panel-select"
+                        value={flowRateUnit}
+                        onChange={(event) =>
+                            onFlowRateUnitChange(event.target.value as FlowRateUnit)
+                        }
+                    >
+                        {(Object.keys(FLOW_RATE_UNIT_LABELS) as FlowRateUnit[]).map((unit) => (
+                            <option key={unit} value={unit}>
+                                {FLOW_RATE_UNIT_LABELS[unit]}
+                            </option>
+                        ))}
+                    </select>
+                </label>
+                {calculationError && (
+                    <p className="mods-panel-error" role="alert">
+                        {calculationError}
+                    </p>
+                )}
             </div>
 
             <p className="mods-panel-hint">

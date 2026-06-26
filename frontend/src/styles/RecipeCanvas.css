@@ -75,6 +75,28 @@
     opacity: 0.85;
 }
 
+.recipe-connection-label {
+    font-size: 11px;
+    font-weight: 700;
+    fill: #334155;
+    paint-order: stroke;
+    stroke: #ffffff;
+    stroke-width: 3px;
+    pointer-events: none;
+}
+
+.recipe-node-item--target {
+    outline: 2px solid #4f46e5;
+    outline-offset: 2px;
+    border-radius: 8px;
+}
+
+.recipe-target-modal-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.5rem;
+}
+
 .recipe-node {
     position: absolute;
     display: grid;

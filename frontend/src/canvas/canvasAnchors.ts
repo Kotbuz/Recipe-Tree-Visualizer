@@ -13,6 +13,39 @@ export function slotConnectionSide(slotType: SlotType): ConnectionSide {
 
 const tangentLength = (x1: number, x2: number) => Math.max(Math.abs(x2 - x1) * 0.45, 48);
 
+/** Точка на кривой Безье при t ∈ [0, 1]. */
+export function getCanvasBezierPoint(
+    from: CanvasAnchorPoint,
+    to: CanvasAnchorPoint,
+    t: number,
+): CanvasPoint {
+    const tangent = tangentLength(from.x, to.x);
+    const cp1x = from.side === 'left' ? from.x - tangent : from.x + tangent;
+    const cp2x = to.side === 'left' ? to.x - tangent : to.x + tangent;
+    const p0x = from.x;
+    const p0y = from.y;
+    const p1x = cp1x;
+    const p1y = from.y;
+    const p2x = cp2x;
+    const p2y = to.y;
+    const p3x = to.x;
+    const p3y = to.y;
+    const mt = 1 - t;
+
+    return {
+        x:
+            mt ** 3 * p0x +
+            3 * mt ** 2 * t * p1x +
+            3 * mt * t ** 2 * p2x +
+            t ** 3 * p3x,
+        y:
+            mt ** 3 * p0y +
+            3 * mt ** 2 * t * p1y +
+            3 * mt * t ** 2 * p2y +
+            t ** 3 * p3y,
+    };
+}
+
 /** Кривая Безье в координатах холста (для SVG внутри transform-слоя). */
 export function buildCanvasBezierPath(from: CanvasAnchorPoint, to: CanvasAnchorPoint): string {
     const t = tangentLength(from.x, to.x);

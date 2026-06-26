@@ -6,6 +6,7 @@ import {
 } from './canvasSchema';
 import type { CanvasTransform } from './canvasCoords';
 import type { RecipeConnection } from '../types/recipe';
+import type { FlowRateUnit, ProductionTarget } from '../types/production';
 
 export function createCanvasDocument(params: {
     nodes: CanvasNodeRecord[];
@@ -13,6 +14,8 @@ export function createCanvasDocument(params: {
     viewport?: CanvasTransform;
     name?: string;
     defaultDurationTicks?: number;
+    flowRateUnit?: FlowRateUnit;
+    productionTarget?: ProductionTarget | null;
 }): CanvasDocument {
     return {
         version: CANVAS_FILE_VERSION,
@@ -20,6 +23,8 @@ export function createCanvasDocument(params: {
             name: params.name,
             updatedAt: new Date().toISOString(),
             defaultDurationTicks: params.defaultDurationTicks ?? DEFAULT_DURATION_TICKS,
+            flowRateUnit: params.flowRateUnit,
+            productionTarget: params.productionTarget ?? undefined,
         },
         viewport: params.viewport,
         nodes: params.nodes,

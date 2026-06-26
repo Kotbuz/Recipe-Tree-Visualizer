@@ -1,4 +1,5 @@
 import type { RecipeConnection, RecipeItem, NodeKind } from '../types/recipe';
+import type { FlowRateUnit, ProductionTarget } from '../types/production';
 import type { CanvasTransform } from './canvasCoords';
 
 export const CANVAS_FILE_VERSION = 2 as const;
@@ -21,6 +22,8 @@ export interface CanvasDocumentMeta {
     name?: string;
     updatedAt?: string;
     defaultDurationTicks?: number;
+    flowRateUnit?: FlowRateUnit;
+    productionTarget?: ProductionTarget;
 }
 
 export interface CanvasDocument {
