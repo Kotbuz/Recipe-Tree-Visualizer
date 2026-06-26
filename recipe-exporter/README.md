@@ -39,8 +39,8 @@ Requirements: **JDK 17+** to run Gradle (toolchain auto-downloads **JDK 8** for 
 RetroFuturaGradle **1.4.9** is vendored under `versions/1.7.10/vendor-maven/` (no GTNH Nexus
 needed for the Gradle plugin). Run `.\install-vendor-rfg.ps1` only if that jar is missing.
 
-Optional: copy `gradle.local.properties.example` → `gradle.local.properties` to pin a local JDK 8
-path on Windows; CI uses the Foojay toolchain resolver instead.
+Optional: pin a local JDK 8 in `%USERPROFILE%\.gradle\gradle.properties` on Windows
+(see `gradle.local.properties.example`).
 
 ```powershell
 cd recipe-exporter/versions/1.7.10
@@ -97,9 +97,8 @@ cd recipe-exporter/versions/1.7.10
 
 This produces `recipe-exporter/dist/recipe-exporter-1.7.10.jar`, which is baked into the image.
 
-CI workflow **Build recipe-exporter mod** runs the same Gradle build on push (first run still
-downloads Minecraft 1.7.10 + Forge). Artifact: `recipe-exporter-1.7.10.jar` → place in
-`recipe-exporter/dist/` if you build via Actions instead of locally.
+CI workflow **Build recipe-exporter mod** is **manual only** (Actions → Run workflow).
+First run downloads Minecraft 1.7.10 + Forge and may take 15–40 minutes.
 
 ### Build and run
 

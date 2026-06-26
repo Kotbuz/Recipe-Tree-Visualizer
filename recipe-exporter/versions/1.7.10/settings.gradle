@@ -1,14 +1,3 @@
-def localPropertiesFile = file('gradle.local.properties')
-if (localPropertiesFile.isFile()) {
-    Properties localProperties = new Properties()
-    localPropertiesFile.withInputStream { localProperties.load(it) }
-    localProperties.each { key, value ->
-        if (System.getProperty(key.toString()) == null) {
-            System.setProperty(key.toString(), value.toString())
-        }
-    }
-}
-
 pluginManagement {
     repositories {
         gradlePluginPortal()

@@ -1,4 +1,4 @@
-# Copy to gradle.local.properties (gitignored) to pin a local JDK 8 for Minecraft compilation.
-# CI and fresh clones rely on the Foojay toolchain resolver instead.
+# Optional: add to %USERPROFILE%\.gradle\gradle.properties (Windows) to pin JDK 8 for Minecraft.
+# Fresh clones and CI use the Foojay toolchain resolver instead.
 #
 # org.gradle.java.installations.paths=C:\\Program Files\\Eclipse Adoptium\\jdk-8.0.492.9-hotspot

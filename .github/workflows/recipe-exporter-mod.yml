@@ -1,11 +1,8 @@
 name: Build recipe-exporter mod
 
+# Manual only — mod is built locally; avoids red CI on every push to recipe-exporter/.
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - "recipe-exporter/versions/**"
-      - ".github/workflows/recipe-exporter-mod.yml"
 
 jobs:
   build-mod-jar:

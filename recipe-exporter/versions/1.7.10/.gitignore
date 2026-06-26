@@ -2,7 +2,6 @@
 /build/
 /.gradle/
 /export-out/
-/gradle.local.properties
 /vendor-maven/**/*.jar
 !/vendor-maven/com/gtnewhorizons/retrofuturagradle/1.4.9/retrofuturagradle-1.4.9.jar
 *.log
