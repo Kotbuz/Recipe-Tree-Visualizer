@@ -1,5 +1,6 @@
 import {
     CANVAS_FILE_VERSION,
+    DEFAULT_DURATION_TICKS,
     type CanvasDocument,
     type CanvasNodeRecord,
 } from './canvasSchema';
@@ -11,12 +12,14 @@ export function createCanvasDocument(params: {
     connections: RecipeConnection[];
     viewport?: CanvasTransform;
     name?: string;
+    defaultDurationTicks?: number;
 }): CanvasDocument {
     return {
         version: CANVAS_FILE_VERSION,
         meta: {
             name: params.name,
             updatedAt: new Date().toISOString(),
+            defaultDurationTicks: params.defaultDurationTicks ?? DEFAULT_DURATION_TICKS,
         },
         viewport: params.viewport,
         nodes: params.nodes,
@@ -24,12 +27,42 @@ export function createCanvasDocument(params: {
     };
 }
 
-export function serializeCanvasDocument(document: CanvasDocument): string {
-    return JSON.stringify(document, null, 2);
+function migrateV1Document(data: {
+    version: 1;
+    meta?: CanvasDocument['meta'];
+    viewport?: CanvasTransform;
+    nodes: CanvasNodeRecord[];
+    connections: RecipeConnection[];
+}): CanvasDocument {
+    return {
+        version: CANVAS_FILE_VERSION,
+        meta: {
+            ...data.meta,
+            defaultDurationTicks: data.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS,
+        },
+        viewport: data.viewport,
+        nodes: data.nodes.map((node) => {
+            if (node.kind !== 'recipe' || node.durationTicks !== undefined) {
+                return node;
+            }
+            return { ...node, durationTicks: DEFAULT_DURATION_TICKS };
+        }),
+        connections: data.connections,
+    };
 }
 
 export function parseCanvasDocument(raw: string): CanvasDocument {
-    const data = JSON.parse(raw) as CanvasDocument;
+    const data = JSON.parse(raw) as {
+        version: number;
+        meta?: CanvasDocument['meta'];
+        viewport?: CanvasTransform;
+        nodes: CanvasNodeRecord[];
+        connections: RecipeConnection[];
+    };
+
+    if (data.version === 1) {
+        return migrateV1Document(data as Parameters<typeof migrateV1Document>[0]);
+    }
 
     if (data.version !== CANVAS_FILE_VERSION) {
         throw new Error(`Неподдерживаемая версия файла: ${data.version}`);
@@ -39,7 +72,11 @@ export function parseCanvasDocument(raw: string): CanvasDocument {
         throw new Error('Некорректный формат файла холста');
     }
 
-    return data;
+    return data as CanvasDocument;
+}
+
+export function serializeCanvasDocument(document: CanvasDocument): string {
+    return JSON.stringify(document, null, 2);
 }
 
 export function downloadCanvasDocument(document: CanvasDocument, filename = 'recipe-tree.json') {
