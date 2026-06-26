@@ -215,8 +215,8 @@ class RecipeLookup:
         for key in _focus_lookup_keys(needle):
             candidate_ids |= index.get(key, frozenset())
 
-        if not candidate_ids and self._ingredient_registry is not None:
-            candidate_ids = self._expand_focus_candidates_via_registry(needle, index)
+        if self._ingredient_registry is not None:
+            candidate_ids |= self._expand_focus_candidates_via_registry(needle, index)
 
         if not candidate_ids:
             return None
@@ -231,6 +231,9 @@ class RecipeLookup:
                 filtered.append(recipe)
                 if limit is not None and len(filtered) >= limit:
                     break
+        if not filtered:
+            return None
+
         return tuple(filtered)
 
     def _expand_focus_candidates_via_registry(
@@ -247,7 +250,12 @@ class RecipeLookup:
             for member in self._ingredient_registry.resolve_tag(tag_id):
                 for key in _focus_lookup_keys(member):
                     candidate_ids |= index.get(key, frozenset())
-            return candidate_ids
+            candidate_ids |= index.get(tag_id.lower(), frozenset())
+
+        for tag in self._ingredient_registry.list_tag_ids():
+            if self._ingredient_registry.ingredient_matches(needle, tag):
+                candidate_ids |= index.get(tag.lower(), frozenset())
+                candidate_ids |= index.get(tag.rsplit(":", 1)[-1], frozenset())
 
         for ingredient in self._ingredient_registry.search(needle, limit=32):
             for key in _focus_lookup_keys(ingredient.id):
@@ -317,6 +325,8 @@ class RecipeLookup:
             alias = self._ingredient_registry.resolve_alias(cheap_display).lower()
             if items_match(needle, alias):
                 return True
+            if self._ingredient_registry.resolve_alias(needle) != needle:
+                return self._ingredient_matches(needle, item_id)
 
         if item_id.startswith("tag:"):
             return self._ingredient_matches(needle, item_id)
@@ -675,9 +685,9 @@ class RecipeManager:
             return []
 
         needs_registry = bool(
-            (normalized_uses_item and ":" not in normalized_uses_item)
+            normalized_focus_item
+            or (normalized_uses_item and ":" not in normalized_uses_item)
             or (normalized_produces_item and ":" not in normalized_produces_item)
-            or (normalized_focus_item and ":" not in normalized_focus_item)
             or (normalized_query and ":" in normalized_query)
         )
         lookup = self.lookup(

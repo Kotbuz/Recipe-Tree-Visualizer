@@ -161,7 +161,12 @@ class JvmRecipeExportService:
         mode = self._settings.recipe_exporter_mode.strip().lower()
         if mode in {"auto", "docker"}:
             try:
-                return self._run_http_exporter(version, recipe_dir, force=force)
+                return self._run_http_exporter(
+                    version,
+                    recipe_dir,
+                    force=force,
+                    profile_id=profile_id,
+                )
             except JvmRecipeExportError:
                 if mode == "docker":
                     raise
@@ -349,13 +354,19 @@ class JvmRecipeExportService:
         recipe_dir: Path,
         *,
         force: bool = False,
+        profile_id: str | None = None,
     ) -> int:
         exporter_url = self._settings.recipe_exporter_url.strip()
         if not exporter_url:
             raise JvmRecipeExportError("RECIPE_EXPORTER_URL is not configured")
 
+        resolved_profile = version_service._resolve_profile_id(version, profile_id)
         endpoint = f"{exporter_url.rstrip('/')}/export"
-        payload = {"version": version, "force": force}
+        payload = {
+            "version": version,
+            "force": force,
+            "profile_id": resolved_profile,
+        }
         timeout = httpx.Timeout(self._settings.recipe_exporter_timeout_seconds)
 
         logger.info("Requesting Forge recipe export for {} via {}", version, endpoint)
@@ -396,7 +407,7 @@ class JvmRecipeExportService:
             exported,
             data.get("duration_seconds", "?"),
         )
-        self._finalize_export_status(version)
+        self._finalize_export_status(version, profile_id=profile_id)
         return exported
 
     def _run_java_jar_exporter(

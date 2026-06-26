@@ -27,8 +27,16 @@ _busy = False
 _last_result: dict[str, Any] | None = None
 
 
-def _count_recipes(version: str) -> int:
-    recipe_dir = MINECRAFT_ROOT / version / "recipe"
+def _profile_recipe_dir(version: str, profile_id: str) -> Path:
+    profile_root = MINECRAFT_ROOT / version / "profiles" / profile_id / "recipe"
+    if profile_root.is_dir():
+        return profile_root
+    legacy = MINECRAFT_ROOT / version / "recipe"
+    return legacy
+
+
+def _count_recipes(version: str, profile_id: str = "default") -> int:
+    recipe_dir = _profile_recipe_dir(version, profile_id)
     if not recipe_dir.is_dir():
         return 0
     return len(
@@ -40,20 +48,23 @@ def _count_recipes(version: str) -> int:
     )
 
 
-def _run_export(version: str) -> dict[str, Any]:
+def _run_export(version: str, profile_id: str = "default") -> dict[str, Any]:
     global _busy, _last_result
 
     if version not in SUPPORTED_VERSIONS:
         return {
             "status": "error",
             "version": version,
+            "profile_id": profile_id,
             "error": f"unsupported version (supported: {sorted(SUPPORTED_VERSIONS)})",
         }
 
-    recipe_dir = MINECRAFT_ROOT / version / "recipe"
+    recipe_dir = _profile_recipe_dir(version, profile_id)
     recipe_dir.mkdir(parents=True, exist_ok=True)
 
     started = time.time()
+    env = os.environ.copy()
+    env["PROFILE_ID"] = profile_id
     try:
         completed = subprocess.run(
             [str(EXPORT_SCRIPT), version],
@@ -61,11 +72,13 @@ def _run_export(version: str) -> dict[str, Any]:
             capture_output=True,
             text=True,
             timeout=EXPORT_TIMEOUT_SECONDS,
+            env=env,
         )
     except subprocess.TimeoutExpired:
         result = {
             "status": "error",
             "version": version,
+            "profile_id": profile_id,
             "error": "export timed out",
             "duration_seconds": round(time.time() - started, 2),
         }
@@ -76,16 +89,18 @@ def _run_export(version: str) -> dict[str, Any]:
         result = {
             "status": "error",
             "version": version,
+            "profile_id": profile_id,
             "error": detail or "export failed",
             "duration_seconds": round(time.time() - started, 2),
         }
         _last_result = result
         return result
 
-    exported = _count_recipes(version)
+    exported = _count_recipes(version, profile_id)
     result = {
         "status": "ok",
         "version": version,
+        "profile_id": profile_id,
         "exported": exported,
         "duration_seconds": round(time.time() - started, 2),
     }
@@ -163,15 +178,17 @@ class ExportHandler(BaseHTTPRequestHandler):
             self._send_json(400, {"error": "version is required"})
             return
 
+        profile_id = str(payload.get("profile_id", "default")).strip() or "default"
         force = bool(payload.get("force", False))
         if not force:
-            existing = _count_recipes(version)
+            existing = _count_recipes(version, profile_id)
             if existing > 0:
                 self._send_json(
                     200,
                     {
                         "status": "skipped",
                         "version": version,
+                        "profile_id": profile_id,
                         "exported": existing,
                         "reason": "recipe directory already has exports",
                     },
@@ -184,7 +201,7 @@ class ExportHandler(BaseHTTPRequestHandler):
 
         _busy = True
         try:
-            result = _run_export(version)
+            result = _run_export(version, profile_id)
         finally:
             _busy = False
             _lock.release()

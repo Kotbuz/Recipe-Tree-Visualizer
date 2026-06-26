@@ -1,4 +1,4 @@
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
@@ -143,14 +143,27 @@ def prepare_forge_install(
 
 
 @router.get("/{version}/item-icons", response_model=ItemIconManifestResponse)
-def list_item_icons(version: str) -> ItemIconManifestResponse:
-    icons = version_service.list_item_icons(version)
+def list_item_icons(
+    version: str,
+    background_tasks: BackgroundTasks,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> ItemIconManifestResponse:
+    if version in version_service.list_installed_versions():
+        icons_preview = version_service.list_item_icons(version, profile_id=profile_id)
+        if not icons_preview and version_service.resolve_jar_path(version) is not None:
+            background_tasks.add_task(
+                vanilla_icon_service.ensure_icons,
+                version,
+                profile_id=profile_id,
+            )
+
+    icons = version_service.list_item_icons(version, profile_id=profile_id)
     if not icons and version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     return ItemIconManifestResponse(
         version=version,
         icons=icons,
-        revision=version_service.icons_revision(version),
+        revision=version_service.icons_revision(version, profile_id=profile_id),
     )
 
 
@@ -283,8 +296,12 @@ def clear_recipe_export(
 
 
 @router.get("/{version}/items/{filename}", response_model=None)
-def get_item_icon(version: str, filename: str) -> FileResponse | Response:
-    resolved = version_service.resolve_item_icon(version, filename)
+def get_item_icon(
+    version: str,
+    filename: str,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> FileResponse | Response:
+    resolved = version_service.resolve_item_icon(version, filename, profile_id=profile_id)
     if resolved is None:
         raise HTTPException(status_code=404, detail="Icon not found")
 
@@ -300,13 +317,16 @@ def get_item_icon(version: str, filename: str) -> FileResponse | Response:
 
 
 @router.post("/{version}/render-icons", response_model=VanillaIconRenderResponse)
-def render_vanilla_icons(version: str) -> VanillaIconRenderResponse:
+def render_vanilla_icons(
+    version: str,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> VanillaIconRenderResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     if version_service.resolve_jar_path(version) is None:
         raise HTTPException(status_code=404, detail=f"Jar not found for version: {version}")
 
-    result = vanilla_icon_service.ensure_icons(version)
+    result = vanilla_icon_service.ensure_icons(version, profile_id=profile_id)
     return VanillaIconRenderResponse(
         version=result.version,
         required=result.required,

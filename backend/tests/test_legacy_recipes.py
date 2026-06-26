@@ -37,6 +37,16 @@ def test_discover_skips_advancements_and_aerecipes() -> None:
     assert not is_recipe_entry("assets/appliedenergistics2/aerecipes/grinder/bonemeal.json")
 
 
+def test_ingredient_resolver_modern_tag_strings() -> None:
+    resolver = IngredientResolver(version="26.2", ore_dict={})
+
+    parsed = resolver.resolve("#minecraft:oak_logs")
+    assert parsed.item_id == "tag:minecraft:oak_logs"
+
+    parsed = resolver.resolve({"tag": "minecraft:planks"})
+    assert parsed.item_id == "tag:minecraft:planks"
+
+
 def test_ingredient_resolver_ore_dict_and_metadata() -> None:
     ore_dict = load_ore_dict("1.12.2")
     resolver = IngredientResolver(version="1.12.2", ore_dict=ore_dict)

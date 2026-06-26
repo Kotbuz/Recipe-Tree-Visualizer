@@ -152,9 +152,9 @@ class VersionService:
 
         return best if best_size > 1024 else None
 
-    def list_item_icons(self, version: str) -> list[str]:
+    def list_item_icons(self, version: str, profile_id: str | None = None) -> list[str]:
         icons: set[str] = set()
-        rendered_dir = self._rendered_icons_dir(version)
+        rendered_dir = self._rendered_icons_dir(version, profile_id)
 
         for directory in (rendered_dir, self._legacy_textures_dir(version)):
             if directory is None:
@@ -163,15 +163,19 @@ class VersionService:
                 icons.add(path.name)
 
         # Пока renderer ещё не создал rendered-icons, даём манифест из рецептов
-        # (с jar-fallback). После появления папки — только реальные PNG, без
-        # «фантомных» имён, иначе браузер кэширует плоские текстуры из jar.
-        if not icons and self.resolve_jar_path(version) is not None:
+        # (с jar-fallback). После появления папки — только реальные PNG, даже если
+        # папка пока пустая: иначе браузер запрашивает несуществующие плоские текстуры.
+        if (
+            not icons
+            and rendered_dir is None
+            and self.resolve_jar_path(version) is not None
+        ):
             icons.update(self._recipe_icon_filenames(version))
 
         return sorted(icons)
 
-    def icons_revision(self, version: str) -> str:
-        rendered_dir = self._rendered_icons_dir(version)
+    def icons_revision(self, version: str, profile_id: str | None = None) -> str:
+        rendered_dir = self._rendered_icons_dir(version, profile_id)
         if rendered_dir is None:
             return "0"
 
@@ -196,7 +200,12 @@ class VersionService:
             "aliases": registry.aliases,
         }
 
-    def resolve_item_icon_path(self, version: str, filename: str) -> Path | None:
+    def resolve_item_icon_path(
+        self,
+        version: str,
+        filename: str,
+        profile_id: str | None = None,
+    ) -> Path | None:
         safe_name = Path(filename).name
         if safe_name != filename or not safe_name.endswith(".png"):
             return None
@@ -204,7 +213,7 @@ class VersionService:
         texture_id = texture_id_from_icon_filename(safe_name)
         resolved_filename = f"{texture_id}.png"
 
-        for directory in (self._rendered_icons_dir(version), self._legacy_textures_dir(version)):
+        for directory in (self._rendered_icons_dir(version, profile_id), self._legacy_textures_dir(version)):
             if directory is None:
                 continue
             for candidate_name in {safe_name, resolved_filename}:
@@ -217,12 +226,14 @@ class VersionService:
         self,
         version: str,
         filename: str,
+        profile_id: str | None = None,
     ) -> tuple[Literal["file", "bytes"], Path | bytes] | None:
-        icon_path = self.resolve_item_icon_path(version, filename)
+        icon_path = self.resolve_item_icon_path(version, filename, profile_id=profile_id)
         if icon_path is not None:
             return ("file", icon_path)
 
-        if self._rendered_icons_dir(version) is not None:
+        rendered_dir = self._rendered_icons_dir(version, profile_id)
+        if rendered_dir is not None:
             return None
 
         jar_bytes = self.read_jar_texture_bytes(version, filename)
@@ -258,21 +269,39 @@ class VersionService:
 
         return None
 
+    def _to_renderer_path(self, host_path: Path) -> str:
+        """Преобразует путь бэкенда в путь, видимый контейнеру renderer (общий volume)."""
+        settings = get_settings()
+        versions_root = settings.minecraft_versions_path.resolve()
+        renderer_root = Path(settings.renderer_minecraft_root)
+        resolved = host_path.resolve()
+        if renderer_root.is_dir():
+            try:
+                relative = resolved.relative_to(versions_root)
+                return str((renderer_root / relative).resolve())
+            except ValueError:
+                pass
+        return str(resolved)
+
     def renderer_jar_path(self, version: str) -> str | None:
         local_jar = self.resolve_jar_path(version)
         if local_jar is None:
             return None
-
-        root = get_settings().renderer_minecraft_root.rstrip("/")
-        flat_jar = get_settings().minecraft_versions_path / f"{version}.jar"
-        if local_jar.resolve() == flat_jar.resolve():
-            return f"{root}/{version}.jar"
-        return f"{root}/{version}/{local_jar.name}"
+        return self._to_renderer_path(local_jar)
 
     def renderer_output_dir(self, version: str, profile_id: str | None = None) -> str:
-        root = get_settings().renderer_minecraft_root.rstrip("/")
-        resolved = self._resolve_profile_id(version, profile_id)
-        return f"{root}/{version}/profiles/{resolved}/rendered-icons"
+        directory = self.ensure_rendered_icons_dir(version, profile_id)
+        return self._to_renderer_path(directory)
+
+    def renderer_mod_jar_paths(self, version: str, profile_id: str | None = None) -> list[str]:
+        mods_dir = self.mods_dir(version, profile_id)
+        if not mods_dir.is_dir():
+            return []
+        return [
+            self._to_renderer_path(path)
+            for path in sorted(mods_dir.glob("*.jar"))
+            if path.is_file()
+        ]
 
     def ensure_rendered_icons_dir(self, version: str, profile_id: str | None = None) -> Path:
         directory = self.profile_dir(
@@ -282,8 +311,8 @@ class VersionService:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
-    def list_rendered_icon_ids(self, version: str) -> set[str]:
-        directory = self._rendered_icons_dir(version)
+    def list_rendered_icon_ids(self, version: str, profile_id: str | None = None) -> set[str]:
+        directory = self._rendered_icons_dir(version, profile_id)
         if directory is None:
             return set()
         return {path.stem for path in directory.glob("*.png")}

@@ -30,7 +30,9 @@ type IngredientIndexResponse = {
 type MinecraftVersionContextValue = {
     version: string;
     versions: string[];
+    profileId: string;
     setVersion: (version: string) => void;
+    setProfileId: (profileId: string) => void;
     refreshInstalledVersions: () => Promise<string[]>;
     hasIcon: (itemName: string, iconId?: string) => boolean;
     itemIconUrl: (itemName: string, iconId?: string) => string | null;
@@ -42,8 +44,16 @@ type MinecraftVersionContextValue = {
 
 const MinecraftVersionContext = createContext<MinecraftVersionContextValue | null>(null);
 
+const profileQuery = (profileId: string | undefined) => {
+    if (!profileId || profileId === 'default') {
+        return '';
+    }
+    return `?profile_id=${encodeURIComponent(profileId)}`;
+};
+
 export function MinecraftVersionProvider({ children }: { children: ReactNode }) {
     const [version, setVersionState] = useState(DEFAULT_MINECRAFT_VERSION);
+    const [profileId, setProfileIdState] = useState('default');
     const [versions, setVersions] = useState<string[]>([DEFAULT_MINECRAFT_VERSION]);
     const [iconNames, setIconNames] = useState<ReadonlySet<string>>(new Set());
     const [iconsRevision, setIconsRevision] = useState('0');
@@ -74,11 +84,17 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
         void refreshInstalledVersions();
     }, [refreshInstalledVersions]);
 
-    const loadIcons = useCallback(async (targetVersion: string) => {
+    const loadIcons = useCallback(async (targetVersion: string, targetProfileId: string) => {
         setIconsReady(false);
+        const profileSuffix = profileQuery(targetProfileId);
         try {
+            void fetch(
+                `/versions/${encodeURIComponent(targetVersion)}/render-icons${profileSuffix}`,
+                { method: 'POST' },
+            );
+
             const response = await fetch(
-                `/versions/${encodeURIComponent(targetVersion)}/item-icons`,
+                `/versions/${encodeURIComponent(targetVersion)}/item-icons${profileSuffix}`,
             );
             if (!response.ok) {
                 setIconNames(new Set());
@@ -96,8 +112,8 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
     }, []);
 
     useEffect(() => {
-        loadIcons(version);
-    }, [version, loadIcons]);
+        loadIcons(version, profileId);
+    }, [version, profileId, loadIcons]);
 
     const loadIngredientIndex = useCallback(async (targetVersion: string) => {
         const maxAttempts = 5;
@@ -143,7 +159,7 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
         pollAttemptsRef.current = 0;
         lastIconCountRef.current = 0;
         stablePollsRef.current = 0;
-    }, [version]);
+    }, [version, profileId]);
 
     useEffect(() => {
         if (!iconsReady) {
@@ -168,16 +184,20 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
 
         const timeoutId = window.setTimeout(() => {
             pollAttemptsRef.current += 1;
-            void loadIcons(version);
+            void loadIcons(version, profileId);
         }, 5000);
 
         return () => {
             window.clearTimeout(timeoutId);
         };
-    }, [iconsReady, iconNames.size, iconsRevision, version, loadIcons]);
+    }, [iconsReady, iconNames.size, iconsRevision, version, profileId, loadIcons]);
 
     const setVersion = useCallback((nextVersion: string) => {
         setVersionState(nextVersion);
+    }, []);
+
+    const setProfileId = useCallback((nextProfileId: string) => {
+        setProfileIdState(nextProfileId || 'default');
     }, []);
 
     const hasIcon = useCallback(
@@ -192,20 +212,26 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             if (!iconNames.has(fileName)) {
                 return null;
             }
-            return `/versions/${encodeURIComponent(version)}/items/${fileName}?v=${encodeURIComponent(iconsRevision)}`;
+            const profileSuffix = profileQuery(profileId);
+            const base = `/versions/${encodeURIComponent(version)}/items/${fileName}${profileSuffix}`;
+            return profileSuffix
+                ? `${base}&v=${encodeURIComponent(iconsRevision)}`
+                : `${base}?v=${encodeURIComponent(iconsRevision)}`;
         },
-        [iconNames, iconsRevision, version],
+        [iconNames, iconsRevision, version, profileId],
     );
 
     const reloadCatalog = useCallback(async () => {
-        await Promise.all([loadIcons(version), loadIngredientIndex(version)]);
-    }, [loadIcons, loadIngredientIndex, version]);
+        await Promise.all([loadIcons(version, profileId), loadIngredientIndex(version)]);
+    }, [loadIcons, loadIngredientIndex, version, profileId]);
 
     const value = useMemo(
         () => ({
             version,
             versions,
+            profileId,
             setVersion,
+            setProfileId,
             refreshInstalledVersions,
             hasIcon,
             itemIconUrl,
@@ -214,7 +240,7 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             ingredientIndex,
             reloadCatalog,
         }),
-        [version, versions, setVersion, refreshInstalledVersions, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex, reloadCatalog],
+        [version, versions, profileId, setVersion, setProfileId, refreshInstalledVersions, hasIcon, itemIconUrl, iconsReady, iconsRevision, ingredientIndex, reloadCatalog],
     );
 
     return (

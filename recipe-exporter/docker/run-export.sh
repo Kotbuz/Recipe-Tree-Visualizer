@@ -2,13 +2,23 @@
 set -euo pipefail
 
 VERSION="${1:?Minecraft version required (e.g. 1.7.10)}"
+PROFILE_ID="${PROFILE_ID:-default}"
 MINECRAFT_ROOT="${MINECRAFT_ROOT:-/data/minecraft}"
 FORGE_DIR="${FORGE_DIR:-/opt/forge}"
 
-MODS_DIR="${MINECRAFT_ROOT}/${VERSION}/mods"
-OUTPUT_DIR="${MINECRAFT_ROOT}/${VERSION}/recipe"
+PROFILE_ROOT="${MINECRAFT_ROOT}/${VERSION}/profiles/${PROFILE_ID}"
+MODS_DIR="${PROFILE_ROOT}/mods"
+OUTPUT_DIR="${PROFILE_ROOT}/recipe"
 ORE_DICT_FILE="${MINECRAFT_ROOT}/${VERSION}/ore_dict.json"
 EXPORTER_JAR="${FORGE_DIR}/baked-mods/rtv-recipe-exporter.jar"
+
+# Legacy layout fallback (pre-profiles)
+if [[ ! -d "${MODS_DIR}" && -d "${MINECRAFT_ROOT}/${VERSION}/mods" ]]; then
+  MODS_DIR="${MINECRAFT_ROOT}/${VERSION}/mods"
+fi
+if [[ ! -d "${OUTPUT_DIR}" && -d "${MINECRAFT_ROOT}/${VERSION}/recipe" ]]; then
+  OUTPUT_DIR="${MINECRAFT_ROOT}/${VERSION}/recipe"
+fi
 
 if [[ ! -f "${EXPORTER_JAR}" ]]; then
   echo "Exporter mod jar not found at ${EXPORTER_JAR}" >&2
@@ -39,7 +49,7 @@ fi
 
 cd "${FORGE_DIR}"
 
-echo "[recipe-exporter] Starting Forge export for ${VERSION}"
+echo "[recipe-exporter] Starting Forge export for ${VERSION} (profile ${PROFILE_ID})"
 echo "[recipe-exporter] Mods: $(ls -1 mods | wc -l) jar(s), output: ${OUTPUT_DIR}"
 
 exec java \

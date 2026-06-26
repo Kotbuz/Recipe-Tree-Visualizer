@@ -293,7 +293,7 @@ const isSlotCompatible = (
 };
 
 export default function RecipeCanvas() {
-    const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
+    const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
         useMinecraftVersion();
     const {
         profiles,
@@ -307,6 +307,11 @@ export default function RecipeCanvas() {
         error: profilesError,
         refresh: refreshProfiles,
     } = useProfiles(version);
+
+    useEffect(() => {
+        setProfileId(activeProfileId);
+    }, [activeProfileId, setProfileId]);
+
     const { mods, loading: modsLoading, uploading: modsUploading, removingJar, error: modsError, refresh: refreshMods, remove: removeMod } = useMods(version, activeProfileId);
     const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version, activeProfileId);
     const {

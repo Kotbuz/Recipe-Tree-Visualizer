@@ -7,10 +7,26 @@ services:
       PORT: 3001
       ALLOWED_ROOTS: /data/minecraft
       RENDER_TIMEOUT_MS: 600000
+      MINECRAFT_VERSION: "1.21.4"
     volumes:
       - ./MinecraftVersions:/data/minecraft:rw
     ports:
       - "3001:3001"
+    restart: unless-stopped
+
+  recipe-exporter:
+    build:
+      context: ./recipe-exporter
+      dockerfile: docker/Dockerfile
+    environment:
+      PORT: 8090
+      MINECRAFT_ROOT: /data/minecraft
+      FORGE_JAVA_XMX: 4G
+      EXPORT_TIMEOUT_SECONDS: 1800
+    volumes:
+      - ./MinecraftVersions:/data/minecraft:rw
+    ports:
+      - "8090:8090"
     restart: unless-stopped
 
   backend:
@@ -36,6 +52,8 @@ services:
     depends_on:
       renderer:
         condition: service_healthy
+      recipe-exporter:
+        condition: service_healthy
     restart: unless-stopped
 
   frontend:
@@ -47,21 +65,4 @@ services:
     depends_on:
       backend:
         condition: service_healthy
-    restart: unless-stopped
-
-  # Headless Forge recipe export for 1.7.x (optional — enable with --profile legacy-recipes).
-  recipe-exporter:
-    profiles: ["legacy-recipes"]
-    build:
-      context: ./recipe-exporter
-      dockerfile: docker/Dockerfile
-    environment:
-      PORT: 8090
-      MINECRAFT_ROOT: /data/minecraft
-      FORGE_JAVA_XMX: 2G
-      EXPORT_TIMEOUT_SECONDS: 1800
-    volumes:
-      - ./MinecraftVersions:/data/minecraft:rw
-    ports:
-      - "8090:8090"
     restart: unless-stopped

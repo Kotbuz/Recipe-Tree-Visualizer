@@ -89,16 +89,13 @@ class IngredientResolver:
         return ParsedIngredient(item_id=entry.item_id, metadata=entry.metadata)
 
     def _resolve_tag(self, tag: str) -> ParsedIngredient:
-        normalized = normalize_tag_id(tag)
-        members = self._tag_loader.resolve_transitive(self._tag_members, normalized)
-        if not members:
-            return ParsedIngredient(item_id=normalized)
-        first = sorted(members)[0]
-        return ParsedIngredient(item_id=first)
+        return ParsedIngredient(item_id=normalize_tag_id(tag))
 
     def _resolve_item_ref(self, raw: str, metadata: int | None = None) -> ParsedIngredient:
         if raw.startswith("#"):
             constant = raw.removeprefix("#")
+            if ":" in constant or constant.startswith("tag:"):
+                return self._resolve_tag(constant)
             mapped = _FORGE_ITEM_CONSTANTS.get(constant)
             if mapped is not None:
                 return ParsedIngredient(
@@ -107,7 +104,7 @@ class IngredientResolver:
                 )
             return self._resolve_ore_dict(constant)
 
-        if raw.startswith("tag:") or (":" not in raw and raw.startswith("#")):
+        if raw.startswith("tag:"):
             return self._resolve_tag(raw)
 
         if ":" not in raw:
