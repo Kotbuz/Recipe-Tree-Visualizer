@@ -39,6 +39,9 @@ Requirements: **JDK 17+** to run Gradle (toolchain auto-downloads **JDK 8** for 
 RetroFuturaGradle **1.4.9** is vendored under `versions/1.7.10/vendor-maven/` (no GTNH Nexus
 needed for the Gradle plugin). Run `.\install-vendor-rfg.ps1` only if that jar is missing.
 
+Optional: copy `gradle.local.properties.example` → `gradle.local.properties` to pin a local JDK 8
+path on Windows; CI uses the Foojay toolchain resolver instead.
+
 ```powershell
 cd recipe-exporter/versions/1.7.10
 .\gradlew.bat build
