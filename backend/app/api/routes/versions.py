@@ -5,11 +5,13 @@ from pathlib import Path
 from app.schemas.versions import (
     IngredientIndexResponse,
     ItemIconManifestResponse,
+    RecipeExportStatusResponse,
     VersionCatalogEntryResponse,
     VersionCatalogResponse,
     VersionInstallResponse,
     VersionListResponse,
 )
+from app.services.jvm_export_status_service import recipe_export_status_service
 from app.schemas.vanilla_icons import VanillaIconRenderResponse
 from app.services.minecraft_version_catalog import get_minecraft_version_catalog
 from app.services.vanilla_icon_service import vanilla_icon_service
@@ -81,6 +83,31 @@ def get_ingredient_index(version: str) -> IngredientIndexResponse:
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     payload = version_service.build_ingredient_index(version)
     return IngredientIndexResponse.model_validate(payload)
+
+
+@router.get("/{version}/recipe-export-status", response_model=RecipeExportStatusResponse)
+def get_recipe_export_status(version: str) -> RecipeExportStatusResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    status = recipe_export_status_service.refresh_manifest(version)
+    return RecipeExportStatusResponse(
+        version=status.version,
+        layout=status.layout,
+        exported_recipe_count=status.exported_recipe_count,
+        installed_mod_jars=list(status.installed_mod_jars),
+        recipe_mod_ids=list(status.recipe_mod_ids),
+        mods_without_recipes=list(status.mods_without_recipes),
+        missing_dependencies=[
+            {
+                "mod_id": issue.mod_id,
+                "jar_name": issue.jar_name,
+                "requires": list(issue.missing_dependencies),
+            }
+            for issue in status.missing_dependencies
+        ],
+        warnings=list(status.warnings),
+        log_errors=list(status.log_errors),
+    )
 
 
 @router.get("/{version}/items/{filename}", response_model=None)

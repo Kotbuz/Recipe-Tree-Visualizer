@@ -1,0 +1,6 @@
+/run/
+/build/
+/.gradle/
+/export-out/
+/vendor-maven/**/*.jar
+*.log

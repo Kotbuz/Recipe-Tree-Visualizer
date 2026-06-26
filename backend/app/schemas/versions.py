@@ -31,3 +31,21 @@ class IngredientIndexResponse(BaseModel):
     version: str
     tags: dict[str, list[str]]
     aliases: dict[str, str]
+
+
+class ModDependencyIssueResponse(BaseModel):
+    mod_id: str
+    jar_name: str
+    requires: list[str]
+
+
+class RecipeExportStatusResponse(BaseModel):
+    version: str
+    layout: str
+    exported_recipe_count: int
+    installed_mod_jars: list[str]
+    recipe_mod_ids: list[str]
+    mods_without_recipes: list[str]
+    missing_dependencies: list[ModDependencyIssueResponse]
+    warnings: list[str]
+    log_errors: list[str] = []

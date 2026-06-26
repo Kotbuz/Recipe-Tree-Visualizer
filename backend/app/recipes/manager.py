@@ -28,6 +28,9 @@ _default_synthetic_provider = SyntheticProvider()
 def _load_vanilla_version_recipes(version: str) -> tuple[Recipe, ...]:
     if recipe_layout_for_version(version) == "jvm":
         jvm_recipe_export_service.ensure_exported(version)
+        from app.services.jvm_export_status_service import recipe_export_status_service
+
+        recipe_export_status_service.log_warnings(version)
     result = _default_vanilla_provider.load(version)
     return tuple(result.recipes)
 

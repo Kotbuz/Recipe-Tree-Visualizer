@@ -9,11 +9,13 @@ import {
     type NodeKind,
 } from './types/recipe';
 import ModsPanel from './components/ModsPanel';
+import ExportStatusBanner from './components/ExportStatusBanner';
 import VersionManagerModal from './components/VersionManagerModal';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useMods } from './hooks/useMods';
+import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import {
     ingredientsCompatible,
@@ -246,6 +248,7 @@ export default function RecipeCanvas() {
     const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
         useMinecraftVersion();
     const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods(version);
+    const { status: exportStatus, loading: exportStatusLoading } = useRecipeExportStatus(version);
     const [versionManagerOpen, setVersionManagerOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
@@ -1007,6 +1010,7 @@ export default function RecipeCanvas() {
 
     return (
         <div className="recipe-canvas-page" style={canvasStyle}>
+            <ExportStatusBanner status={exportStatus} loading={exportStatusLoading} />
             <div
                 className="recipe-canvas"
                 ref={viewportRef}

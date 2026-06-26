@@ -60,6 +60,8 @@ class VanillaJarProvider:
         parser = self._build_parser(version, self.resolve_jar_path(version) or recipe_dir)
 
         for json_file in sorted(recipe_dir.glob("*.json")):
+            if json_file.name.startswith("_"):
+                continue
             try:
                 with json_file.open("r", encoding="utf-8") as handle:
                     data = json.load(handle)
@@ -76,14 +78,18 @@ class VanillaJarProvider:
             if not isinstance(data, dict):
                 continue
 
-            recipe_id = f"minecraft:{json_file.stem}"
+            recipe_id = data.get("id")
+            if not isinstance(recipe_id, str) or not recipe_id.strip():
+                recipe_id = f"minecraft:{json_file.stem}"
+
+            mod_id = recipe_id.split(":", 1)[0] if ":" in recipe_id else "minecraft"
             try_add_recipe(
                 parser,
                 recipes,
                 recipe_id,
                 data,
                 source=source,
-                mod_id="minecraft",
+                mod_id=mod_id,
             )
 
         return recipes

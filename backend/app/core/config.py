@@ -27,6 +27,9 @@ class Settings(BaseSettings):
     renderer_batch_size: int = 25
     renderer_timeout_seconds: float = 600.0
     vanilla_icon_render_on_startup: bool = True
+    recipe_exporter_url: str = ""
+    recipe_exporter_mode: str = "auto"
+    recipe_exporter_timeout_seconds: float = 1800.0
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property

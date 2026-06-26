@@ -34,7 +34,7 @@ def isolated_minecraft_versions(tmp_path, monkeypatch) -> Path:
     monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(root))
     get_settings.cache_clear()
 
-    for version in ("26.2", "1.18.2", "1.21.11", "1.12.2"):
+    for version in ("26.2", "1.18.2", "1.21.11", "1.12.2", "1.7.10"):
         version_service.ensure_version_layout(version)
         _write_minimal_client_jar(version_service.client_jar_path(version))
 
