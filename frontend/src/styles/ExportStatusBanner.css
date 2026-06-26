@@ -30,3 +30,33 @@
     font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
     font-size: 0.85em;
 }
+
+.export-status-banner__action {
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid #9a7b12;
+    border-radius: 6px;
+    background: #fff;
+    color: #4a3b00;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.export-status-banner__action:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.export-status-banner__error {
+    margin: 0.5rem 0 0;
+    color: #8a1f1f;
+}
+
+.export-status-banner__result {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.export-status-banner__result-row {
+    margin: 0.2rem 0;
+}

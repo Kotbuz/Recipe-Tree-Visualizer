@@ -30,6 +30,11 @@ class Settings(BaseSettings):
     recipe_exporter_url: str = ""
     recipe_exporter_mode: str = "auto"
     recipe_exporter_timeout_seconds: float = 1800.0
+    curseforge_api_key: str = ""
+    curseforge_user_agent: str = (
+        "Recipe-Tree-Visualizer/1.0 (https://github.com/Kotbuz/Recipe-Tree-Visualizer)"
+    )
+    mod_dependency_download_timeout_seconds: float = 120.0
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property

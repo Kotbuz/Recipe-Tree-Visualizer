@@ -323,6 +323,14 @@
     background: #eef2ff;
 }
 
+.mods-panel-button--deps {
+    width: 100%;
+    margin-top: 0.5rem;
+    border-color: #c9a227;
+    color: #4a3b00;
+    background: #fff8e6;
+}
+
 .mods-panel-hint code {
     font-size: 0.82em;
 }

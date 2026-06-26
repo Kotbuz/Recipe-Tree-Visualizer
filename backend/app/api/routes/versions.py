@@ -11,10 +11,15 @@ from app.schemas.versions import (
     VersionInstallResponse,
     VersionListResponse,
 )
+from app.schemas.mod_dependencies import ModDependencyDownloadResponse
 from app.services.jvm_export_status_service import recipe_export_status_service
 from app.schemas.vanilla_icons import VanillaIconRenderResponse
 from app.services.minecraft_version_catalog import get_minecraft_version_catalog
 from app.services.vanilla_icon_service import vanilla_icon_service
+from app.services.mod_dependency_service import (
+    ModDependencyDownloadError,
+    mod_dependency_service,
+)
 from app.services.version_install_service import version_install_service
 from app.services.version_service import version_service
 
@@ -107,6 +112,40 @@ def get_recipe_export_status(version: str) -> RecipeExportStatusResponse:
         ],
         warnings=list(status.warnings),
         log_errors=list(status.log_errors),
+    )
+
+
+@router.post(
+    "/{version}/download-missing-mod-dependencies",
+    response_model=ModDependencyDownloadResponse,
+)
+def download_missing_mod_dependencies(version: str) -> ModDependencyDownloadResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    try:
+        result = mod_dependency_service.download_missing_dependencies(version)
+    except ModDependencyDownloadError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    recipe_export_status_service.refresh_manifest(version)
+    return ModDependencyDownloadResponse(
+        version=result.version,
+        requested=list(result.requested),
+        results=[
+            {
+                "dependency": item.dependency,
+                "status": item.status,
+                "jar_name": item.jar_name,
+                "source": item.source,
+                "manual_url": item.manual_url,
+                "error": item.error,
+            }
+            for item in result.results
+        ],
+        all_resolved=result.all_resolved,
+        export_triggered=result.export_triggered,
+        export_recipe_count=result.export_recipe_count,
+        export_error=result.export_error,
     )
 
 

@@ -14,6 +14,7 @@ import VersionManagerModal from './components/VersionManagerModal';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
+import { useModDependencyDownload } from './hooks/useModDependencyDownload';
 import { useMods } from './hooks/useMods';
 import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
@@ -248,7 +249,18 @@ export default function RecipeCanvas() {
     const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
         useMinecraftVersion();
     const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods(version);
-    const { status: exportStatus, loading: exportStatusLoading } = useRecipeExportStatus(version);
+    const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version);
+    const handleDepsDownloadComplete = useCallback(async () => {
+        await refreshMods();
+        await refreshExportStatus();
+        await reloadCatalog();
+    }, [refreshMods, refreshExportStatus, reloadCatalog]);
+    const {
+        download: downloadMissingDeps,
+        downloading: depsDownloading,
+        error: depsError,
+        lastResult: depsResult,
+    } = useModDependencyDownload(version, handleDepsDownloadComplete);
     const [versionManagerOpen, setVersionManagerOpen] = useState(false);
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
@@ -1010,7 +1022,14 @@ export default function RecipeCanvas() {
 
     return (
         <div className="recipe-canvas-page" style={canvasStyle}>
-            <ExportStatusBanner status={exportStatus} loading={exportStatusLoading} />
+            <ExportStatusBanner
+                status={exportStatus}
+                loading={exportStatusLoading}
+                downloadingDeps={depsDownloading}
+                depsError={depsError}
+                depsResult={depsResult}
+                onDownloadDependencies={() => void downloadMissingDeps()}
+            />
             <div
                 className="recipe-canvas"
                 ref={viewportRef}
@@ -1206,6 +1225,18 @@ export default function RecipeCanvas() {
                 onOpenVersionManager={() => setVersionManagerOpen(true)}
                 gameVersion={version}
                 versionsEmpty={versions.length === 0}
+                missingDependencyCount={
+                    exportStatus?.missing_dependencies.reduce(
+                        (count, issue) => count + issue.requires.length,
+                        0,
+                    ) ?? 0
+                }
+                onDownloadDependencies={
+                    (exportStatus?.missing_dependencies.length ?? 0) > 0
+                        ? () => void downloadMissingDeps()
+                        : undefined
+                }
+                downloadingDependencies={depsDownloading}
             />
 
             <VersionManagerModal

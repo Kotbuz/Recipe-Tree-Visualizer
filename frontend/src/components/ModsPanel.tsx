@@ -17,6 +17,9 @@ type ModsPanelProps = {
     onOpenVersionManager: () => void;
     gameVersion: string;
     versionsEmpty: boolean;
+    missingDependencyCount?: number;
+    onDownloadDependencies?: () => void;
+    downloadingDependencies?: boolean;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -57,6 +60,9 @@ export default function ModsPanel({
     onOpenVersionManager,
     gameVersion,
     versionsEmpty,
+    missingDependencyCount = 0,
+    onDownloadDependencies,
+    downloadingDependencies = false,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const fileInputRef = useRef<HTMLInputElement>(null);
@@ -233,6 +239,18 @@ export default function ModsPanel({
                 >
                     {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
                 </button>
+                {missingDependencyCount > 0 && onDownloadDependencies ? (
+                    <button
+                        type="button"
+                        className="mods-panel-button mods-panel-button--deps"
+                        disabled={downloadingDependencies || versionsEmpty}
+                        onClick={onDownloadDependencies}
+                    >
+                        {downloadingDependencies
+                            ? 'Скачивание зависимостей…'
+                            : `Скачать зависимости (${missingDependencyCount})`}
+                    </button>
+                ) : null}
             </div>
         </aside>
     );
