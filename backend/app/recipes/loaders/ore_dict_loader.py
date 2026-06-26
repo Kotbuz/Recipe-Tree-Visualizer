@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from app.recipes.loaders.tag_loader import TagLoader, normalize_tag_id
+from app.core.config import get_settings
 
 
 @dataclass(frozen=True)
@@ -15,16 +15,28 @@ class OreDictEntry:
 
 
 @lru_cache
-def _ore_dict_path(version: str) -> Path:
+def _bundled_ore_dict_path(version: str) -> Path:
     backend_root = Path(__file__).resolve().parents[3]
     return backend_root / "data" / "ore_dict" / f"{version}.json"
 
 
-def load_ore_dict(version: str) -> dict[str, OreDictEntry]:
-    path = _ore_dict_path(version)
-    if not path.is_file():
-        return {}
+def version_ore_dict_path(version: str) -> Path:
+    return get_settings().minecraft_versions_path / version / "ore_dict.json"
 
+
+def load_ore_dict(version: str) -> dict[str, OreDictEntry]:
+    version_path = version_ore_dict_path(version)
+    if version_path.is_file():
+        return _load_ore_dict_file(version_path)
+
+    bundled_path = _bundled_ore_dict_path(version)
+    if bundled_path.is_file():
+        return _load_ore_dict_file(bundled_path)
+
+    return {}
+
+
+def _load_ore_dict_file(path: Path) -> dict[str, OreDictEntry]:
     try:
         payload = json.loads(path.read_text(encoding="utf-8"))
     except (OSError, json.JSONDecodeError):

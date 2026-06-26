@@ -51,6 +51,13 @@ public final class RecipeDumper {
     try {
       int count = dump(new File(outputPath));
       System.out.println("[rtvrecipeexporter] Exported " + count + " recipes to " + outputPath);
+
+      String oreDictPath = System.getProperty("rtv.ore.dict.export.file");
+      if (oreDictPath != null && !oreDictPath.trim().isEmpty()) {
+        int oreCount = OreDictDumper.dump(new File(oreDictPath));
+        System.out.println(
+            "[rtvrecipeexporter] Exported " + oreCount + " ore dict entries to " + oreDictPath);
+      }
     } catch (Exception exception) {
       exception.printStackTrace();
     } finally {

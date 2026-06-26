@@ -20,8 +20,10 @@ minecraft {
     username = 'RTVExporter'
 
     if (exportOutputDir != null) {
+        def oreDictFile = new File(new File(exportOutputDir.toString()).parentFile, 'ore_dict.json')
         extraRunJvmArguments.add('-Drtv.recipe.export=true')
         extraRunJvmArguments.add("-Drtv.recipe.export.dir=${exportOutputDir}")
+        extraRunJvmArguments.add("-Drtv.ore.dict.export.file=${oreDictFile.absolutePath}")
     }
 }
 

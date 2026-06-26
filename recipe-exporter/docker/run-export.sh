@@ -7,6 +7,7 @@ FORGE_DIR="${FORGE_DIR:-/opt/forge}"
 
 MODS_DIR="${MINECRAFT_ROOT}/${VERSION}/mods"
 OUTPUT_DIR="${MINECRAFT_ROOT}/${VERSION}/recipe"
+ORE_DICT_FILE="${MINECRAFT_ROOT}/${VERSION}/ore_dict.json"
 EXPORTER_JAR="${FORGE_DIR}/baked-mods/rtv-recipe-exporter.jar"
 
 if [[ ! -f "${EXPORTER_JAR}" ]]; then
@@ -45,5 +46,6 @@ exec java \
   -Xmx"${FORGE_JAVA_XMX:-2G}" \
   -Drtv.recipe.export=true \
   "-Drtv.recipe.export.dir=${OUTPUT_DIR}" \
+  "-Drtv.ore.dict.export.file=${ORE_DICT_FILE}" \
   -jar "${FORGE_JAR}" \
   nogui

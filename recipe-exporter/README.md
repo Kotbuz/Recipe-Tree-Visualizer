@@ -9,8 +9,9 @@ Forge-based recipe export for Minecraft versions without JSON recipes in `client
 2. On `FMLLoadCompleteEvent` it dumps:
    - `CraftingManager` shaped/shapeless recipes (including `ShapedOreRecipe` / `ShapelessOreRecipe`)
    - `FurnaceRecipes` smelting recipes
-3. JSON files are written to `MinecraftVersions/{version}/recipe/`.
-4. The backend loads them automatically for JVM-layout versions (`1.7.*`).
+   - Forge `OreDictionary` → `MinecraftVersions/{version}/ore_dict.json`
+3. Recipe JSON files are written to `MinecraftVersions/{version}/recipe/`.
+4. The backend loads recipes and ore dict automatically for JVM-layout versions (`1.7.*`).
 
 Machine-only recipes (IC2 compressor, Mekanism enrichment, etc.) are **not** exported yet.
 
@@ -28,7 +29,8 @@ Machine-only recipes (IC2 compressor, Mekanism enrichment, etc.) are **not** exp
 }
 ```
 
-Ore inputs use `forge:ore_dict` entries compatible with `backend/data/ore_dict/1.7.10.json`.
+Ore inputs use `forge:ore_dict` entries resolved via `MinecraftVersions/{version}/ore_dict.json`
+(generated on export) with fallback to `backend/data/ore_dict/{version}.json`.
 
 ## Build exporter mod
 
