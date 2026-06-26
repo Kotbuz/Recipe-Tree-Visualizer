@@ -7,6 +7,9 @@ import shutil
 import subprocess
 import sys
 import glob
+import threading
+import time
+import zipfile
 from pathlib import Path
 
 import httpx
@@ -14,37 +17,38 @@ from loguru import logger
 
 from app.core.config import get_settings
 from app.core.recipe_layout import recipe_layout_for_version
+from app.services.forge_install_service import ForgeInstallError, forge_install_service
+from app.services.modpack_version_detector import forge_installer_version
+from app.services.profile_storage import resolve_profile_forge_build
+from app.services.version_service import version_service
 
 _LEGACY_FORGE_VERSION = "1.7.10-10.13.4.1448-1.7.10"
 
-# (install_group, artifact, version, optional_direct_download_url)
-_FORGE_INSTALLER_LIBRARIES: tuple[tuple[str, str, str, str | None], ...] = (
-    ("com.typesafe.akka", "akka-actor_2.11", "2.3.3", None),
-    ("com.typesafe", "config", "1.2.1", None),
-    ("org.scala-lang", "scala-actors-migration_2.11", "1.1.0", None),
-    ("org.scala-lang", "scala-compiler", "2.11.1", None),
-    ("org.scala-lang.plugins", "scala-continuations-library_2.11", "1.0.2", None),
-    ("org.scala-lang.plugins", "scala-continuations-plugin_2.11.1", "1.0.2", None),
-    ("org.scala-lang", "scala-library", "2.11.1", None),
-    (
-        "org.scala-lang",
-        "scala-parser-combinators_2.11",
-        "1.0.1",
-        "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-parser-combinators_2.11/1.0.1/scala-parser-combinators_2.11-1.0.1.jar",
-    ),
-    ("org.scala-lang", "scala-reflect", "2.11.1", None),
-    (
-        "org.scala-lang",
-        "scala-swing_2.11",
-        "1.0.1",
-        "https://maven.minecraftforge.net/org/scala-lang/scala-swing_2.11/1.0.1/scala-swing_2.11-1.0.1.jar",
-    ),
-    (
-        "org.scala-lang",
-        "scala-xml_2.11",
-        "1.0.2",
-        "https://repo1.maven.org/maven2/org/scala-lang/modules/scala-xml_2.11/1.0.2/scala-xml_2.11-1.0.2.jar",
-    ),
+# Не копируем в forge-runtime/mods: ломают DepLoader / не дают рецептов.
+_FORGE_EXPORT_MOD_SKIP_FRAGMENTS = (
+    "forgemicroblock",
+    "commons-codec",
+    "commons-compress",
+    "commons-logging",
+    "vorbis-java",
+)
+
+# Клиентские моды (UI, ресурспаки): падают на dedicated headless export.
+_FORGE_EXPORT_CLIENT_ONLY_FRAGMENTS = (
+    "resourceloader",
+    "additionalresources",
+    "custommainmenu",
+    "customloadingscreen",
+    "inventorytweaks",
+    "mousetweaks",
+    "journeymap",
+    "mapwriter",
+    "voxelmap",
+    "loadingprofiler",
+)
+
+_FORGE_HEADLESS_JAVA_OPTS = (
+    "-Djava.awt.headless=true",
 )
 
 
@@ -55,29 +59,45 @@ class JvmRecipeExportError(RuntimeError):
 class JvmRecipeExportService:
     def __init__(self) -> None:
         self._settings = get_settings()
+        self._export_locks: dict[str, threading.Lock] = {}
+        self._export_locks_guard = threading.Lock()
 
-    def recipe_dir(self, version: str) -> Path:
-        return self._settings.minecraft_versions_path / version / "recipe"
+    def _export_lock_for(self, version: str) -> threading.Lock:
+        with self._export_locks_guard:
+            lock = self._export_locks.get(version)
+            if lock is None:
+                lock = threading.Lock()
+                self._export_locks[version] = lock
+            return lock
 
-    def needs_export(self, version: str) -> bool:
+    def recipe_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return version_service.recipe_dir(version, profile_id)
+
+    def needs_export(self, version: str, profile_id: str | None = None) -> bool:
         if recipe_layout_for_version(version) != "jvm":
             return False
-        recipe_dir = self.recipe_dir(version)
+        recipe_dir = self.recipe_dir(version, profile_id)
         return not any(
             path
             for path in recipe_dir.glob("*.json")
             if not path.name.startswith("_")
         )
 
-    def ensure_exported(self, version: str, *, force: bool = False) -> int:
+    def ensure_exported(
+        self,
+        version: str,
+        *,
+        profile_id: str | None = None,
+        force: bool = False,
+    ) -> int:
         if recipe_layout_for_version(version) != "jvm":
             return 0
 
-        recipe_dir = self.recipe_dir(version)
+        recipe_dir = self.recipe_dir(version, profile_id)
         recipe_dir.mkdir(parents=True, exist_ok=True)
 
-        if not force and not self.needs_export(version):
-            self.ensure_ae2_recipes_synced(version)
+        if not force and not self.needs_export(version, profile_id):
+            self.ensure_ae2_recipes_synced(version, profile_id=profile_id)
             return len(
                 [
                     path
@@ -86,29 +106,46 @@ class JvmRecipeExportService:
                 ]
             )
 
-        version_dir = self._settings.minecraft_versions_path / version
-        mods_dir = version_dir / "mods"
-        client_jar = version_dir / "client.jar"
-        if not client_jar.is_file():
-            raise JvmRecipeExportError(f"client.jar not found for version {version}")
+        lock = self._export_lock_for(version)
+        with lock:
+            if not force and not self.needs_export(version, profile_id):
+                self.ensure_ae2_recipes_synced(version, profile_id=profile_id)
+                return len(
+                    [
+                        path
+                        for path in recipe_dir.glob("*.json")
+                        if not path.name.startswith("_")
+                    ]
+                )
 
-        if version.startswith("1.7"):
-            return self._run_forge_export(
-                version, client_jar, mods_dir, recipe_dir, force=force
+            client_jar = version_service.client_jar_path(version)
+            mods_dir = version_service.mods_dir(version, profile_id)
+            if not client_jar.is_file():
+                raise JvmRecipeExportError(f"client.jar not found for version {version}")
+
+            if version.startswith("1.7"):
+                resolved_profile = version_service._resolve_profile_id(version, profile_id)
+                return self._run_forge_export(
+                    version,
+                    client_jar,
+                    mods_dir,
+                    recipe_dir,
+                    profile_id=resolved_profile,
+                    force=force,
+                )
+
+            exporter_jar = self._resolve_exporter_jar(version)
+            if exporter_jar is None:
+                logger.warning(
+                    "JVM recipe exporter jar not found for Minecraft {}. "
+                    "Build recipe-exporter and place the jar under recipe-exporter/dist/.",
+                    version,
+                )
+                return 0
+
+            return self._run_java_jar_exporter(
+                exporter_jar, version, client_jar, mods_dir, recipe_dir
             )
-
-        exporter_jar = self._resolve_exporter_jar(version)
-        if exporter_jar is None:
-            logger.warning(
-                "JVM recipe exporter jar not found for Minecraft {}. "
-                "Build recipe-exporter and place the jar under recipe-exporter/dist/.",
-                version,
-            )
-            return 0
-
-        return self._run_java_jar_exporter(
-            exporter_jar, version, client_jar, mods_dir, recipe_dir
-        )
 
     def _run_forge_export(
         self,
@@ -117,8 +154,10 @@ class JvmRecipeExportService:
         mods_dir: Path,
         recipe_dir: Path,
         *,
+        profile_id: str,
         force: bool = False,
     ) -> int:
+        forge_build = self._resolve_profile_forge_build(version, profile_id)
         mode = self._settings.recipe_exporter_mode.strip().lower()
         if mode in {"auto", "docker"}:
             try:
@@ -152,6 +191,8 @@ class JvmRecipeExportService:
                     mods_dir=mods_dir,
                     recipe_dir=recipe_dir,
                     version_dir=client_jar.parent,
+                    forge_build=forge_build,
+                    profile_id=profile_id,
                 )
             except JvmRecipeExportError as exc:
                 if mode == "universal":
@@ -184,6 +225,10 @@ class JvmRecipeExportService:
 
         logger.info("Running Forge recipe export for {}: {}", version, " ".join(command))
         env = os.environ.copy()
+        headless_opts = " ".join(_FORGE_HEADLESS_JAVA_OPTS)
+        existing_tool_options = env.get("JAVA_TOOL_OPTIONS", "")
+        if "java.awt.headless" not in existing_tool_options:
+            env["JAVA_TOOL_OPTIONS"] = f"{existing_tool_options} {headless_opts}".strip()
         try:
             completed = subprocess.run(
                 command,
@@ -213,8 +258,12 @@ class JvmRecipeExportService:
             ]
         )
         logger.info("Forge recipe export for {} finished with {} recipe file(s)", version, exported)
-        self._finalize_export_status(version)
+        self._finalize_export_status(version, profile_id=profile_id)
         return exported
+
+    def _resolve_profile_forge_build(self, version: str, profile_id: str) -> str | None:
+        profile_dir = version_service.profile_dir(version, profile_id)
+        return resolve_profile_forge_build(profile_dir, minecraft_version=version)
 
     def _run_universal_forge_export(
         self,
@@ -223,8 +272,10 @@ class JvmRecipeExportService:
         mods_dir: Path,
         recipe_dir: Path,
         version_dir: Path,
+        forge_build: str | None = None,
+        profile_id: str | None = None,
     ) -> int:
-        forge_jar = self._ensure_universal_forge_installed(version)
+        forge_jar = self._ensure_universal_forge_installed(version, forge_build=forge_build)
         exporter_jar = self._ensure_exporter_mod_jar(version)
         forge_dir = forge_jar.parent
         self._sync_mods_for_universal_forge(forge_dir, mods_dir, exporter_jar)
@@ -234,6 +285,7 @@ class JvmRecipeExportService:
         java_executable = self._resolve_java8_executable()
         command = [
             java_executable,
+            *_FORGE_HEADLESS_JAVA_OPTS,
             "-Xmx4G",
             "-Drtv.recipe.export=true",
             f"-Drtv.recipe.export.dir={self._java_property_path(recipe_dir)}",
@@ -244,9 +296,14 @@ class JvmRecipeExportService:
             "nogui",
         ]
 
+        installer_version = (
+            forge_installer_version(version, forge_build)
+            if forge_build
+            else _LEGACY_FORGE_VERSION
+        )
         logger.info(
             "Running universal Forge {} export for {}: {}",
-            _LEGACY_FORGE_VERSION,
+            installer_version,
             version,
             " ".join(command),
         )
@@ -282,8 +339,8 @@ class JvmRecipeExportService:
             version,
             exported,
         )
-        self._sync_ae2_recipe_files(version, recipe_dir)
-        self._finalize_export_status(version)
+        self._sync_ae2_recipe_files(version, recipe_dir, forge_build=forge_build)
+        self._finalize_export_status(version, profile_id=profile_id)
         return exported
 
     def _run_http_exporter(
@@ -449,87 +506,22 @@ class JvmRecipeExportService:
             "Install Temurin JDK 8 and set FORGE_JAVA_HOME."
         )
 
-    def _universal_forge_dir(self, version: str) -> Path:
-        return self._repo_root() / "recipe-exporter" / "forge-runtime" / version
+    def _universal_forge_dir(self, version: str, *, forge_build: str | None = None) -> Path:
+        return forge_install_service.universal_forge_dir(version, forge_build=forge_build)
 
     def _find_universal_forge_jar(self, forge_dir: Path) -> Path | None:
-        jars = sorted(forge_dir.glob("forge-*-universal.jar"))
-        return jars[0] if jars else None
+        return forge_install_service.find_universal_forge_jar(forge_dir)
 
-    def _ensure_universal_forge_installed(self, version: str) -> Path:
-        forge_dir = self._universal_forge_dir(version)
-        forge_dir.mkdir(parents=True, exist_ok=True)
-
-        existing = self._find_universal_forge_jar(forge_dir)
-        if existing is not None:
-            return existing
-
-        forge_version = _LEGACY_FORGE_VERSION
-        installer_name = f"forge-{forge_version}-installer.jar"
-        installer_path = forge_dir / installer_name
-        logger.info("Downloading Forge {} to {}", forge_version, forge_dir)
-        installer_url = (
-            "https://maven.minecraftforge.net/net/minecraftforge/forge/"
-            f"{forge_version}/{installer_name}"
-        )
-        with httpx.Client(follow_redirects=True, timeout=httpx.Timeout(300.0)) as client:
-            response = client.get(
-                installer_url,
-                headers={"User-Agent": "Recipe-Tree-Visualizer/1.0"},
-            )
-            response.raise_for_status()
-            installer_path.write_bytes(response.content)
-            self._bootstrap_forge_installer_libraries(forge_dir, client)
-
+    def _ensure_universal_forge_installed(
+        self,
+        version: str,
+        *,
+        forge_build: str | None = None,
+    ) -> Path:
         try:
-            completed = subprocess.run(
-                [self._resolve_java8_executable(), "-jar", str(installer_path), "--installServer"],
-                check=True,
-                cwd=forge_dir,
-                capture_output=True,
-                text=True,
-                timeout=900,
-            )
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or str(exc)).strip()
-            raise JvmRecipeExportError(
-                "Не удалось установить Forge universal server "
-                f"({forge_version}). {detail}"
-            ) from exc
-        finally:
-            installer_path.unlink(missing_ok=True)
-        (forge_dir / "eula.txt").write_text("eula=true\n", encoding="utf-8")
-
-        universal = self._find_universal_forge_jar(forge_dir)
-        if universal is None:
-            raise JvmRecipeExportError(
-                f"Forge universal jar not found after install in {forge_dir}"
-            )
-        return universal
-
-    def _bootstrap_forge_installer_libraries(self, forge_dir: Path, client: httpx.Client) -> None:
-        libraries_dir = forge_dir / "libraries"
-        headers = {"User-Agent": "Recipe-Tree-Visualizer/1.0"}
-        for group, artifact, version, direct_url in _FORGE_INSTALLER_LIBRARIES:
-            jar_name = f"{artifact}-{version}.jar"
-            destination = libraries_dir / group.replace(".", "/") / artifact / version / jar_name
-            if destination.is_file():
-                continue
-            if direct_url:
-                url = direct_url
-            else:
-                url = (
-                    "https://repo1.maven.org/maven2/"
-                    f"{group.replace('.', '/')}/{artifact}/{version}/{jar_name}"
-                )
-            response = client.get(url, headers=headers)
-            if response.status_code == 404:
-                logger.warning("Forge bootstrap library not found: {}", url)
-                continue
-            response.raise_for_status()
-            destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(response.content)
-            logger.info("Bootstrapped Forge library {}", jar_name)
+            return forge_install_service.ensure_installed(version, forge_build=forge_build)
+        except ForgeInstallError as exc:
+            raise JvmRecipeExportError(str(exc)) from exc
 
     def _ensure_exporter_mod_jar(self, version: str) -> Path:
         exporter_jar = self._resolve_exporter_jar(version)
@@ -565,22 +557,86 @@ class JvmRecipeExportService:
         exporter_jar: Path,
     ) -> None:
         target_mods = forge_dir / "mods"
+        if target_mods.is_dir():
+            try:
+                shutil.rmtree(target_mods)
+            except PermissionError:
+                for jar_path in target_mods.glob("*.jar"):
+                    self._safe_unlink(jar_path)
         target_mods.mkdir(parents=True, exist_ok=True)
-        for jar_path in target_mods.glob("*.jar"):
-            jar_path.unlink()
 
         shutil.copy2(exporter_jar, target_mods / exporter_jar.name)
         if not mods_dir.is_dir():
             return
 
+        skipped: list[str] = []
+        skipped_client_only: list[str] = []
         for jar_path in sorted(mods_dir.glob("*.jar")):
             if jar_path.name.lower().startswith("rtv-recipe-exporter"):
                 continue
+            if self._is_client_only_forge_export_mod(jar_path.name):
+                skipped_client_only.append(jar_path.name)
+                continue
+            if self._should_skip_forge_export_mod(jar_path.name):
+                skipped.append(jar_path.name)
+                continue
+            if not zipfile.is_zipfile(jar_path):
+                skipped.append(jar_path.name)
+                logger.warning(
+                    "Skipping corrupt mod jar for JVM export: {}",
+                    jar_path.name,
+                )
+                continue
             shutil.copy2(jar_path, target_mods / jar_path.name)
 
-    def _sync_ae2_recipe_files(self, version: str, recipe_dir: Path) -> int:
+        if skipped_client_only:
+            logger.info(
+                "Skipped {} client-only mod jar(s) for JVM export: {}",
+                len(skipped_client_only),
+                ", ".join(skipped_client_only),
+            )
+        if skipped:
+            logger.info(
+                "Skipped {} mod jar(s) for JVM export (DepLoader / library mods): {}",
+                len(skipped),
+                ", ".join(skipped),
+            )
+
+    @staticmethod
+    def _is_client_only_forge_export_mod(jar_name: str) -> bool:
+        lowered = jar_name.lower()
+        return any(fragment in lowered for fragment in _FORGE_EXPORT_CLIENT_ONLY_FRAGMENTS)
+
+    @staticmethod
+    def _should_skip_forge_export_mod(jar_name: str) -> bool:
+        lowered = jar_name.lower()
+        return any(fragment in lowered for fragment in _FORGE_EXPORT_MOD_SKIP_FRAGMENTS)
+
+    @staticmethod
+    def _safe_unlink(path: Path) -> None:
+        for attempt in range(6):
+            try:
+                path.unlink()
+                return
+            except FileNotFoundError:
+                return
+            except PermissionError as exc:
+                if attempt >= 5:
+                    raise JvmRecipeExportError(
+                        f"Файл занят другим процессом (вероятно, идёт JVM-экспорт): {path.name}. "
+                        "Дождитесь завершения экспорта или перезапустите backend."
+                    ) from exc
+                time.sleep(0.5 * (attempt + 1))
+
+    def _sync_ae2_recipe_files(
+        self,
+        version: str,
+        recipe_dir: Path,
+        *,
+        forge_build: str | None = None,
+    ) -> int:
         source_root = (
-            self._universal_forge_dir(version)
+            self._universal_forge_dir(version, forge_build=forge_build)
             / "config"
             / "AppliedEnergistics2"
             / "recipes"
@@ -610,14 +666,18 @@ class JvmRecipeExportService:
             recipe_manager._clear_caches()
         return copied
 
-    def ensure_ae2_recipes_synced(self, version: str) -> int:
+    def ensure_ae2_recipes_synced(self, version: str, profile_id: str | None = None) -> int:
         if recipe_layout_for_version(version) != "jvm":
             return 0
-        recipe_dir = self.recipe_dir(version)
+        recipe_dir = self.recipe_dir(version, profile_id)
         ae2_dir = recipe_dir / "ae2-recipes"
         if any(ae2_dir.rglob("*.recipe")):
             return len(list(ae2_dir.rglob("*.recipe")))
-        return self._sync_ae2_recipe_files(version, recipe_dir)
+        forge_build = self._resolve_profile_forge_build(
+            version,
+            version_service._resolve_profile_id(version, profile_id),
+        )
+        return self._sync_ae2_recipe_files(version, recipe_dir, forge_build=forge_build)
 
     def _forge_project_dir(self, version: str) -> Path:
         return self._repo_root() / "recipe-exporter" / "versions" / version
@@ -641,11 +701,11 @@ class JvmRecipeExportService:
                 return candidate
         return None
 
-    def export_manifest_path(self, version: str) -> Path:
-        return self.recipe_dir(version) / "_export_manifest.json"
+    def export_manifest_path(self, version: str, profile_id: str | None = None) -> Path:
+        return self.recipe_dir(version, profile_id) / "_export_manifest.json"
 
-    def read_manifest(self, version: str) -> dict[str, object]:
-        path = self.export_manifest_path(version)
+    def read_manifest(self, version: str, profile_id: str | None = None) -> dict[str, object]:
+        path = self.export_manifest_path(version, profile_id)
         if not path.is_file():
             return {}
         try:
@@ -654,19 +714,30 @@ class JvmRecipeExportService:
             return {}
         return payload if isinstance(payload, dict) else {}
 
-    def _finalize_export_status(self, version: str) -> None:
+    def _finalize_export_status(self, version: str, profile_id: str | None = None) -> None:
         from app.services.jvm_export_status_service import recipe_export_status_service
 
-        recipe_export_status_service.log_warnings(version)
+        recipe_export_status_service.log_warnings(version, profile_id=profile_id)
 
-    def clear_exported_recipes(self, version: str, *, include_ore_dict: bool = True) -> tuple[int, bool]:
+    def clear_exported_recipes(
+        self,
+        version: str,
+        *,
+        profile_id: str | None = None,
+        include_ore_dict: bool = True,
+    ) -> tuple[int, bool]:
         if recipe_layout_for_version(version) != "jvm":
             raise JvmRecipeExportError(
                 f"Очистка экспортированных рецептов поддерживается только для JVM-версий (получено {version})"
             )
 
+        resolved_profile = version_service._resolve_profile_id(version, profile_id)
+        from app.services.profile_storage import profile_storage_key
+
+        storage_key = profile_storage_key(version, resolved_profile)
+
         deleted = 0
-        recipe_dir = self.recipe_dir(version)
+        recipe_dir = self.recipe_dir(version, resolved_profile)
         if recipe_dir.is_dir():
             for path in recipe_dir.glob("*.json"):
                 path.unlink(missing_ok=True)
@@ -683,7 +754,7 @@ class JvmRecipeExportService:
         from app.services.mod_service import mod_service
 
         recipe_manager._clear_caches()
-        mod_service._loaded_versions.discard(version)
+        mod_service._loaded_versions.discard(storage_key)
         return deleted, ore_dict_removed
 
 

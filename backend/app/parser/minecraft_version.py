@@ -10,6 +10,17 @@ _FABRIC_CONSTRAINT = re.compile(
     r"^\s*(>=|<=|>|<|=)?\s*(\d+(?:\.\d+)*)\s*(?:\s+(>=|<=|>|<)\s*(\d+(?:\.\d+)*))?\s*$"
 )
 _FILENAME_VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+_UNRESOLVED_VERSION_MARKERS = ("${", "@file", "@forgeversion")
+
+
+def _is_unresolved_version_label(version: str | None) -> bool:
+    if version is None:
+        return True
+    stripped = version.strip()
+    if not stripped:
+        return True
+    lowered = stripped.lower()
+    return any(marker in lowered for marker in _UNRESOLVED_VERSION_MARKERS)
 
 
 def parse_version_tuple(version: str) -> tuple[int, ...]:
@@ -134,11 +145,19 @@ def mod_supports_game_version(
     jar_path: str,
     game_version: str,
 ) -> bool:
-    if minecraft_version is not None:
-        return version_labels_compatible(minecraft_version, game_version)
-    if minecraft_version_range is not None:
-        return version_in_constraint(minecraft_version_range, game_version)
+    if minecraft_version is not None and not _is_unresolved_version_label(minecraft_version):
+        try:
+            return version_labels_compatible(minecraft_version, game_version)
+        except ValueError:
+            pass
+    if minecraft_version_range is not None and not _is_unresolved_version_label(
+        minecraft_version_range
+    ):
+        try:
+            return version_in_constraint(minecraft_version_range, game_version)
+        except ValueError:
+            pass
     inferred = infer_minecraft_version_from_filename(jar_path)
     if inferred is not None:
         return version_labels_compatible(inferred, game_version)
-    return False
+    return True

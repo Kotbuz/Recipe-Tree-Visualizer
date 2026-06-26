@@ -9,10 +9,11 @@ from loguru import logger
 
 from app.core.config import get_settings
 from app.core.recipe_layout import recipe_layout_for_version
+from app.services.version_service import version_service
 
 _FORGE_1710_DEPENDENCIES: dict[str, list[str]] = {
-    # ForgeMultipart тянет CodeChickenCore; AE2 rv3 без multipart работает сам по себе.
-    "forgemultipart": ["CodeChickenCore"],
+    # На 1.7.10 CodeChickenLib заменяет CodeChickenCore для ChickenBones-модов.
+    "forgemultipart": ["CodeChickenLib"],
     "thaumcraft": ["Baubles"],
     "thermalexpansion": ["CoFHCore", "ThermalFoundation"],
     "buildcraft": ["BuildCraft|Core"],
@@ -22,6 +23,20 @@ _CLASS_NOT_FOUND = re.compile(r"ClassNotFoundException:\s*(\S+)")
 _MOD_EXCEPTION = re.compile(r"Caught exception from (\w+)", re.IGNORECASE)
 _LOADER_EXCEPTION = re.compile(r"LoaderException:\s*(.+)")
 _FORGE_ERROR_LINE = re.compile(r"\[.*ERROR.*\]:\s*(.+)")
+_MISSING_MODS_BLOCK = re.compile(r"Missing Mods:\s*\n((?:\t\S+.*\n)+)", re.MULTILINE)
+_FORGE_VERSION_REQUIREMENT = re.compile(
+    r"^\s*Forge\s*:\s*\[(?P<version>[^\],)]+)",
+    re.MULTILINE,
+)
+_FORGE_LOADED_VERSION = re.compile(
+    r"Minecraft Forge\s+(?P<version>\d+\.\d+\.\d+\.\d+)",
+    re.IGNORECASE,
+)
+
+# dependency_name (normalized) -> jar name fragments that satisfy it
+_DEPENDENCY_SATISFIED_BY: dict[str, tuple[str, ...]] = {
+    "codechickencore": ("codechickenlib", "codechickencore"),
+}
 
 # Библиотеки / API-моды без собственных рецептов крафта в экспорте.
 _LIBRARY_MOD_IDS = frozenset(
@@ -79,9 +94,54 @@ def _guess_mod_id(jar_name: str) -> str:
 
 
 def _jar_provides_dependency(jar_name: str, dependency: str) -> bool:
-    jar_lower = jar_name.lower()
+    jar_normalized = jar_name.lower().replace("_", "").replace("-", "")
     dep_lower = dependency.lower().replace("|", "").replace("_", "").replace("-", "")
-    return dep_lower in jar_lower.replace("_", "").replace("-", "")
+    if dep_lower in jar_normalized:
+        return True
+    if "|" in dependency:
+        prefix = (
+            dependency.split("|", 1)[0]
+            .lower()
+            .replace("_", "")
+            .replace("-", "")
+        )
+        if prefix and prefix in jar_normalized:
+            return True
+    for alias in _DEPENDENCY_SATISFIED_BY.get(dep_lower, ()):
+        if alias.replace("_", "").replace("-", "") in jar_normalized:
+            return True
+    return False
+
+
+def _extract_forge_version_requirement(text: str) -> str | None:
+    match = _FORGE_VERSION_REQUIREMENT.search(text)
+    if not match:
+        return None
+    return match.group("version").strip()
+
+
+def _extract_loaded_forge_version(text: str) -> str | None:
+    match = _FORGE_LOADED_VERSION.search(text)
+    if not match:
+        return None
+    return match.group("version").strip()
+
+
+def _extract_missing_mods_from_diagnostic(text: str) -> list[str]:
+    match = _MISSING_MODS_BLOCK.search(text)
+    if not match:
+        return []
+    missing: list[str] = []
+    for line in match.group(1).splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        mod_id = stripped.split(":", 1)[0].strip()
+        if mod_id.lower() == "forge":
+            continue
+        if mod_id and mod_id not in missing:
+            missing.append(mod_id)
+    return missing
 
 
 def _list_installed_mod_jars(mods_dir: Path) -> list[str]:
@@ -136,31 +196,44 @@ def _find_missing_dependencies(
     return issues
 
 
-def _forge_log_path(version: str) -> Path:
-    for candidate in _forge_log_candidates(version):
-        if candidate.is_file():
-            return candidate
-    return _forge_log_candidates(version)[0]
-
-
-def _forge_log_candidates(version: str) -> list[Path]:
+def _forge_log_candidates(version: str, forge_build: str | None = None) -> list[Path]:
     settings = get_settings()
     repo_root = settings.minecraft_versions_path.parent
     if not repo_root.is_dir():
         repo_root = Path(__file__).resolve().parents[2]
+    if forge_build:
+        return [
+            repo_root
+            / "recipe-exporter"
+            / "forge-runtime"
+            / version
+            / forge_build
+            / "logs"
+            / "latest.log",
+        ]
     return [
         repo_root / "recipe-exporter" / "forge-runtime" / version / "logs" / "latest.log",
         repo_root / "recipe-exporter" / "versions" / version / "run" / "logs" / "latest.log",
     ]
 
 
-def _forge_crash_report_candidates(version: str) -> list[Path]:
-    return [path.parent.parent / "crash-reports" for path in _forge_log_candidates(version)]
+def _forge_log_path(version: str, forge_build: str | None = None) -> Path:
+    for candidate in _forge_log_candidates(version, forge_build=forge_build):
+        if candidate.is_file():
+            return candidate
+    return _forge_log_candidates(version, forge_build=forge_build)[0]
 
 
-def _latest_crash_report_text(version: str) -> str:
+def _forge_crash_report_candidates(version: str, forge_build: str | None = None) -> list[Path]:
+    return [
+        path.parent.parent / "crash-reports"
+        for path in _forge_log_candidates(version, forge_build=forge_build)
+    ]
+
+
+def _latest_crash_report_text(version: str, forge_build: str | None = None) -> str:
     reports: list[Path] = []
-    for crash_dir in _forge_crash_report_candidates(version):
+    for crash_dir in _forge_crash_report_candidates(version, forge_build=forge_build):
         if not crash_dir.is_dir():
             continue
         reports.extend(sorted(crash_dir.glob("crash-*.txt"), key=lambda path: path.stat().st_mtime, reverse=True))
@@ -169,12 +242,17 @@ def _latest_crash_report_text(version: str) -> str:
     return reports[0].read_text(encoding="utf-8", errors="replace")
 
 
-def _forge_diagnostic_text(version: str, log_path: Path | None = None) -> str:
+def _forge_diagnostic_text(
+    version: str,
+    log_path: Path | None = None,
+    *,
+    forge_build: str | None = None,
+) -> str:
     parts: list[str] = []
-    resolved_log = log_path or _forge_log_path(version)
+    resolved_log = log_path or _forge_log_path(version, forge_build=forge_build)
     if resolved_log.is_file():
         parts.append(resolved_log.read_text(encoding="utf-8", errors="replace"))
-    crash_text = _latest_crash_report_text(version)
+    crash_text = _latest_crash_report_text(version, forge_build=forge_build)
     if crash_text:
         parts.append(crash_text)
     return "\n".join(parts)
@@ -190,12 +268,17 @@ def _parse_forge_log(log_path: Path) -> tuple[list[str], list[str]]:
     return class_errors, mod_errors
 
 
-def _extract_forge_loader_errors(log_path: Path, *, version: str | None = None) -> list[str]:
+def _extract_forge_loader_errors(
+    log_path: Path,
+    *,
+    version: str | None = None,
+    forge_build: str | None = None,
+) -> list[str]:
     text = ""
     if log_path.is_file():
         text = log_path.read_text(encoding="utf-8", errors="replace")
     if version is not None:
-        text = _forge_diagnostic_text(version, log_path)
+        text = _forge_diagnostic_text(version, log_path, forge_build=forge_build)
     elif not text:
         return []
 
@@ -207,6 +290,26 @@ def _extract_forge_loader_errors(log_path: Path, *, version: str | None = None) 
         if cleaned and cleaned not in seen:
             seen.add(cleaned)
             messages.append(cleaned)
+
+    required_forge = _extract_forge_version_requirement(text)
+    loaded_forge = _extract_loaded_forge_version(text)
+    if required_forge and loaded_forge and loaded_forge != required_forge:
+        add(
+            f"Модпак требует Forge {required_forge} или новее, а экспортёр запущен на {loaded_forge}. "
+            "Перезапустите экспорт после установки нужной версии Forge."
+        )
+    elif required_forge and not loaded_forge:
+        add(
+            f"Модпак требует Forge {required_forge} или новее. "
+            "Убедитесь, что в профиле указана версия Forge (импорт из корня инстанса Prism)."
+        )
+
+    for mod_id in _extract_missing_mods_from_diagnostic(text):
+        add(
+            f"Forge не запустился: отсутствует мод «{mod_id}». "
+            "CurseForge zip содержит только overrides (часть jar), лаунчер ставит все моды "
+            "из manifest. Импортируйте папку инстанса после установки модпака или добавьте jar вручную."
+        )
 
     for match in _LOADER_EXCEPTION.finditer(text):
         add(match.group(1))
@@ -242,7 +345,41 @@ def _extract_forge_loader_errors(log_path: Path, *, version: str | None = None) 
             "нужен universal Forge 10.13.4.1448. Перезапустите экспорт — бэкенд установит его автоматически."
         )
 
+    if (
+        "resourceloader" in text.lower()
+        or "IResourcePack" in text
+        or "net.minecraft.client.resources" in text
+    ):
+        add(
+            "Клиентский мод (Resource Loader, Custom Main Menu и т.п.) несовместим с headless JVM-экспортом. "
+            "Такие jar автоматически исключаются при экспорте — нажмите «Перезагрузить моды и рецепты»."
+        )
+
     return messages[:8]
+
+
+def _warn_incomplete_curseforge_profile(jar_names: list[str]) -> list[str]:
+    lowered = [name.lower() for name in jar_names]
+    ic2_dependent_fragments = (
+        "galacticraft",
+        "gravisuite",
+        "advancedsolarpanel",
+        "advancedgenetics",
+    )
+    has_ic2_dependent = any(
+        any(fragment in name for fragment in ic2_dependent_fragments) for name in lowered
+    )
+    has_ic2 = any(
+        "industrialcraft" in name or name.startswith("ic2-") or name.startswith("ic2_")
+        for name in lowered
+    )
+    if has_ic2_dependent and not has_ic2:
+        return [
+            "Похоже на неполный CurseForge zip: есть Galacticraft/GraviSuite и др., "
+            "но нет IndustrialCraft 2 (IC2). Лаунчер ставит ~117 модов из manifest, "
+            "а zip overrides — только ~30 jar. Импортируйте папку инстанса из лаунчера."
+        ]
+    return []
 
 
 def _warn_incompatible_mod_jars(jar_names: list[str]) -> list[str]:
@@ -253,11 +390,6 @@ def _warn_incompatible_mod_jars(jar_names: list[str]) -> list[str]:
             warnings.append(
                 f"Мод {jar_name} — experimental/dev-сборка IC2. "
                 "При экспорте Forge обычно падает; используйте release IC2-2.2.x для 1.7.10."
-            )
-        if "forgemultipart" in lowered:
-            warnings.append(
-                f"Мод {jar_name} (ForgeMultipart) часто несовместим с JVM-экспортёром. "
-                "Для AE2 rv3-beta-6 его можно убрать из mods/."
             )
         if "ic2classic" in lowered:
             warnings.append(
@@ -289,6 +421,11 @@ def _build_warnings(
 
     if exported_count == 0 and jar_names:
         for message in log_loader_errors[:5]:
+            if message.startswith("Forge не запустился: отсутствует мод"):
+                warnings.append(message)
+        for message in log_loader_errors[:5]:
+            if message.startswith("Forge не запустился: отсутствует мод"):
+                continue
             warnings.append(f"Ошибка экспорта Forge: {message}")
         if log_loader_errors or incompatible_jar_warnings:
             warnings.append(
@@ -323,19 +460,25 @@ def _build_warnings(
     return warnings
 
 
-def _recipe_dir(version: str) -> Path:
-    return get_settings().minecraft_versions_path / version / "recipe"
+def _recipe_dir(version: str, profile_id: str | None = None) -> Path:
+    return version_service.recipe_dir(version, profile_id)
 
 
-def _export_manifest_path(version: str) -> Path:
-    return _recipe_dir(version) / "_export_manifest.json"
+def _export_manifest_path(version: str, profile_id: str | None = None) -> Path:
+    return _recipe_dir(version, profile_id) / "_export_manifest.json"
 
 
-def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
+def analyze_recipe_export_status(
+    version: str,
+    profile_id: str | None = None,
+) -> RecipeExportStatus:
     layout = recipe_layout_for_version(version)
-    settings = get_settings()
-    version_dir = settings.minecraft_versions_path / version
-    mods_dir = version_dir / "mods"
+    resolved_profile = version_service._resolve_profile_id(version, profile_id)
+    mods_dir = version_service.mods_dir(version, resolved_profile)
+    profile_dir = version_service.profile_dir(version, resolved_profile)
+    from app.services.profile_storage import resolve_profile_forge_build
+
+    forge_build = resolve_profile_forge_build(profile_dir, minecraft_version=version)
 
     jar_names = _list_installed_mod_jars(mods_dir)
     if layout != "jvm":
@@ -351,7 +494,7 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
             log_errors=(),
         )
 
-    recipe_dir = _recipe_dir(version)
+    recipe_dir = _recipe_dir(version, resolved_profile)
     recipe_namespaces = _recipe_namespaces(recipe_dir)
     exported_count = len(
         [
@@ -373,21 +516,23 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
         )
     )
 
-    log_path = _forge_log_path(version)
+    log_path = _forge_log_path(version, forge_build=forge_build)
     log_class_errors, log_mod_errors = _parse_forge_log(log_path)
     # After a successful export, ignore stale crash reports from the Gradle dev server.
     log_loader_errors = _extract_forge_loader_errors(
         log_path,
         version=version if exported_count == 0 else None,
+        forge_build=forge_build,
     )
     incompatible_jar_warnings = _warn_incompatible_mod_jars(jar_names)
+    incomplete_warnings = _warn_incomplete_curseforge_profile(jar_names)
     warnings = _build_warnings(
         jar_names=jar_names,
         recipe_namespaces=recipe_namespaces,
         missing_dependencies=missing_dependencies,
         log_class_errors=log_class_errors,
         log_loader_errors=log_loader_errors,
-        incompatible_jar_warnings=incompatible_jar_warnings,
+        incompatible_jar_warnings=incompatible_jar_warnings + incomplete_warnings,
         exported_count=exported_count,
     )
 
@@ -408,9 +553,12 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
     )
 
 
-def refresh_export_manifest(version: str) -> RecipeExportStatus:
-    status = analyze_recipe_export_status(version)
-    manifest_path = _export_manifest_path(version)
+def refresh_export_manifest(
+    version: str,
+    profile_id: str | None = None,
+) -> RecipeExportStatus:
+    status = analyze_recipe_export_status(version, profile_id=profile_id)
+    manifest_path = _export_manifest_path(version, profile_id)
     payload: dict[str, object] = {}
     if manifest_path.is_file():
         try:
@@ -428,7 +576,7 @@ def refresh_export_manifest(version: str) -> RecipeExportStatus:
     return status
 
 
-def log_export_warnings(version: str) -> RecipeExportStatus:
+def log_export_warnings(version: str, profile_id: str | None = None) -> RecipeExportStatus:
     if recipe_layout_for_version(version) != "jvm":
         return RecipeExportStatus(
             version=version,
@@ -440,21 +588,21 @@ def log_export_warnings(version: str) -> RecipeExportStatus:
             missing_dependencies=(),
         )
 
-    status = refresh_export_manifest(version)
+    status = refresh_export_manifest(version, profile_id=profile_id)
     for warning in status.warnings:
         logger.warning("[recipe-export:{}] {}", version, warning)
     return status
 
 
 class RecipeExportStatusService:
-    def analyze(self, version: str) -> RecipeExportStatus:
-        return analyze_recipe_export_status(version)
+    def analyze(self, version: str, profile_id: str | None = None) -> RecipeExportStatus:
+        return analyze_recipe_export_status(version, profile_id=profile_id)
 
-    def refresh_manifest(self, version: str) -> RecipeExportStatus:
-        return refresh_export_manifest(version)
+    def refresh_manifest(self, version: str, profile_id: str | None = None) -> RecipeExportStatus:
+        return refresh_export_manifest(version, profile_id=profile_id)
 
-    def log_warnings(self, version: str) -> RecipeExportStatus:
-        return log_export_warnings(version)
+    def log_warnings(self, version: str, profile_id: str | None = None) -> RecipeExportStatus:
+        return log_export_warnings(version, profile_id=profile_id)
 
 
 recipe_export_status_service = RecipeExportStatusService()

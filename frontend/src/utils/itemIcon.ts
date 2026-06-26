@@ -1,6 +1,6 @@
 export const DEFAULT_MINECRAFT_VERSION = '26.2';
 
-export const RECIPE_SEARCH_DEBOUNCE_MS = 300;
+export const RECIPE_SEARCH_DEBOUNCE_MS = 400;
 export const RECIPE_SEARCH_LIMIT = 50;
 
 /** Имя файла иконки из отображаемого названия предмета. */

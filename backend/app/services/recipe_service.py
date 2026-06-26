@@ -27,6 +27,7 @@ class RecipeService:
     def search_recipes(
         self,
         version: str = "26.2",
+        profile_id: str | None = None,
         query: str | None = None,
         uses_item: str | None = None,
         produces_item: str | None = None,
@@ -38,6 +39,7 @@ class RecipeService:
     ) -> list[RecipeSummary]:
         return recipe_manager.search_summaries(
             version,
+            profile_id=profile_id,
             query=query,
             uses_item=uses_item,
             produces_item=produces_item,

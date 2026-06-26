@@ -13,6 +13,7 @@ from app.schemas.versions import (
     VersionInstallResponse,
     VersionListResponse,
 )
+from app.schemas.forge import ForgeInstallStatusResponse, ForgePrepareRequest
 from app.schemas.mod_dependencies import ModDependencyDownloadResponse
 from app.recipes.loaders.recipe_paths import recipe_layout_for_version
 from app.services.jvm_export_status_service import (
@@ -31,6 +32,7 @@ from app.services.mod_dependency_service import (
     mod_dependency_service,
 )
 from app.services.mod_service import ModVersionNotInstalledError, mod_service
+from app.services.forge_install_service import ForgeInstallError, forge_install_service
 from app.services.version_install_service import version_install_service
 from app.services.version_service import version_service
 
@@ -102,6 +104,44 @@ def install_version(version: str) -> VersionInstallResponse:
     )
 
 
+def _forge_status_response(status) -> ForgeInstallStatusResponse:
+    return ForgeInstallStatusResponse(
+        minecraft_version=status.minecraft_version,
+        forge_build=status.forge_build,
+        installed=status.installed,
+        running=status.running,
+        phase=status.phase,
+        message=status.message,
+        progress=status.progress,
+        error=status.error,
+    )
+
+
+@router.get("/{version}/forge/install-status", response_model=ForgeInstallStatusResponse)
+def get_forge_install_status(
+    version: str,
+    forge_build: str = Query(min_length=1, max_length=32),
+) -> ForgeInstallStatusResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    status = forge_install_service.get_status(version, forge_build)
+    return _forge_status_response(status)
+
+
+@router.post("/{version}/forge/prepare", response_model=ForgeInstallStatusResponse)
+def prepare_forge_install(
+    version: str,
+    body: ForgePrepareRequest,
+) -> ForgeInstallStatusResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    try:
+        status = forge_install_service.prepare(version, body.forge_build)
+    except ForgeInstallError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    return _forge_status_response(status)
+
+
 @router.get("/{version}/item-icons", response_model=ItemIconManifestResponse)
 def list_item_icons(version: str) -> ItemIconManifestResponse:
     icons = version_service.list_item_icons(version)
@@ -123,10 +163,13 @@ def get_ingredient_index(version: str) -> IngredientIndexResponse:
 
 
 @router.get("/{version}/recipe-export-status", response_model=RecipeExportStatusResponse)
-def get_recipe_export_status(version: str) -> RecipeExportStatusResponse:
+def get_recipe_export_status(
+    version: str,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> RecipeExportStatusResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
-    status = recipe_export_status_service.refresh_manifest(version)
+    status = recipe_export_status_service.refresh_manifest(version, profile_id=profile_id)
     return _export_status_response(status)
 
 
@@ -134,15 +177,21 @@ def get_recipe_export_status(version: str) -> RecipeExportStatusResponse:
     "/{version}/download-missing-mod-dependencies",
     response_model=ModDependencyDownloadResponse,
 )
-def download_missing_mod_dependencies(version: str) -> ModDependencyDownloadResponse:
+def download_missing_mod_dependencies(
+    version: str,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> ModDependencyDownloadResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     try:
-        result = mod_dependency_service.download_missing_dependencies(version)
+        result = mod_dependency_service.download_missing_dependencies(
+            version,
+            profile_id=profile_id,
+        )
     except ModDependencyDownloadError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    recipe_export_status_service.refresh_manifest(version)
+    recipe_export_status_service.refresh_manifest(version, profile_id=profile_id)
     return ModDependencyDownloadResponse(
         version=result.version,
         requested=list(result.requested),
@@ -168,11 +217,12 @@ def download_missing_mod_dependencies(version: str) -> ModDependencyDownloadResp
 def reload_mods(
     version: str,
     trigger_export: bool = Query(default=True),
+    profile_id: str | None = Query(default=None, min_length=1),
 ) -> ReloadModsResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     try:
-        summaries = mod_service.force_reload_version(version)
+        summaries = mod_service.force_reload_version(version, profile_id=profile_id)
     except ModVersionNotInstalledError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
 
@@ -180,7 +230,10 @@ def reload_mods(
         export_recipe_count: int | None = None
         export_error: str | None = None
         try:
-            export_recipe_count = jvm_recipe_export_service.ensure_exported(version)
+            export_recipe_count = jvm_recipe_export_service.ensure_exported(
+                version,
+                profile_id=profile_id,
+            )
             if export_recipe_count == 0:
                 loader_errors = _extract_forge_loader_errors(_forge_log_path(version), version=version)
                 if loader_errors:
@@ -194,7 +247,7 @@ def reload_mods(
         export_recipe_count = None
         export_error = None
 
-    status = recipe_export_status_service.refresh_manifest(version)
+    status = recipe_export_status_service.refresh_manifest(version, profile_id=profile_id)
     return ReloadModsResponse(
         version=version,
         mod_count=len(summaries),
@@ -208,18 +261,20 @@ def reload_mods(
 def clear_recipe_export(
     version: str,
     include_ore_dict: bool = Query(default=True),
+    profile_id: str | None = Query(default=None, min_length=1),
 ) -> ClearRecipeExportResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     try:
         deleted, ore_dict_removed = jvm_recipe_export_service.clear_exported_recipes(
             version,
+            profile_id=profile_id,
             include_ore_dict=include_ore_dict,
         )
     except JvmRecipeExportError as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
-    recipe_export_status_service.refresh_manifest(version)
+    recipe_export_status_service.refresh_manifest(version, profile_id=profile_id)
     return ClearRecipeExportResponse(
         version=version,
         deleted_recipe_files=deleted,

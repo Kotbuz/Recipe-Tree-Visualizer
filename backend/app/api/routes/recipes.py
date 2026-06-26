@@ -14,6 +14,7 @@ MAX_LIMIT = 50
 @router.get("/", response_model=RecipeListResponse, include_in_schema=False)
 def search_recipes(
     version: str = Query(default="26.2"),
+    profile_id: str | None = Query(default=None, min_length=1),
     q: str | None = Query(default=None, min_length=1),
     uses_item: str | None = Query(default=None, min_length=1),
     produces_item: str | None = Query(default=None, min_length=1),
@@ -25,6 +26,7 @@ def search_recipes(
 ) -> RecipeListResponse:
     recipes = recipe_service.search_recipes(
         version=version,
+        profile_id=profile_id,
         query=q,
         uses_item=uses_item,
         produces_item=produces_item,

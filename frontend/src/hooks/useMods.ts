@@ -18,7 +18,7 @@ type ModListResponse = {
     mods: ModSummary[];
 };
 
-export function useMods(gameVersion: string) {
+export function useMods(gameVersion: string, profileId?: string) {
     const [mods, setMods] = useState<ModSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
@@ -37,6 +37,9 @@ export function useMods(gameVersion: string) {
         try {
             const url = new URL('/mods', window.location.origin);
             url.searchParams.set('version', gameVersion);
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
             const response = await fetch(url);
             if (!response.ok) {
                 throw new Error(`Не удалось загрузить список модов (${response.status})`);
@@ -51,7 +54,7 @@ export function useMods(gameVersion: string) {
         } finally {
             setLoading(false);
         }
-    }, [gameVersion]);
+    }, [gameVersion, profileId]);
 
     useEffect(() => {
         void refresh();
@@ -73,6 +76,9 @@ export function useMods(gameVersion: string) {
 
                 const url = new URL('/mods/upload', window.location.origin);
                 url.searchParams.set('version', gameVersion);
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
                 const response = await fetch(url, {
                     method: 'POST',
                     body: formData,
@@ -101,7 +107,7 @@ export function useMods(gameVersion: string) {
                 setUploading(false);
             }
         },
-        [gameVersion, refresh],
+        [gameVersion, profileId, refresh],
     );
 
     const remove = useCallback(
@@ -115,6 +121,9 @@ export function useMods(gameVersion: string) {
             try {
                 const url = new URL('/mods', window.location.origin);
                 url.searchParams.set('version', gameVersion);
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
                 url.searchParams.set('jar_filename', jarFilename);
                 const response = await fetch(url.toString(), { method: 'DELETE' });
 
@@ -141,7 +150,7 @@ export function useMods(gameVersion: string) {
                 setRemovingJar(null);
             }
         },
-        [gameVersion, refresh],
+        [gameVersion, profileId, refresh],
     );
 
     const compatibleMods = mods.filter((mod) => mod.compatible !== false);

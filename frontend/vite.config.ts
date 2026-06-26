@@ -134,6 +134,10 @@ export default defineConfig({
                 target: 'http://localhost:8000',
                 changeOrigin: true,
             },
+            '/modpack': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+            },
             '/items': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,

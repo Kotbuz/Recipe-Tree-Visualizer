@@ -15,7 +15,7 @@ export type ClearRecipeExportResponse = {
     ore_dict_removed: boolean;
 };
 
-export function useVersionMaintenance(version: string) {
+export function useVersionMaintenance(version: string, profileId?: string) {
     const [reloading, setReloading] = useState(false);
     const [clearing, setClearing] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -26,10 +26,14 @@ export function useVersionMaintenance(version: string) {
         setReloading(true);
         setError(null);
         try {
-            const response = await fetch(
+            const reloadUrl = new URL(
                 `/versions/${encodeURIComponent(version)}/reload-mods`,
-                { method: 'POST' },
+                window.location.origin,
             );
+            if (profileId) {
+                reloadUrl.searchParams.set('profile_id', profileId);
+            }
+            const response = await fetch(reloadUrl, { method: 'POST' });
             if (!response.ok) {
                 let detail = `HTTP ${response.status}`;
                 try {
@@ -52,16 +56,20 @@ export function useVersionMaintenance(version: string) {
         } finally {
             setReloading(false);
         }
-    }, [version]);
+    }, [version, profileId]);
 
     const clearRecipeExport = useCallback(async (): Promise<ClearRecipeExportResponse> => {
         setClearing(true);
         setError(null);
         try {
-            const response = await fetch(
+            const clearUrl = new URL(
                 `/versions/${encodeURIComponent(version)}/clear-recipe-export`,
-                { method: 'POST' },
+                window.location.origin,
             );
+            if (profileId) {
+                clearUrl.searchParams.set('profile_id', profileId);
+            }
+            const response = await fetch(clearUrl, { method: 'POST' });
             if (!response.ok) {
                 let detail = `HTTP ${response.status}`;
                 try {
@@ -85,7 +93,7 @@ export function useVersionMaintenance(version: string) {
         } finally {
             setClearing(false);
         }
-    }, [version]);
+    }, [version, profileId]);
 
     return {
         reloading,

@@ -33,7 +33,7 @@ def test_renderer_jar_path_for_installed_version() -> None:
 
 def test_resolve_item_icon_prefers_rendered_icons(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
     version_dir = tmp_path / "9.9"
-    rendered_dir = version_dir / "rendered-icons"
+    rendered_dir = version_dir / "profiles" / "default" / "rendered-icons"
     legacy_dir = version_dir / "item-textures"
     rendered_dir.mkdir(parents=True)
     legacy_dir.mkdir(parents=True)
@@ -60,7 +60,7 @@ def test_list_item_icons_skips_phantom_names_when_rendered_exists(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     version_dir = tmp_path / "9.9"
-    rendered_dir = version_dir / "rendered-icons"
+    rendered_dir = version_dir / "profiles" / "default" / "rendered-icons"
     rendered_dir.mkdir(parents=True)
     (rendered_dir / "oak_planks.png").write_bytes(b"rendered")
 
@@ -84,7 +84,7 @@ def test_resolve_item_icon_skips_jar_when_rendered_dir_exists(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     version_dir = tmp_path / "9.9"
-    rendered_dir = version_dir / "rendered-icons"
+    rendered_dir = version_dir / "profiles" / "default" / "rendered-icons"
     rendered_dir.mkdir(parents=True)
 
     monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))

@@ -4,6 +4,7 @@ from pathlib import Path
 import pytest
 
 from app.services.mod_service import mod_service
+from app.services.version_service import version_service
 
 pytestmark = pytest.mark.usefixtures("isolated_minecraft_versions")
 
@@ -12,8 +13,7 @@ def test_scan_registers_unparseable_jar_with_fallback(
     isolated_minecraft_versions: Path,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
-    mods_dir.mkdir(parents=True, exist_ok=True)
+    mods_dir = version_service.mods_dir(version)
     jar_path = mods_dir / "CodeChickenCore-1.4.16.jar"
     jar_path.write_bytes(b"not a jar")
 
@@ -28,8 +28,7 @@ def test_scan_registers_library_jar_without_mcmod_info(
     isolated_minecraft_versions: Path,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
-    mods_dir.mkdir(parents=True, exist_ok=True)
+    mods_dir = version_service.mods_dir(version)
     jar_path = mods_dir / "CodeChickenCore-1.4.16.jar"
     with zipfile.ZipFile(jar_path, "w") as archive:
         archive.writestr("dummy.txt", "no metadata")

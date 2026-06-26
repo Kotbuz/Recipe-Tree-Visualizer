@@ -51,8 +51,10 @@ def test_pick_curseforge_file_prefers_release() -> None:
 def test_collect_missing_dependencies(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
-    mods_dir = version_dir / "mods"
-    recipe_dir = version_dir / "recipe"
+    version_dir.mkdir(parents=True)
+    (version_dir / "client.jar").write_bytes(b"jar" * 512)
+    mods_dir = version_dir / "profiles" / "default" / "mods"
+    recipe_dir = version_dir / "profiles" / "default" / "recipe"
     mods_dir.mkdir(parents=True)
     recipe_dir.mkdir(parents=True)
     (mods_dir / "Thaumcraft-4.2.3.5.jar").write_bytes(b"j")
@@ -73,9 +75,10 @@ def test_collect_missing_dependencies(tmp_path: Path, monkeypatch: pytest.Monkey
 def test_download_missing_dependencies_no_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
-    (version_dir / "mods").mkdir(parents=True)
-    (version_dir / "recipe").mkdir(parents=True)
-    (version_dir / "client.jar").write_bytes(b"jar")
+    version_dir.mkdir(parents=True)
+    (version_dir / "client.jar").write_bytes(b"jar" * 512)
+    (version_dir / "profiles" / "default" / "mods").mkdir(parents=True)
+    (version_dir / "profiles" / "default" / "recipe").mkdir(parents=True)
 
     monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))
     from app.core.config import get_settings
@@ -103,7 +106,7 @@ def test_download_missing_dependencies_no_missing(tmp_path: Path, monkeypatch: p
 def test_download_one_uses_cache(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
-    mods_dir = version_dir / "mods"
+    mods_dir = version_dir / "profiles" / "default" / "mods"
     mods_dir.mkdir(parents=True)
 
     monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))

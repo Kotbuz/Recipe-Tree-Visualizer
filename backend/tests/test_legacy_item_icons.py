@@ -8,6 +8,7 @@ from app.recipes.legacy_item_icons import (
 from app.recipes.models import Recipe, RecipeIO
 from app.recipes.types import RecipeType
 from app.services.jvm_export_status_service import analyze_recipe_export_status
+from app.services.version_service import version_service
 
 
 def test_legacy_dye_metadata_maps_to_lapis() -> None:
@@ -52,10 +53,10 @@ def test_export_status_detects_missing_ae2_dependencies(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "appliedenergistics2-rv3-beta-6.jar").write_bytes(b"fake")
-    (isolated_minecraft_versions / version / "recipe" / "minecraft__export__crafting__0.json").write_text(
+    (version_service.recipe_dir(version) / "minecraft__export__crafting__0.json").write_text(
         '{"id":"minecraft:export/crafting/0"}',
         encoding="utf-8",
     )
@@ -69,10 +70,10 @@ def test_export_status_detects_forgemultipart_needs_codechickencore(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "ForgeMultipart-1.2.0.345-universal.jar").write_bytes(b"fake")
-    (isolated_minecraft_versions / version / "recipe" / "minecraft__export__crafting__0.json").write_text(
+    (version_service.recipe_dir(version) / "minecraft__export__crafting__0.json").write_text(
         '{"id":"minecraft:export/crafting/0"}',
         encoding="utf-8",
     )
@@ -87,7 +88,7 @@ def test_export_status_shows_export_hint_when_recipe_dir_empty(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "appliedenergistics2-rv3-beta-6.jar").write_bytes(b"fake")
     (mods_dir / "CodeChickenCore-1.4.16.jar").write_bytes(b"fake")
@@ -103,7 +104,7 @@ def test_export_status_warns_about_ic2_experimental_jar(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "industrialcraft-2-2.2.828-experimental.jar").write_bytes(b"fake")
 
@@ -115,7 +116,7 @@ def test_export_status_warns_about_forgemultipart_jar(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "ForgeMultipart-1.7.10-1.2.0.345-universal.jar").write_bytes(b"fake")
 
@@ -143,7 +144,7 @@ def test_export_status_skips_dependency_heuristics_for_non_jvm(
     isolated_minecraft_versions,
 ) -> None:
     version = "1.12.2"
-    mods_dir = isolated_minecraft_versions / version / "mods"
+    mods_dir = version_service.mods_dir(version)
     mods_dir.mkdir(parents=True, exist_ok=True)
     (mods_dir / "appliedenergistics2-rv3-beta-6.jar").write_bytes(b"fake")
 

@@ -280,13 +280,31 @@ class IngredientRegistry:
 _default_tag_loader = TagLoader()
 
 
+@lru_cache(maxsize=32)
+def get_profile_ingredient_registry(
+    version: str,
+    profile_id: str | None = None,
+) -> IngredientRegistry:
+    from app.recipes.manager import recipe_manager, resolve_recipe_scope
+
+    mc_version, resolved_profile, storage_key = resolve_recipe_scope(version, profile_id)
+    registry = IngredientRegistry(_default_tag_loader)
+    registry.load_version(mc_version)
+    for jar_path in recipe_manager.mod_jar_paths_for_storage(storage_key):
+        registry.merge_tags_from_jar(jar_path)
+    registry.register_from_recipes(
+        recipe_manager.get_version_recipes(
+            mc_version,
+            profile_id=resolved_profile,
+            include_mods=True,
+        ),
+        version=mc_version,
+    )
+    return registry
+
+
 @lru_cache(maxsize=8)
 def get_version_ingredient_registry(version: str) -> IngredientRegistry:
-    from app.recipes.manager import recipe_manager
+    from app.services.profile_storage import DEFAULT_PROFILE_ID
 
-    registry = IngredientRegistry(_default_tag_loader)
-    registry.load_version(version)
-    for jar_path in recipe_manager.mod_jar_paths_for_version(version):
-        registry.merge_tags_from_jar(jar_path)
-    registry.register_from_recipes(recipe_manager.get_version_recipes(version), version=version)
-    return registry
+    return get_profile_ingredient_registry(version, DEFAULT_PROFILE_ID)

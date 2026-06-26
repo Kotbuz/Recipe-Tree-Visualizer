@@ -35,6 +35,7 @@ class Settings(BaseSettings):
         "Recipe-Tree-Visualizer/1.0 (https://github.com/Kotbuz/Recipe-Tree-Visualizer)"
     )
     mod_dependency_download_timeout_seconds: float = 120.0
+    enable_local_folder_picker: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property

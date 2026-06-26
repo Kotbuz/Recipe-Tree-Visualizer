@@ -1,5 +1,6 @@
-import { useCallback, useRef, useState } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import type { ModSummary } from '../hooks/useMods';
+import type { ProfileSummary } from '../hooks/useProfiles';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
@@ -8,11 +9,22 @@ type ModsPanelProps = {
     onVersionChange: (version: string) => void;
     onSave: () => void;
     onLoad: () => void;
+    profiles: ProfileSummary[];
+    activeProfileId: string;
+    onProfileChange: (profileId: string) => void;
+    onProfileDelete?: (profileId: string) => void;
+    deletingProfileId?: string | null;
+    profilesLoading?: boolean;
+    profileImporting?: boolean;
+    profilesError?: string | null;
+    onModpackUpload: (file: File) => void;
+    onInstancePathImport: (path: string) => void;
+    onBrowseInstanceFolder?: () => void;
+    browsingInstanceFolder?: boolean;
     mods: ModSummary[];
     modsLoading: boolean;
     modsUploading: boolean;
     modsError: string | null;
-    onModsUpload: (files: FileList) => void;
     onModsRefresh: () => void;
     onModRemove?: (jarFilename: string) => void;
     removingJarFilename?: string | null;
@@ -53,18 +65,42 @@ function loaderLabel(loader: string): string {
     }
 }
 
-function jarFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
+function zipFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
     return Array.from(dataTransfer.files).filter((file) =>
-        file.name.toLowerCase().endsWith('.jar'),
+        file.name.toLowerCase().endsWith('.zip'),
     );
 }
 
-function toFileList(files: File[]): FileList {
-    const dataTransfer = new DataTransfer();
-    for (const file of files) {
-        dataTransfer.items.add(file);
-    }
-    return dataTransfer.files;
+function PanelSection({
+    title,
+    summary,
+    open,
+    onToggle,
+    children,
+}: {
+    title: string;
+    summary?: string;
+    open: boolean;
+    onToggle: () => void;
+    children: ReactNode;
+}) {
+    return (
+        <section className="mods-panel-section">
+            <button
+                type="button"
+                className="mods-panel-section-toggle"
+                aria-expanded={open}
+                onClick={onToggle}
+            >
+                <span className="mods-panel-section-chevron" aria-hidden>
+                    {open ? '▾' : '▸'}
+                </span>
+                <span className="mods-panel-section-title">{title}</span>
+                {summary ? <span className="mods-panel-section-summary">{summary}</span> : null}
+            </button>
+            {open ? <div className="mods-panel-section-body">{children}</div> : null}
+        </section>
+    );
 }
 
 export default function ModsPanel({
@@ -73,11 +109,22 @@ export default function ModsPanel({
     onVersionChange,
     onSave,
     onLoad,
+    profiles,
+    activeProfileId,
+    onProfileChange,
+    onProfileDelete,
+    deletingProfileId = null,
+    profilesLoading = false,
+    profileImporting = false,
+    profilesError = null,
+    onModpackUpload,
+    onInstancePathImport,
+    onBrowseInstanceFolder,
+    browsingInstanceFolder = false,
     mods,
     modsLoading,
     modsUploading,
     modsError,
-    onModsUpload,
     onModsRefresh,
     onModRemove,
     removingJarFilename = null,
@@ -95,33 +142,45 @@ export default function ModsPanel({
     showRecipeMaintenance = false,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
+    const [importOpen, setImportOpen] = useState(versionsEmpty);
+    const [modsOpen, setModsOpen] = useState(true);
+    const [toolsOpen, setToolsOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+    const [instancePath, setInstancePath] = useState('');
     const dragDepthRef = useRef(0);
-    const fileInputRef = useRef<HTMLInputElement>(null);
+    const modpackInputRef = useRef<HTMLInputElement>(null);
     const compatibleCount = mods.filter((mod) => mod.compatible !== false).length;
-    const uploadDisabled = modsUploading || versionsEmpty;
+    const importDisabled = profileImporting || versionsEmpty;
+    const activeProfile = profiles.find((p) => p.profile_id === activeProfileId);
+    const hasTools =
+        (missingDependencyCount > 0 && Boolean(onDownloadDependencies)) ||
+        Boolean(onReloadMods) ||
+        (showRecipeMaintenance && Boolean(onClearRecipeExport));
 
-    const submitJarFiles = useCallback(
-        (files: File[]) => {
-            if (files.length === 0 || uploadDisabled) {
+    const canDeleteActive =
+        Boolean(onProfileDelete) && activeProfileId !== 'default' && !versionsEmpty;
+
+    const submitModpackFile = useCallback(
+        (file: File | undefined) => {
+            if (!file || importDisabled) {
                 return;
             }
-            onModsUpload(toFileList(files));
+            onModpackUpload(file);
         },
-        [onModsUpload, uploadDisabled],
+        [importDisabled, onModpackUpload],
     );
 
     const handleDragEnter = useCallback(
         (event: React.DragEvent<HTMLDivElement>) => {
             event.preventDefault();
             event.stopPropagation();
-            if (uploadDisabled) {
+            if (importDisabled) {
                 return;
             }
             dragDepthRef.current += 1;
             setIsDragOver(true);
         },
-        [uploadDisabled],
+        [importDisabled],
     );
 
     const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
@@ -137,11 +196,11 @@ export default function ModsPanel({
         (event: React.DragEvent<HTMLDivElement>) => {
             event.preventDefault();
             event.stopPropagation();
-            if (!uploadDisabled) {
+            if (!importDisabled) {
                 event.dataTransfer.dropEffect = 'copy';
             }
         },
-        [uploadDisabled],
+        [importDisabled],
     );
 
     const handleDrop = useCallback(
@@ -150,12 +209,15 @@ export default function ModsPanel({
             event.stopPropagation();
             dragDepthRef.current = 0;
             setIsDragOver(false);
-            if (uploadDisabled) {
+            if (importDisabled) {
                 return;
             }
-            submitJarFiles(jarFilesFromDataTransfer(event.dataTransfer));
+            const files = zipFilesFromDataTransfer(event.dataTransfer);
+            if (files[0]) {
+                submitModpackFile(files[0]);
+            }
         },
-        [submitJarFiles, uploadDisabled],
+        [importDisabled, submitModpackFile],
     );
 
     if (!expanded) {
@@ -163,30 +225,30 @@ export default function ModsPanel({
             <button
                 type="button"
                 className="mods-panel-toggle"
-                aria-label="Открыть панель модов"
+                aria-label="Открыть панель модпаков"
                 aria-expanded={false}
                 onClick={() => setExpanded(true)}
             >
-                <span className="mods-panel-toggle-label">Моды</span>
-                <span className="mods-panel-badge">{compatibleCount}/{mods.length}</span>
+                <span className="mods-panel-toggle-label">Модпак</span>
+                <span className="mods-panel-badge">
+                    {compatibleCount}/{mods.length}
+                </span>
             </button>
         );
     }
 
     return (
-        <aside
-            className="mods-panel mods-panel--expanded"
-            aria-label="Панель модов"
-            aria-expanded={true}
-        >
+        <aside className="mods-panel mods-panel--expanded" aria-label="Панель модпаков">
             <div className="mods-panel-header">
-                <h2 className="mods-panel-title">Моды</h2>
+                <h2 className="mods-panel-title">Модпак</h2>
                 <div className="mods-panel-header-actions">
-                    <span className="mods-panel-badge">{compatibleCount}/{mods.length}</span>
+                    <span className="mods-panel-badge">
+                        {compatibleCount}/{mods.length}
+                    </span>
                     <button
                         type="button"
                         className="mods-panel-collapse"
-                        aria-label="Свернуть панель модов"
+                        aria-label="Свернуть"
                         onClick={() => setExpanded(false)}
                     >
                         ×
@@ -194,221 +256,300 @@ export default function ModsPanel({
                 </div>
             </div>
 
-            <label className="mods-panel-field">
-                <span className="mods-panel-field-label">Версия Minecraft</span>
-                <div className="mods-panel-version-row">
-                    <select
-                        className="mods-panel-select"
-                        value={version}
-                        onChange={(event) => onVersionChange(event.target.value)}
-                        disabled={versionsEmpty}
-                    >
-                        {versions.length === 0 ? (
-                            <option value="">Нет установленных версий</option>
-                        ) : (
-                            versions.map((entry) => (
-                                <option key={entry} value={entry}>
-                                    {entry}
-                                </option>
-                            ))
-                        )}
-                    </select>
-                    <button
-                        type="button"
-                        className="mods-panel-version-manager"
-                        onClick={onOpenVersionManager}
-                    >
-                        Версии…
-                    </button>
-                </div>
-            </label>
+            <div className="mods-panel-toolbar">
+                <label className="mods-panel-field mods-panel-field--inline">
+                    <span className="mods-panel-field-label">Версия</span>
+                    <div className="mods-panel-inline-row">
+                        <select
+                            className="mods-panel-select"
+                            value={version}
+                            onChange={(event) => onVersionChange(event.target.value)}
+                            disabled={versionsEmpty}
+                        >
+                            {versions.length === 0 ? (
+                                <option value="">—</option>
+                            ) : (
+                                versions.map((entry) => (
+                                    <option key={entry} value={entry}>
+                                        {entry}
+                                    </option>
+                                ))
+                            )}
+                        </select>
+                        <button
+                            type="button"
+                            className="mods-panel-btn mods-panel-btn--ghost"
+                            onClick={onOpenVersionManager}
+                        >
+                            …
+                        </button>
+                    </div>
+                </label>
 
-            <p className="mods-panel-hint">
-                {versionsEmpty ? (
-                    <>
-                        Установите версию Minecraft в менеджере версий, чтобы работать с рецептами
-                        и загружать моды в <code>MinecraftVersions/&#123;версия&#125;/mods/</code>.
-                    </>
-                ) : (
-                    <>
-                        Для версии <strong>{gameVersion}</strong> используются моды из папки этой
-                        версии. Несовместимые по метаданным JAR отмечены, но остаются в каталоге.
-                    </>
-                )}
-            </p>
+                <label className="mods-panel-field mods-panel-field--inline">
+                    <span className="mods-panel-field-label">Профиль</span>
+                    <div className="mods-panel-inline-row">
+                        <select
+                            className="mods-panel-select"
+                            value={activeProfileId}
+                            onChange={(event) => onProfileChange(event.target.value)}
+                            disabled={
+                                versionsEmpty ||
+                                profilesLoading ||
+                                profileImporting ||
+                                Boolean(deletingProfileId)
+                            }
+                        >
+                            {profiles.length === 0 ? (
+                                <option value="default">default</option>
+                            ) : (
+                                profiles.map((profile) => (
+                                    <option key={profile.profile_id} value={profile.profile_id}>
+                                        {profile.name}
+                                    </option>
+                                ))
+                            )}
+                        </select>
+                        {canDeleteActive ? (
+                            <button
+                                type="button"
+                                className="mods-panel-btn mods-panel-btn--danger mods-panel-btn--ghost"
+                                disabled={
+                                    versionsEmpty ||
+                                    profileImporting ||
+                                    deletingProfileId === activeProfileId
+                                }
+                                title="Удалить активный профиль модпака"
+                                aria-label="Удалить активный профиль модпака"
+                                onClick={() => onProfileDelete?.(activeProfileId)}
+                            >
+                                {deletingProfileId === activeProfileId ? '…' : 'Удалить'}
+                            </button>
+                        ) : null}
+                    </div>
+                </label>
+            </div>
 
             <div className="mods-panel-actions">
-                <button type="button" className="mods-panel-button" onClick={onLoad}>
-                    Загрузить схему
+                <button type="button" className="mods-panel-btn" onClick={onLoad}>
+                    Загрузить
                 </button>
                 <button
                     type="button"
-                    className="mods-panel-button mods-panel-button--primary"
+                    className="mods-panel-btn mods-panel-btn--primary"
                     onClick={onSave}
                 >
-                    Сохранить схему
+                    Сохранить
                 </button>
             </div>
 
-            <div className="mods-panel-catalog">
-                <div className="mods-panel-catalog-header">
-                    <div className="mods-panel-catalog-title">Подключённые моды</div>
-                    <button
-                        type="button"
-                        className="mods-panel-refresh"
-                        onClick={onModsRefresh}
-                        disabled={modsLoading || modsUploading}
-                    >
-                        Обновить
-                    </button>
+            {versionsEmpty ? (
+                <p className="mods-panel-hint">Установите версию Minecraft, затем импортируйте модпак.</p>
+            ) : null}
+
+            {(profilesError || modsError || maintenanceError) && (
+                <div className="mods-panel-errors">
+                    {profilesError ? <div className="mods-panel-error">{profilesError}</div> : null}
+                    {modsError ? <div className="mods-panel-error">{modsError}</div> : null}
+                    {maintenanceError ? (
+                        <div className="mods-panel-error">{maintenanceError}</div>
+                    ) : null}
                 </div>
+            )}
 
-                {modsError ? <div className="mods-panel-error">{modsError}</div> : null}
-
-                {modsLoading ? (
-                    <div className="mods-panel-status">Загрузка списка…</div>
-                ) : mods.length === 0 ? (
-                    <div className="mods-panel-status">Нет подключённых модов</div>
-                ) : (
-                    <ul className="mods-panel-list">
-                        {mods.map((mod) => {
-                            const jarFilename = mod.jar_filename ?? '';
-                            const rowKey = jarFilename || mod.mod_id;
-                            const isRemoving = removingJarFilename === jarFilename;
-                            return (
-                            <li
-                                key={rowKey}
-                                className={`mods-panel-list-item${mod.compatible === false ? ' mods-panel-list-item--inactive' : ''}`}
-                            >
-                                <div className="mods-panel-list-item-header">
-                                    <div className="mods-panel-mod-name">{mod.name}</div>
-                                    {jarFilename && onModRemove ? (
-                                        <button
-                                            type="button"
-                                            className="mods-panel-mod-remove"
-                                            disabled={
-                                                modsUploading ||
-                                                isRemoving ||
-                                                Boolean(removingJarFilename)
-                                            }
-                                            aria-label={`Удалить мод ${mod.name}`}
-                                            title="Удалить из mods/"
-                                            onClick={() => {
-                                                const label = mod.name || jarFilename;
-                                                if (
-                                                    !window.confirm(
-                                                        `Удалить «${label}» из MinecraftVersions/${gameVersion}/mods/?`,
-                                                    )
-                                                ) {
-                                                    return;
-                                                }
-                                                onModRemove(jarFilename);
-                                            }}
-                                        >
-                                            {isRemoving ? '…' : '×'}
-                                        </button>
-                                    ) : null}
-                                </div>
-                                <div className="mods-panel-mod-meta">
-                                    <span className="mods-panel-mod-loader">
-                                        {loaderLabel(mod.loader)}
-                                    </span>
-                                    {formatModVersion(mod) ? (
-                                        <span className="mods-panel-mod-version">
-                                            MC {formatModVersion(mod)}
-                                        </span>
-                                    ) : null}
-                                    <span>
-                                        {mod.recipe_count} рец. · {mod.item_count} предм.
-                                    </span>
-                                    {mod.compatible === false ? (
-                                        <span className="mods-panel-mod-inactive">
-                                            не для {gameVersion}
-                                        </span>
-                                    ) : (
-                                        <span className="mods-panel-mod-active">активен</span>
-                                    )}
-                                    {mod.skipped_recipe_count > 0 ? (
-                                        <span className="mods-panel-mod-skipped">
-                                            {mod.skipped_recipe_count} пропущено
-                                        </span>
-                                    ) : null}
-                                </div>
-                            </li>
-                            );
-                        })}
-                    </ul>
-                )}
-
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept=".jar"
-                    multiple
-                    className="mods-panel-file-input"
-                    onChange={(event) => {
-                        const files = event.target.files;
-                        if (files && files.length > 0) {
-                            onModsUpload(files);
-                        }
-                        event.target.value = '';
-                    }}
-                />
-                <div
-                    className={`mods-panel-dropzone${isDragOver ? ' mods-panel-dropzone--active' : ''}${uploadDisabled ? ' mods-panel-dropzone--disabled' : ''}`}
-                    onDragEnter={handleDragEnter}
-                    onDragLeave={handleDragLeave}
-                    onDragOver={handleDragOver}
-                    onDrop={handleDrop}
+            <div className="mods-panel-sections">
+                <PanelSection
+                    title="Импорт"
+                    summary={activeProfile ? `${activeProfile.mod_count} мод.` : undefined}
+                    open={importOpen}
+                    onToggle={() => setImportOpen((v) => !v)}
                 >
-                    <p className="mods-panel-dropzone-text">
-                        {modsUploading
-                            ? 'Загрузка…'
-                            : 'Перетащите .jar сюда или выберите файл'}
-                    </p>
-                    <button
-                        type="button"
-                        className="mods-panel-button mods-panel-button--upload"
-                        disabled={uploadDisabled}
-                        onClick={() => fileInputRef.current?.click()}
+                    <input
+                        ref={modpackInputRef}
+                        type="file"
+                        accept=".zip,application/zip"
+                        className="mods-panel-file-input"
+                        onChange={(event) => {
+                            const file = event.target.files?.[0];
+                            if (file) {
+                                submitModpackFile(file);
+                            }
+                            event.target.value = '';
+                        }}
+                    />
+                    <div
+                        className={`mods-panel-dropzone${isDragOver ? ' mods-panel-dropzone--active' : ''}${importDisabled ? ' mods-panel-dropzone--disabled' : ''}`}
+                        onDragEnter={handleDragEnter}
+                        onDragLeave={handleDragLeave}
+                        onDragOver={handleDragOver}
+                        onDrop={handleDrop}
                     >
-                        {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
-                    </button>
-                </div>
-                {missingDependencyCount > 0 && onDownloadDependencies ? (
-                    <button
-                        type="button"
-                        className="mods-panel-button mods-panel-button--deps"
-                        disabled={downloadingDependencies || versionsEmpty}
-                        onClick={onDownloadDependencies}
+                        <button
+                            type="button"
+                            className="mods-panel-btn mods-panel-btn--block"
+                            disabled={importDisabled}
+                            onClick={() => modpackInputRef.current?.click()}
+                        >
+                            {profileImporting ? 'Импорт…' : '.zip модпака'}
+                        </button>
+                    </div>
+                    <div className="mods-panel-path-row">
+                        <input
+                            type="text"
+                            className="mods-panel-path-input"
+                            placeholder="Папка инстанса Prism…"
+                            value={instancePath}
+                            onChange={(event) => setInstancePath(event.target.value)}
+                            disabled={importDisabled || browsingInstanceFolder}
+                        />
+                        {onBrowseInstanceFolder ? (
+                            <button
+                                type="button"
+                                className="mods-panel-btn"
+                                disabled={importDisabled || browsingInstanceFolder}
+                                title="Выбрать папку в проводнике"
+                                onClick={onBrowseInstanceFolder}
+                            >
+                                {browsingInstanceFolder ? '…' : 'Обзор…'}
+                            </button>
+                        ) : null}
+                        <button
+                            type="button"
+                            className="mods-panel-btn"
+                            disabled={
+                                importDisabled || browsingInstanceFolder || !instancePath.trim()
+                            }
+                            onClick={() => {
+                                onInstancePathImport(instancePath.trim());
+                                setInstancePath('');
+                            }}
+                        >
+                            →
+                        </button>
+                    </div>
+                </PanelSection>
+
+                <PanelSection
+                    title="Моды"
+                    summary={`${compatibleCount}/${mods.length}`}
+                    open={modsOpen}
+                    onToggle={() => setModsOpen((v) => !v)}
+                >
+                    <div className="mods-panel-list-toolbar">
+                        <button
+                            type="button"
+                            className="mods-panel-btn mods-panel-btn--ghost"
+                            onClick={onModsRefresh}
+                            disabled={modsLoading || modsUploading || profileImporting}
+                        >
+                            {modsLoading ? '…' : 'Обновить'}
+                        </button>
+                    </div>
+                    {modsLoading ? (
+                        <div className="mods-panel-status">Загрузка…</div>
+                    ) : mods.length === 0 ? (
+                        <div className="mods-panel-status">Пусто</div>
+                    ) : (
+                        <ul className="mods-panel-list">
+                            {mods.map((mod) => {
+                                const jarFilename = mod.jar_filename ?? '';
+                                const rowKey = jarFilename || mod.mod_id;
+                                const isRemoving = removingJarFilename === jarFilename;
+                                const mcVer = formatModVersion(mod);
+                                return (
+                                    <li
+                                        key={rowKey}
+                                        className={`mods-panel-list-item${mod.compatible === false ? ' mods-panel-list-item--inactive' : ''}`}
+                                    >
+                                        <div className="mods-panel-mod-row">
+                                            <span className="mods-panel-mod-name" title={mod.name}>
+                                                {mod.name}
+                                            </span>
+                                            {jarFilename && onModRemove ? (
+                                                <button
+                                                    type="button"
+                                                    className="mods-panel-mod-remove"
+                                                    disabled={
+                                                        modsUploading ||
+                                                        isRemoving ||
+                                                        Boolean(removingJarFilename)
+                                                    }
+                                                    aria-label={`Удалить jar ${mod.name}`}
+                                                    title="Удалить только этот jar (профиль останется)"
+                                                    onClick={() => {
+                                                        if (
+                                                            !window.confirm(
+                                                                `Удалить jar «${mod.name}»?\n\nПрофиль модпака не удаляется — только этот файл.`,
+                                                            )
+                                                        ) {
+                                                            return;
+                                                        }
+                                                        onModRemove(jarFilename);
+                                                    }}
+                                                >
+                                                    {isRemoving ? '…' : '×'}
+                                                </button>
+                                            ) : null}
+                                        </div>
+                                        <div className="mods-panel-mod-meta">
+                                            <span>{loaderLabel(mod.loader)}</span>
+                                            {mcVer ? <span>MC {mcVer}</span> : null}
+                                            <span>
+                                                {mod.recipe_count}р · {mod.item_count}п
+                                            </span>
+                                            {mod.compatible === false ? (
+                                                <span className="mods-panel-mod-inactive">!</span>
+                                            ) : null}
+                                        </div>
+                                    </li>
+                                );
+                            })}
+                        </ul>
+                    )}
+                </PanelSection>
+
+                {hasTools ? (
+                    <PanelSection
+                        title="Сервис"
+                        summary={missingDependencyCount > 0 ? `деп. ${missingDependencyCount}` : undefined}
+                        open={toolsOpen}
+                        onToggle={() => setToolsOpen((v) => !v)}
                     >
-                        {downloadingDependencies
-                            ? 'Скачивание зависимостей…'
-                            : `Скачать зависимости (${missingDependencyCount})`}
-                    </button>
-                ) : null}
-                {showRecipeMaintenance && onReloadMods ? (
-                    <button
-                        type="button"
-                        className="mods-panel-button mods-panel-button--reload"
-                        disabled={reloadingMods || clearingRecipeExport || versionsEmpty}
-                        onClick={onReloadMods}
-                    >
-                        {reloadingMods ? 'Перезагрузка…' : 'Перезагрузить моды и рецепты'}
-                    </button>
-                ) : null}
-                {showRecipeMaintenance && onClearRecipeExport ? (
-                    <button
-                        type="button"
-                        className="mods-panel-button mods-panel-button--danger"
-                        disabled={clearingRecipeExport || reloadingMods || versionsEmpty}
-                        onClick={onClearRecipeExport}
-                    >
-                        {clearingRecipeExport ? 'Очистка…' : 'Очистить кэш рецептов'}
-                    </button>
-                ) : null}
-                {maintenanceError ? (
-                    <div className="mods-panel-error">{maintenanceError}</div>
+                        <div className="mods-panel-tools">
+                            {missingDependencyCount > 0 && onDownloadDependencies ? (
+                                <button
+                                    type="button"
+                                    className="mods-panel-btn mods-panel-btn--warn mods-panel-btn--block"
+                                    disabled={downloadingDependencies || versionsEmpty}
+                                    onClick={onDownloadDependencies}
+                                >
+                                    {downloadingDependencies
+                                        ? 'Скачивание…'
+                                        : `Зависимости (${missingDependencyCount})`}
+                                </button>
+                            ) : null}
+                            {onReloadMods ? (
+                                <button
+                                    type="button"
+                                    className="mods-panel-btn mods-panel-btn--block"
+                                    disabled={reloadingMods || clearingRecipeExport || versionsEmpty}
+                                    onClick={onReloadMods}
+                                >
+                                    {reloadingMods ? 'Перезагрузка…' : 'Перезагрузить рецепты'}
+                                </button>
+                            ) : null}
+                            {showRecipeMaintenance && onClearRecipeExport ? (
+                                <button
+                                    type="button"
+                                    className="mods-panel-btn mods-panel-btn--danger mods-panel-btn--block"
+                                    disabled={clearingRecipeExport || reloadingMods || versionsEmpty}
+                                    onClick={onClearRecipeExport}
+                                >
+                                    {clearingRecipeExport ? 'Очистка…' : 'Очистить кэш'}
+                                </button>
+                            ) : null}
+                        </div>
+                    </PanelSection>
                 ) : null}
             </div>
         </aside>

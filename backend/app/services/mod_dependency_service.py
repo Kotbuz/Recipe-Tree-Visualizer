@@ -48,7 +48,11 @@ class ModDependencyService:
     def __init__(self) -> None:
         self._settings = get_settings()
 
-    def download_missing_dependencies(self, version: str) -> ModDependencyDownloadResponse:
+    def download_missing_dependencies(
+        self,
+        version: str,
+        profile_id: str | None = None,
+    ) -> ModDependencyDownloadResponse:
         if version not in version_service.list_installed_versions():
             raise ModDependencyDownloadError(f"Version not installed: {version}")
 
@@ -57,7 +61,7 @@ class ModDependencyService:
                 f"Automatic dependency download is only supported for JVM layout versions (got {version})"
             )
 
-        missing = _collect_missing_dependencies(version)
+        missing = _collect_missing_dependencies(version, profile_id=profile_id)
         if not missing:
             return ModDependencyDownloadResponse(
                 version=version,
@@ -68,7 +72,7 @@ class ModDependencyService:
             )
 
         resolver = self._build_resolver()
-        mods_dir = version_service.mods_dir(version)
+        mods_dir = version_service.mods_dir(version, profile_id)
         mods_dir.mkdir(parents=True, exist_ok=True)
         cache_dir = self._cache_dir(version)
 
@@ -90,10 +94,11 @@ class ModDependencyService:
         export_error: str | None = None
 
         if all_resolved:
-            mod_service.force_reload_version(version)
+            mod_service.force_reload_version(version, profile_id=profile_id)
             try:
                 export_recipe_count = jvm_recipe_export_service.ensure_exported(
                     version,
+                    profile_id=profile_id,
                     force=True,
                 )
                 export_triggered = True
@@ -101,7 +106,7 @@ class ModDependencyService:
                 export_error = str(exc)
                 logger.warning("Recipe export after dependency download failed: {}", exc)
         elif any(result.status == "downloaded" for result in results):
-            mod_service.force_reload_version(version)
+            mod_service.force_reload_version(version, profile_id=profile_id)
 
         return ModDependencyDownloadResponse(
             version=version,
@@ -203,8 +208,11 @@ class ModDependencyService:
         return self._settings.minecraft_versions_path / ".cache" / "mod-deps" / version
 
 
-def _collect_missing_dependencies(version: str) -> tuple[str, ...]:
-    status = analyze_recipe_export_status(version)
+def _collect_missing_dependencies(
+    version: str,
+    profile_id: str | None = None,
+) -> tuple[str, ...]:
+    status = analyze_recipe_export_status(version, profile_id=profile_id)
     names: list[str] = []
     seen: set[str] = set()
     for issue in status.missing_dependencies:

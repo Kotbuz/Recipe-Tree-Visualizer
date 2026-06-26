@@ -34,8 +34,10 @@ class VanillaJarProvider:
     def source_id(self) -> str:
         return "vanilla"
 
-    def load(self, version: str) -> ProviderResult:
-        recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
+    def load(self, version: str, profile_id: str | None = None) -> ProviderResult:
+        from app.services.version_service import version_service
+
+        recipe_dir = version_service.recipe_dir(version, profile_id)
         if recipe_dir.exists() and recipe_dir.is_dir():
             result = self._load_from_directory(recipe_dir, version)
             if result.recipes:

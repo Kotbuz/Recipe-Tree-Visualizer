@@ -7,6 +7,14 @@ from typing import Literal
 
 from app.core.config import get_settings
 from app.services.icon_name_resolver import resolve_icon_item_name
+from app.services.profile_storage import (
+    DEFAULT_PROFILE_ID,
+    ensure_profile_subdirs,
+    migrate_legacy_version_layout,
+    read_active_profile_id,
+    write_active_profile_id,
+    write_profile_meta,
+)
 
 
 def item_name_to_texture_id(name: str, version: str | None = None) -> str:
@@ -52,19 +60,66 @@ class VersionService:
     def client_jar_path(self, version: str) -> Path:
         return self._version_dir(version) / "client.jar"
 
-    def mods_dir(self, version: str) -> Path:
-        return self._version_dir(version) / "mods"
+    def profiles_dir(self, version: str) -> Path:
+        return self._version_dir(version) / "profiles"
 
-    def recipe_dir(self, version: str) -> Path:
-        return self._version_dir(version) / "recipe"
+    def profile_dir(self, version: str, profile_id: str) -> Path:
+        return self.profiles_dir(version) / profile_id
+
+    def mods_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "mods"
+
+    def recipe_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "recipe"
+
+    def config_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "config"
+
+    def scripts_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "scripts"
 
     def ensure_version_layout(self, version: str) -> Path:
         version_dir = self._version_dir(version)
         version_dir.mkdir(parents=True, exist_ok=True)
-        (version_dir / "mods").mkdir(exist_ok=True)
-        (version_dir / "recipe").mkdir(exist_ok=True)
-        (version_dir / "rendered-icons").mkdir(exist_ok=True)
+        self.ensure_profiles_layout(version)
         return version_dir
+
+    def ensure_profiles_layout(self, version: str) -> Path:
+        version_dir = self._version_dir(version)
+        version_dir.mkdir(parents=True, exist_ok=True)
+        migrate_legacy_version_layout(version_dir)
+
+        profiles_dir = self.profiles_dir(version)
+        profiles_dir.mkdir(parents=True, exist_ok=True)
+
+        default_profile = self.profile_dir(version, DEFAULT_PROFILE_ID)
+        if not default_profile.is_dir():
+            ensure_profile_subdirs(default_profile)
+            write_profile_meta(
+                default_profile,
+                profile_id=DEFAULT_PROFILE_ID,
+                name="По умолчанию",
+                source="default",
+            )
+
+        if read_active_profile_id(profiles_dir) is None:
+            write_active_profile_id(profiles_dir, DEFAULT_PROFILE_ID)
+
+        return profiles_dir
+
+    def get_active_profile_id(self, version: str) -> str:
+        self.ensure_profiles_layout(version)
+        active = read_active_profile_id(self.profiles_dir(version))
+        return active or DEFAULT_PROFILE_ID
+
+    def set_active_profile_id(self, version: str, profile_id: str) -> None:
+        self.ensure_profiles_layout(version)
+        write_active_profile_id(self.profiles_dir(version), profile_id)
+
+    def _resolve_profile_id(self, version: str, profile_id: str | None) -> str:
+        if profile_id:
+            return profile_id
+        return self.get_active_profile_id(version)
 
     def resolve_default_version(self) -> str | None:
         configured = get_settings().minecraft_default_version.strip()
@@ -214,12 +269,16 @@ class VersionService:
             return f"{root}/{version}.jar"
         return f"{root}/{version}/{local_jar.name}"
 
-    def renderer_output_dir(self, version: str) -> str:
+    def renderer_output_dir(self, version: str, profile_id: str | None = None) -> str:
         root = get_settings().renderer_minecraft_root.rstrip("/")
-        return f"{root}/{version}/rendered-icons"
+        resolved = self._resolve_profile_id(version, profile_id)
+        return f"{root}/{version}/profiles/{resolved}/rendered-icons"
 
-    def ensure_rendered_icons_dir(self, version: str) -> Path:
-        directory = self._version_dir(version) / "rendered-icons"
+    def ensure_rendered_icons_dir(self, version: str, profile_id: str | None = None) -> Path:
+        directory = self.profile_dir(
+            version,
+            self._resolve_profile_id(version, profile_id),
+        ) / "rendered-icons"
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -235,10 +294,16 @@ class VersionService:
     def _version_dir(self, version: str) -> Path:
         return get_settings().minecraft_versions_path / version
 
-    def _rendered_icons_dir(self, version: str) -> Path | None:
-        directory = self._version_dir(version) / "rendered-icons"
+    def _rendered_icons_dir(self, version: str, profile_id: str | None = None) -> Path | None:
+        directory = self.profile_dir(
+            version,
+            self._resolve_profile_id(version, profile_id),
+        ) / "rendered-icons"
         if directory.is_dir():
             return directory
+        legacy = self._version_dir(version) / "rendered-icons"
+        if legacy.is_dir():
+            return legacy
         return None
 
     def _legacy_textures_dir(self, version: str) -> Path | None:

@@ -11,12 +11,17 @@ import {
 import ModsPanel from './components/ModsPanel';
 import ExportStatusBanner from './components/ExportStatusBanner';
 import VersionManagerModal from './components/VersionManagerModal';
+import ModpackImportDialog from './components/ModpackImportDialog';
+import { useModpackInspect, type ModpackInspectResult } from './hooks/useModpackInspect';
+import { prepareForgeInstall } from './hooks/useForgePrepare';
+import { useVersionCatalog } from './hooks/useVersionCatalog';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import { mergeRecipeItems } from './utils/mergeRecipeItems';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useModDependencyDownload } from './hooks/useModDependencyDownload';
 import { useMods } from './hooks/useMods';
+import { useProfiles } from './hooks/useProfiles';
 import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import { useVersionMaintenance } from './hooks/useVersionMaintenance';
@@ -263,15 +268,27 @@ const isSlotCompatible = (
 export default function RecipeCanvas() {
     const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
         useMinecraftVersion();
-    const { mods, loading: modsLoading, uploading: modsUploading, removingJar, error: modsError, refresh: refreshMods, upload: uploadMods, remove: removeMod } = useMods(version);
-    const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version);
+    const {
+        profiles,
+        activeProfileId,
+        activateProfile,
+        deleteProfile,
+        importModpackZip,
+        importFromPath,
+        importing: profileImporting,
+        deletingProfileId,
+        error: profilesError,
+        refresh: refreshProfiles,
+    } = useProfiles(version);
+    const { mods, loading: modsLoading, uploading: modsUploading, removingJar, error: modsError, refresh: refreshMods, remove: removeMod } = useMods(version, activeProfileId);
+    const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version, activeProfileId);
     const {
         reloading: maintenanceReloading,
         clearing: maintenanceClearing,
         error: maintenanceError,
         reloadMods,
         clearRecipeExport,
-    } = useVersionMaintenance(version);
+    } = useVersionMaintenance(version, activeProfileId);
     const handleReloadMods = useCallback(async () => {
         try {
             const result = await reloadMods();
@@ -327,8 +344,33 @@ export default function RecipeCanvas() {
         downloading: depsDownloading,
         error: depsError,
         lastResult: depsResult,
-    } = useModDependencyDownload(version, handleDepsDownloadComplete);
+    } = useModDependencyDownload(version, activeProfileId, handleDepsDownloadComplete);
     const [versionManagerOpen, setVersionManagerOpen] = useState(false);
+    const [pendingModpackImport, setPendingModpackImport] = useState<
+        | {
+              kind: 'zip';
+              file: File;
+              label: string;
+              inspect: ModpackInspectResult;
+          }
+        | {
+              kind: 'path';
+              path: string;
+              label: string;
+              inspect: ModpackInspectResult;
+          }
+        | null
+    >(null);
+    const [importFlowBusy, setImportFlowBusy] = useState(false);
+    const [importFlowError, setImportFlowError] = useState<string | null>(null);
+    const [importFlowSuccess, setImportFlowSuccess] = useState<string | null>(null);
+    const [installingMinecraft, setInstallingMinecraft] = useState(false);
+    const [forgePrepareProgress, setForgePrepareProgress] = useState<number | null>(null);
+    const [forgePrepareMessage, setForgePrepareMessage] = useState<string | null>(null);
+    const [preparingForge, setPreparingForge] = useState(false);
+    const { inspectZip, inspectPath, pickFolder, inspecting: modpackInspecting, error: modpackInspectError } =
+        useModpackInspect();
+    const { installVersion, installingVersion } = useVersionCatalog();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -368,6 +410,7 @@ export default function RecipeCanvas() {
 
     const { recipes: searchedRecipes, loading: recipesLoading } = useRecipeSearch(
         version,
+        activeProfileId,
         recipeSearchParams,
     );
 
@@ -966,13 +1009,21 @@ export default function RecipeCanvas() {
             connections,
             viewport: transform,
             name: 'recipe-tree',
+            minecraftVersion: version,
+            profileId: activeProfileId,
         });
         downloadCanvasDocument(document);
-    }, [connections, nodes, transform]);
+    }, [activeProfileId, connections, nodes, transform, version]);
 
     const handleLoadCanvas = useCallback(async () => {
         try {
             const document = await pickCanvasDocumentFile();
+            if (document.minecraftVersion && document.minecraftVersion !== version) {
+                setVersion(document.minecraftVersion);
+            }
+            if (document.profileId && document.profileId !== activeProfileId) {
+                await activateProfile(document.profileId);
+            }
             setNodes(document.nodes);
             setConnections(document.connections);
             if (document.viewport) {
@@ -983,19 +1034,216 @@ export default function RecipeCanvas() {
         } catch {
             // пользователь отменил выбор или файл некорректен
         }
-    }, [setViewportTransform]);
+    }, [activeProfileId, activateProfile, setVersion, setViewportTransform, version]);
 
-    const handleModsUpload = useCallback(
-        async (files: FileList) => {
+    const handleProfileChange = useCallback(
+        async (profileId: string) => {
+            if (!profileId || profileId === activeProfileId) {
+                return;
+            }
             try {
-                await uploadMods(files);
+                await activateProfile(profileId);
+                await refreshMods();
+                await refreshExportStatus();
                 await reloadCatalog();
             } catch {
-                // ошибка уже отображается в панели модов
+                // ошибка в profilesError
             }
         },
-        [uploadMods, reloadCatalog],
+        [activeProfileId, activateProfile, refreshMods, refreshExportStatus, reloadCatalog],
     );
+
+    const handleProfileDelete = useCallback(
+        async (profileId: string) => {
+            const profile = profiles.find((entry) => entry.profile_id === profileId);
+            const label = profile?.name ?? profileId;
+            if (
+                !window.confirm(
+                    `Удалить профиль «${label}»?\n\nБудут удалены mods/, config/, scripts/ и кэш рецептов этого профиля.`,
+                )
+            ) {
+                return;
+            }
+            try {
+                await deleteProfile(profileId);
+                await refreshMods();
+                await refreshExportStatus();
+                await reloadCatalog();
+            } catch {
+                // ошибка в profilesError
+            }
+        },
+        [
+            deleteProfile,
+            profiles,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+        ],
+    );
+
+    const runModpackImport = useCallback(
+        async (
+            inspect: ModpackInspectResult,
+            source:
+                | { kind: 'zip'; file: File }
+                | { kind: 'path'; path: string },
+        ) => {
+            const targetVersion = inspect.minecraft_version;
+            setImportFlowBusy(true);
+            setImportFlowError(null);
+            setImportFlowSuccess(null);
+            setForgePrepareProgress(null);
+            setForgePrepareMessage(null);
+            setPreparingForge(false);
+            setInstallingMinecraft(false);
+            try {
+                setVersion(targetVersion);
+
+                if (!inspect.version_installed) {
+                    if (!inspect.catalog_available) {
+                        throw new Error(
+                            `Версия ${targetVersion} недоступна в каталоге Mojang. Установите её через менеджер версий.`,
+                        );
+                    }
+                    setInstallingMinecraft(true);
+                    await installVersion(targetVersion);
+                    await refreshInstalledVersions();
+                    setInstallingMinecraft(false);
+                }
+                if (
+                    inspect.loader === 'forge' &&
+                    inspect.forge_version &&
+                    inspect.forge_installed === false
+                ) {
+                    setPreparingForge(true);
+                    await prepareForgeInstall(
+                        targetVersion,
+                        inspect.forge_version,
+                        (status) => {
+                            setForgePrepareProgress(status.progress);
+                            setForgePrepareMessage(status.message);
+                        },
+                    );
+                    setPreparingForge(false);
+                }
+                let importResult;
+                if (source.kind === 'zip') {
+                    importResult = await importModpackZip(source.file, { targetVersion });
+                } else {
+                    importResult = await importFromPath(source.path, { targetVersion });
+                }
+
+                await refreshProfiles(targetVersion);
+                await reloadCatalog();
+                await refreshMods();
+                await refreshExportStatus();
+
+                const profileName = importResult?.profile?.name ?? 'модпак';
+                const jarCount = importResult?.jars_imported ?? 0;
+                setImportFlowSuccess(
+                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».`,
+                );
+            } catch (flowError) {
+                const message =
+                    flowError instanceof Error ? flowError.message : 'Ошибка импорта модпака';
+                setImportFlowError(message);
+                throw flowError;
+            } finally {
+                setImportFlowBusy(false);
+                setInstallingMinecraft(false);
+                setPreparingForge(false);
+                setForgePrepareProgress(null);
+                setForgePrepareMessage(null);
+            }
+        },
+        [
+            importFromPath,
+            importModpackZip,
+            installVersion,
+            refreshExportStatus,
+            refreshInstalledVersions,
+            refreshMods,
+            refreshProfiles,
+            reloadCatalog,
+            setVersion,
+        ],
+    );
+
+    const handleModpackUpload = useCallback(
+        async (file: File) => {
+            try {
+                const inspect = await inspectZip(file);
+                if (inspect.minecraft_version === version && inspect.version_installed) {
+                    await importModpackZip(file, { targetVersion: inspect.minecraft_version });
+                    await refreshMods();
+                    await refreshExportStatus();
+                    await reloadCatalog();
+                    return;
+                }
+                setImportFlowError(null);
+                setPendingModpackImport({
+                    kind: 'zip',
+                    file,
+                    label: file.name,
+                    inspect,
+                });
+            } catch {
+                // ошибка в useModpackInspect.error
+            }
+        },
+        [
+            importModpackZip,
+            inspectZip,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            version,
+        ],
+    );
+
+    const handleInstancePathImport = useCallback(
+        async (path: string) => {
+            try {
+                const inspect = await inspectPath(path);
+                if (inspect.minecraft_version === version && inspect.version_installed) {
+                    await importFromPath(path, { targetVersion: inspect.minecraft_version });
+                    await refreshMods();
+                    await refreshExportStatus();
+                    await reloadCatalog();
+                    return;
+                }
+                setImportFlowError(null);
+                setPendingModpackImport({
+                    kind: 'path',
+                    path,
+                    label: path,
+                    inspect,
+                });
+            } catch {
+                // ошибка в useModpackInspect.error
+            }
+        },
+        [
+            importFromPath,
+            inspectPath,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            version,
+        ],
+    );
+
+    const handleBrowseInstanceFolder = useCallback(async () => {
+        try {
+            const path = await pickFolder();
+            if (path) {
+                await handleInstancePathImport(path);
+            }
+        } catch {
+            // ошибка в modpackInspectError
+        }
+    }, [handleInstancePathImport, pickFolder]);
 
     const renderConnectionPath = (from: NodeSlot, to: NodeSlot) => {
         const fromAnchor = getSlotAnchor(from.nodeId, from.slotType, from.itemIndex);
@@ -1303,11 +1551,22 @@ export default function RecipeCanvas() {
                 onVersionChange={handleVersionChange}
                 onSave={handleSaveCanvas}
                 onLoad={handleLoadCanvas}
+                profiles={profiles}
+                activeProfileId={activeProfileId}
+                onProfileChange={(profileId) => void handleProfileChange(profileId)}
+                onProfileDelete={(profileId) => void handleProfileDelete(profileId)}
+                deletingProfileId={deletingProfileId}
+                profilesLoading={false}
+                profileImporting={profileImporting || modpackInspecting || importFlowBusy}
+                profilesError={profilesError ?? modpackInspectError}
+                onModpackUpload={(file) => void handleModpackUpload(file)}
+                onInstancePathImport={(path) => void handleInstancePathImport(path)}
+                onBrowseInstanceFolder={() => void handleBrowseInstanceFolder()}
+                browsingInstanceFolder={modpackInspecting}
                 mods={mods}
                 modsLoading={modsLoading}
                 modsUploading={modsUploading}
                 modsError={modsError}
-                onModsUpload={handleModsUpload}
                 onModsRefresh={refreshMods}
                 onModRemove={(jarFilename) => void handleModRemove(jarFilename)}
                 removingJarFilename={removingJar}
@@ -1340,6 +1599,43 @@ export default function RecipeCanvas() {
                     await reloadCatalog();
                     await refreshMods();
                     setVersionManagerOpen(false);
+                }}
+            />
+
+            <ModpackImportDialog
+                open={pendingModpackImport !== null}
+                inspect={pendingModpackImport?.inspect ?? null}
+                currentVersion={version}
+                modpackLabel={pendingModpackImport?.label ?? 'Модпак'}
+                busy={importFlowBusy || profileImporting}
+                installing={installingVersion !== null || installingMinecraft}
+                preparingForge={preparingForge}
+                forgeProgress={forgePrepareProgress}
+                forgeMessage={forgePrepareMessage}
+                error={importFlowError}
+                success={importFlowSuccess}
+                onCancel={() => {
+                    if (importFlowBusy) {
+                        return;
+                    }
+                    setPendingModpackImport(null);
+                    setImportFlowError(null);
+                    setImportFlowSuccess(null);
+                }}
+                onConfirm={() => {
+                    if (importFlowSuccess) {
+                        setPendingModpackImport(null);
+                        setImportFlowSuccess(null);
+                        setImportFlowError(null);
+                        return;
+                    }
+                    if (!pendingModpackImport || importFlowBusy) {
+                        return;
+                    }
+                    const { inspect, ...source } = pendingModpackImport;
+                    void runModpackImport(inspect, source).catch(() => {
+                        // ошибка в importFlowError
+                    });
                 }}
             />
         </div>

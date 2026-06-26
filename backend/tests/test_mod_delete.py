@@ -3,14 +3,14 @@ from pathlib import Path
 import pytest
 
 from app.services.mod_service import ModNotFoundError, mod_service
+from app.services.version_service import version_service
 
 pytestmark = pytest.mark.usefixtures("isolated_minecraft_versions")
 
 
 def test_delete_mod_jar_removes_file_and_registry(isolated_minecraft_versions: Path) -> None:
     version = "1.7.10"
-    mods_dir = isolated_minecraft_versions / version / "mods"
-    mods_dir.mkdir(parents=True, exist_ok=True)
+    mods_dir = version_service.mods_dir(version)
     keep = mods_dir / "keep.jar"
     remove = mods_dir / "remove-me.jar"
     keep.write_bytes(b"keep")

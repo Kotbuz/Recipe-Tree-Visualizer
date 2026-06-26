@@ -1,0 +1,147 @@
+.modpack-import-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(15, 23, 42, 0.45);
+    padding: 1rem;
+}
+
+.modpack-import-dialog {
+    width: min(420px, 100%);
+    background: #f8fafc;
+    border: 1px solid #94a3b8;
+    box-shadow: 2px 2px 0 #cbd5e1;
+    padding: 0.75rem;
+    font-size: 0.82rem;
+    color: #0f172a;
+}
+
+.modpack-import-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.5rem;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.35rem;
+    border-bottom: 1px solid #cbd5e1;
+}
+
+.modpack-import-title {
+    margin: 0;
+    font-size: 0.95rem;
+    font-weight: 700;
+}
+
+.modpack-import-close {
+    width: 1.5rem;
+    height: 1.5rem;
+    padding: 0;
+    border: 1px solid #94a3b8;
+    background: #fff;
+    color: #64748b;
+    font-size: 1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.modpack-import-lead,
+.modpack-import-note,
+.modpack-import-meta {
+    margin: 0 0 0.5rem;
+    line-height: 1.45;
+}
+
+.modpack-import-meta {
+    color: #64748b;
+    font-size: 0.72rem;
+}
+
+.modpack-import-error {
+    margin-bottom: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #fca5a5;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 0.75rem;
+}
+
+.modpack-import-success {
+    margin-bottom: 0.5rem;
+    padding: 0.35rem 0.5rem;
+    border: 1px solid #86efac;
+    background: #f0fdf4;
+    color: #166534;
+    font-size: 0.75rem;
+}
+
+.modpack-import-progress {
+    margin-bottom: 0.5rem;
+}
+
+.modpack-import-progress-label {
+    margin-bottom: 0.25rem;
+    font-size: 0.75rem;
+    color: #334155;
+}
+
+.modpack-import-progress-track {
+    height: 0.45rem;
+    border: 1px solid #94a3b8;
+    background: #fff;
+}
+
+.modpack-import-progress-fill {
+    height: 100%;
+    background: #2563eb;
+    transition: width 0.35s ease;
+}
+
+.modpack-import-progress-track--indeterminate {
+    overflow: hidden;
+}
+
+.modpack-import-progress-fill--indeterminate {
+    width: 35% !important;
+    animation: modpack-import-indeterminate 1.2s ease-in-out infinite;
+}
+
+@keyframes modpack-import-indeterminate {
+    0% {
+        transform: translateX(-100%);
+    }
+    100% {
+        transform: translateX(300%);
+    }
+}
+
+.modpack-import-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.35rem;
+    margin-top: 0.65rem;
+}
+
+.modpack-import-btn {
+    padding: 0.3rem 0.55rem;
+    border: 1px solid #94a3b8;
+    border-radius: 0;
+    background: #fff;
+    color: #1e293b;
+    font-size: 0.75rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.modpack-import-btn--primary {
+    border-color: #2563eb;
+    background: #2563eb;
+    color: #fff;
+}
+
+.modpack-import-btn:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

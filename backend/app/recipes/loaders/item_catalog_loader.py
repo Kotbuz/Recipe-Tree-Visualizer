@@ -308,7 +308,9 @@ def _load_ae2_lang_display_names(version: str) -> dict[tuple[str, int], str]:
 
 @lru_cache(maxsize=8)
 def _parse_ae2_lang(version: str) -> tuple[dict[str, str], dict[tuple[str, int], str]]:
-    mods_dir = get_settings().minecraft_versions_path / version / "mods"
+    from app.services.version_service import version_service
+
+    mods_dir = version_service.mods_dir(version)
     if not mods_dir.is_dir():
         return {}, {}
 

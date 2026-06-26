@@ -17,7 +17,7 @@ export type RecipeSearchParams = {
     includeMods?: boolean;
 };
 
-export function useRecipeSearch(version: string, params: RecipeSearchParams) {
+export function useRecipeSearch(version: string, profileId: string | undefined, params: RecipeSearchParams) {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -47,6 +47,9 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         const timeoutId = window.setTimeout(() => {
             const url = new URL('/recipes', window.location.origin);
             url.searchParams.set('version', version);
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
             url.searchParams.set('limit', String(RECIPE_SEARCH_LIMIT));
             url.searchParams.set('include_mods', String(includeMods));
 
@@ -92,6 +95,7 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         };
     }, [
         version,
+        profileId,
         params.enabled,
         params.query,
         params.focusItem,

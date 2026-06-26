@@ -21,6 +21,7 @@ export type ModDependencyDownloadResponse = {
 
 export function useModDependencyDownload(
     version: string,
+    profileId: string | undefined,
     onComplete?: () => void | Promise<void>,
 ) {
     const [downloading, setDownloading] = useState(false);
@@ -35,10 +36,14 @@ export function useModDependencyDownload(
         setDownloading(true);
         setError(null);
         try {
-            const response = await fetch(
+            const url = new URL(
                 `/versions/${encodeURIComponent(version)}/download-missing-mod-dependencies`,
-                { method: 'POST' },
+                window.location.origin,
             );
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
+            const response = await fetch(url, { method: 'POST' });
             if (!response.ok) {
                 let detail = `HTTP ${response.status}`;
                 try {
@@ -64,7 +69,7 @@ export function useModDependencyDownload(
         } finally {
             setDownloading(false);
         }
-    }, [version, onComplete]);
+    }, [version, profileId, onComplete]);
 
     const clearResult = useCallback(() => {
         setLastResult(null);

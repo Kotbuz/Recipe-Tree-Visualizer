@@ -18,7 +18,7 @@ export type RecipeExportStatus = {
     log_errors?: string[];
 };
 
-export function useRecipeExportStatus(version: string) {
+export function useRecipeExportStatus(version: string, profileId?: string) {
     const [status, setStatus] = useState<RecipeExportStatus | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -27,9 +27,14 @@ export function useRecipeExportStatus(version: string) {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(
+            const url = new URL(
                 `/versions/${encodeURIComponent(version)}/recipe-export-status`,
+                window.location.origin,
             );
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
+            const response = await fetch(url);
             if (!response.ok) {
                 if (response.status === 404) {
                     setStatus(null);
@@ -52,7 +57,7 @@ export function useRecipeExportStatus(version: string) {
         } finally {
             setLoading(false);
         }
-    }, [version]);
+    }, [version, profileId]);
 
     useEffect(() => {
         void refresh();
