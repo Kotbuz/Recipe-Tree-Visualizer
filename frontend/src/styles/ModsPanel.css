@@ -154,6 +154,13 @@
     color: #6b7280;
 }
 
+.mods-panel-error {
+    margin: 0;
+    color: #b91c1c;
+    font-size: 0.85rem;
+    line-height: 1.4;
+}
+
 .mods-panel-actions {
     display: grid;
     grid-template-columns: 1fr 1fr;
