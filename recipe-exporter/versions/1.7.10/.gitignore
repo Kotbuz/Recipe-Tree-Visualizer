@@ -3,4 +3,5 @@
 /.gradle/
 /export-out/
 /vendor-maven/**/*.jar
+!/vendor-maven/com/gtnewhorizons/retrofuturagradle/1.4.9/retrofuturagradle-1.4.9.jar
 *.log

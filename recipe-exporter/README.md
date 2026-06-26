@@ -36,9 +36,11 @@ Ore inputs use `forge:ore_dict` entries resolved via `MinecraftVersions/{version
 
 Requirements: **JDK 17+** to run Gradle (toolchain auto-downloads **JDK 8** for Minecraft via Foojay)
 
+RetroFuturaGradle **1.4.9** is vendored under `versions/1.7.10/vendor-maven/` (no GTNH Nexus
+needed for the Gradle plugin). Run `.\install-vendor-rfg.ps1` only if that jar is missing.
+
 ```powershell
 cd recipe-exporter/versions/1.7.10
-.\install-vendor-rfg.ps1   # if retrofuturagradle-1.4.9.jar is in LocalFiles/
 .\gradlew.bat build
 ```
 
@@ -83,7 +85,7 @@ It mirrors the `renderer` pattern: shared `MinecraftVersions` volume + small HTT
 
 ### Prerequisites
 
-Build the mod jar once (host or CI with GTNH Maven access):
+Build the mod jar once (host or GitHub Actions):
 
 ```powershell
 cd recipe-exporter/versions/1.7.10
@@ -92,12 +94,9 @@ cd recipe-exporter/versions/1.7.10
 
 This produces `recipe-exporter/dist/recipe-exporter-1.7.10.jar`, which is baked into the image.
 
-If GTNH Nexus times out locally (`Read timed out` on `retrofuturagradle-2.0.2.jar`), use CI:
-
-1. GitHub → Actions → **Build recipe-exporter mod** → Run workflow
-2. Download artifact `recipe-exporter-1.7.10.jar`
-3. Place it at `recipe-exporter/dist/recipe-exporter-1.7.10.jar`
-4. Run `docker compose --profile legacy-recipes build recipe-exporter`
+CI workflow **Build recipe-exporter mod** runs the same Gradle build on push (first run still
+downloads Minecraft 1.7.10 + Forge). Artifact: `recipe-exporter-1.7.10.jar` → place in
+`recipe-exporter/dist/` if you build via Actions instead of locally.
 
 ### Build and run
 
