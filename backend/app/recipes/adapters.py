@@ -72,4 +72,5 @@ def to_recipe_summary(
             )
             for part in recipe.outputs
         ],
+        duration_ticks=recipe.duration_ticks,
     )
