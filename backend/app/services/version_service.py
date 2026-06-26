@@ -232,10 +232,6 @@ class VersionService:
         if icon_path is not None:
             return ("file", icon_path)
 
-        rendered_dir = self._rendered_icons_dir(version, profile_id)
-        if rendered_dir is not None:
-            return None
-
         jar_bytes = self.read_jar_texture_bytes(version, filename)
         if jar_bytes is not None:
             return ("bytes", jar_bytes)

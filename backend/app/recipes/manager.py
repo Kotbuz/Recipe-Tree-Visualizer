@@ -9,6 +9,7 @@ from app.parser.minecraft_version import mod_supports_game_version
 from app.parser.models import RawModMeta
 from app.recipes.adapters import item_id_to_display_name, to_recipe_summary, _display_name_for_part
 from app.recipes.focus import RecipeIngredientRole
+from app.recipes.ingredient import IngredientKind
 from app.recipes.item_ref import normalize_item_ref, parse_item_needle
 from app.recipes.models import ProviderResult, Recipe, RecipeIO
 from app.recipes.providers.mod_jar import ModJarProvider
@@ -251,15 +252,16 @@ class RecipeLookup:
                 for key in _focus_lookup_keys(member):
                     candidate_ids |= index.get(key, frozenset())
             candidate_ids |= index.get(tag_id.lower(), frozenset())
-
-        for tag in self._ingredient_registry.list_tag_ids():
-            if self._ingredient_registry.ingredient_matches(needle, tag):
-                candidate_ids |= index.get(tag.lower(), frozenset())
-                candidate_ids |= index.get(tag.rsplit(":", 1)[-1], frozenset())
+            short_tag = tag_id.rsplit(":", 1)[-1]
+            candidate_ids |= index.get(short_tag, frozenset())
 
         for ingredient in self._ingredient_registry.search(needle, limit=32):
             for key in _focus_lookup_keys(ingredient.id):
                 candidate_ids |= index.get(key, frozenset())
+            if ingredient.kind == IngredientKind.TAG:
+                tag_key = ingredient.id.lower()
+                candidate_ids |= index.get(tag_key, frozenset())
+                candidate_ids |= index.get(tag_key.rsplit(":", 1)[-1], frozenset())
         return candidate_ids
 
     def query(self, text: str, *, limit: int | None = None) -> RecipeLookup:

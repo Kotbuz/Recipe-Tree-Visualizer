@@ -108,7 +108,7 @@ def test_list_item_icons_skips_phantom_names_when_rendered_exists(
     version_service_module.get_version_service.cache_clear()
 
 
-def test_resolve_item_icon_skips_jar_when_rendered_dir_exists(
+def test_resolve_item_icon_falls_back_to_jar_when_rendered_missing(
     tmp_path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     version_dir = tmp_path / "9.9"
@@ -124,7 +124,14 @@ def test_resolve_item_icon_skips_jar_when_rendered_dir_exists(
     version_service_module.get_version_service.cache_clear()
     service = version_service_module.get_version_service()
 
-    assert service.resolve_item_icon("9.9", "oak_planks.png") is None
+    monkeypatch.setattr(
+        service,
+        "read_jar_texture_bytes",
+        lambda _version, filename: b"jar" if filename == "oak_planks.png" else None,
+    )
+
+    resolved = service.resolve_item_icon("9.9", "oak_planks.png")
+    assert resolved == ("bytes", b"jar")
 
     get_settings.cache_clear()
     version_service_module.get_version_service.cache_clear()

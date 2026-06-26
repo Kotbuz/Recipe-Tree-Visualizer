@@ -209,16 +209,13 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
     const itemIconUrl = useCallback(
         (itemName: string, iconId?: string) => {
             const fileName = resolveItemIconFileName(itemName, iconId);
-            if (!iconNames.has(fileName)) {
-                return null;
-            }
             const profileSuffix = profileQuery(profileId);
             const base = `/versions/${encodeURIComponent(version)}/items/${fileName}${profileSuffix}`;
             return profileSuffix
                 ? `${base}&v=${encodeURIComponent(iconsRevision)}`
                 : `${base}?v=${encodeURIComponent(iconsRevision)}`;
         },
-        [iconNames, iconsRevision, version, profileId],
+        [iconsRevision, version, profileId],
     );
 
     const reloadCatalog = useCallback(async () => {

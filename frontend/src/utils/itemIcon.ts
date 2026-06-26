@@ -26,9 +26,19 @@ export function itemIconFileName(itemName: string): string {
     return `${normalizeItemFileName(resolveIconItemName(itemName))}.png`;
 }
 
+/** Нормализует icon_id с бэкенда (minecraft:oak_planks → oak_planks). */
+export function normalizeIconId(iconId: string): string {
+    const trimmed = iconId.trim().replace(/\.png$/i, '');
+    const withoutNamespace = trimmed.includes(':') ? trimmed.split(':', 2)[1] : trimmed;
+    return withoutNamespace.replace(/\s+/g, '_').toLowerCase();
+}
+
 /** Имя PNG из icon_id, который приходит с бэкенда (IngredientRegistry). */
 export function itemIconFileNameFromId(iconId: string): string {
-    return `${normalizeItemFileName(iconId)}.png`;
+    const normalized = normalizeIconId(iconId);
+    const aliased = ICON_ALIASES[normalized.replace(/_/g, ' ')] ?? normalized;
+    const resolved = aliased.includes(' ') ? normalizeItemFileName(aliased) : aliased;
+    return `${resolved}.png`;
 }
 
 export function resolveItemIconFileName(itemName: string, iconId?: string): string {

@@ -15,6 +15,7 @@ services:
     restart: unless-stopped
 
   recipe-exporter:
+    profiles: ["legacy-recipes"]
     build:
       context: ./recipe-exporter
       dockerfile: docker/Dockerfile
@@ -23,8 +24,10 @@ services:
       MINECRAFT_ROOT: /data/minecraft
       FORGE_JAVA_XMX: 4G
       EXPORT_TIMEOUT_SECONDS: 1800
+      FORGE_RUNTIME_ROOT: /opt/forge-runtime
     volumes:
       - ./MinecraftVersions:/data/minecraft:rw
+      - ./recipe-exporter/forge-runtime/1.7.10:/opt/forge-runtime:ro
     ports:
       - "8090:8090"
     restart: unless-stopped
@@ -51,8 +54,6 @@ services:
       - "8000:8000"
     depends_on:
       renderer:
-        condition: service_healthy
-      recipe-exporter:
         condition: service_healthy
     restart: unless-stopped
 

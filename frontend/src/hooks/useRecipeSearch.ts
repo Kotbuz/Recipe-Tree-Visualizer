@@ -44,6 +44,9 @@ export function useRecipeSearch(version: string, profileId: string | undefined, 
         const controller = new AbortController();
         setLoading(true);
 
+        const debounceMs =
+            focusItem && focusRole && !trimmedQuery ? 0 : RECIPE_SEARCH_DEBOUNCE_MS;
+
         const timeoutId = window.setTimeout(() => {
             const url = new URL('/recipes', window.location.origin);
             url.searchParams.set('version', version);
@@ -87,7 +90,7 @@ export function useRecipeSearch(version: string, profileId: string | undefined, 
                         setLoading(false);
                     }
                 });
-        }, RECIPE_SEARCH_DEBOUNCE_MS);
+        }, debounceMs);
 
         return () => {
             window.clearTimeout(timeoutId);

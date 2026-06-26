@@ -88,7 +88,7 @@ It mirrors the `renderer` pattern: shared `MinecraftVersions` volume + small HTT
 
 ### Prerequisites
 
-Build the mod jar once (host or GitHub Actions):
+1. **Mod jar** — build once (host or GitHub Actions):
 
 ```powershell
 cd recipe-exporter/versions/1.7.10
@@ -97,17 +97,38 @@ cd recipe-exporter/versions/1.7.10
 
 This produces `recipe-exporter/dist/recipe-exporter-1.7.10.jar`, which is baked into the image.
 
+2. **Forge runtime** — the Docker image does **not** run the Forge installer (old Maven/Scala URLs are unreliable). Mount a pre-installed server from the host:
+
+```text
+recipe-exporter/forge-runtime/1.7.10/<forge-build>/forge-*-universal.jar
+```
+
+Install via backend UI (JVM export for 1.7.10) or Gradle `runClient`/`runServer` once locally — the same files the backend uses.
+
 CI workflow **Build recipe-exporter mod** is **manual only** (Actions → Run workflow).
-First run downloads Minecraft 1.7.10 + Forge and may take 15–40 minutes.
 
 ### Build and run
+
+Default stack (1.21+/26.2, no Forge):
+
+```powershell
+docker compose up --build
+```
+
+With 1.7.10 recipe export:
 
 ```powershell
 docker compose --profile legacy-recipes build recipe-exporter
 docker compose --profile legacy-recipes up -d
 ```
 
-Backend is preconfigured with `RECIPE_EXPORTER_URL=http://recipe-exporter:8090`.
+Or everything together:
+
+```powershell
+docker compose --profile legacy-recipes up --build
+```
+
+Backend is preconfigured with `RECIPE_EXPORTER_URL=http://recipe-exporter:8090` (only reachable when the `legacy-recipes` profile is active).
 
 ### Manual export
 
@@ -128,7 +149,7 @@ Force re-export:
 | Layer | Purpose |
 |-------|---------|
 | `eclipse-temurin:8-jre` | Minecraft 1.7.10 / Forge require Java 8 |
-| Forge universal server | Installed at image build via official installer |
+| Forge universal server | Mounted from `forge-runtime/1.7.10/` on the host (not installed in image) |
 | `rtv-recipe-exporter.jar` | Copied from `dist/` at build time |
 | `export-server.py` | `GET /health`, `POST /export` |
 | `run-export.sh` | Syncs mods from volume, starts Forge once, exits |
