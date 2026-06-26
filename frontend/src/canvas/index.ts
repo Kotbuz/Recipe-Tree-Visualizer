@@ -38,3 +38,4 @@ export {
     serializeCanvasDocument,
 } from './canvasPersistence';
 export { useCanvasViewport } from './useCanvasViewport';
+export { isSlotConnected } from './slotConnections';

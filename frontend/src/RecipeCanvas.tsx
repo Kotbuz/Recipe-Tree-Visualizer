@@ -11,6 +11,7 @@ import {
 import ModsPanel from './components/ModsPanel';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
+import SlotQuantityBadge from './components/SlotQuantityBadge';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import {
@@ -27,6 +28,7 @@ import {
     createCanvasDocument,
     downloadCanvasDocument,
     getSlotAnchorCanvas,
+    isSlotConnected,
     normalizeCanvasPoint,
     pickCanvasDocumentFile,
     slotConnectionSide,
@@ -969,12 +971,14 @@ export default function RecipeCanvas() {
     const renderItemSlot = (
         node: RecipeNode,
         slotType: SlotType,
-        _item: RecipeItem,
+        item: RecipeItem,
         index: number,
     ) => {
         const displayName = getSlotItemName(node, slotType, index);
         const iconId = getSlotItemIconId(node, slotType, index);
         const isEmpty = !displayName;
+        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
+        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
 
         return (
             <div
@@ -989,18 +993,24 @@ export default function RecipeCanvas() {
                 }}
                 className={`recipe-node-item recipe-node-item--${slotType}${
                     isEmpty ? ' recipe-node-item--empty' : ''
-                }`}
+                }${showQuantity ? ' recipe-node-item--with-quantity' : ''}`}
                 onMouseDown={(event) =>
                     handleItemMouseDown(node.id, slotType, index, event)
                 }
                 title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
             >
+                {showQuantity && slotType === 'input' && (
+                    <SlotQuantityBadge amount={item.amount} slotType="input" />
+                )}
                 {isEmpty ? (
                     <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
                         {slotType === 'input' ? 'IN' : 'OUT'}
                     </span>
                 ) : (
                     <ItemIconView itemName={displayName} iconId={iconId} />
+                )}
+                {showQuantity && slotType === 'output' && (
+                    <SlotQuantityBadge amount={item.amount} slotType="output" />
                 )}
             </div>
         );
