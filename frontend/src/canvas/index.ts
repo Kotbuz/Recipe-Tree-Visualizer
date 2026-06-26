@@ -24,12 +24,13 @@ export type {
 export {
     buildCanvasBezierPath,
     buildViewportBezierPath,
+    getCanvasBezierPoint,
     getSlotAnchorCanvas,
     slotConnectionSide,
 } from './canvasAnchors';
 export type { CanvasAnchorPoint, ConnectionSide } from './canvasAnchors';
-export type { CanvasDocument, CanvasNodeRecord } from './canvasSchema';
-export { CANVAS_FILE_VERSION } from './canvasSchema';
+export type { CanvasDocument, CanvasDocumentMeta, CanvasNodeRecord } from './canvasSchema';
+export { CANVAS_FILE_VERSION, DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from './canvasSchema';
 export {
     createCanvasDocument,
     downloadCanvasDocument,
@@ -38,3 +39,6 @@ export {
     serializeCanvasDocument,
 } from './canvasPersistence';
 export { useCanvasViewport } from './useCanvasViewport';
+export { isSlotConnected } from './slotConnections';
+export { canvasToBackendGraph, CanvasConversionError } from './canvasToBackendGraph';
+export { buildConnectionFlowRates } from './connectionFlowRates';

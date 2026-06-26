@@ -1,4 +1,7 @@
 import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from '../canvas';
+import type { FlowRateUnit } from '../types/production';
+import { FLOW_RATE_UNIT_LABELS } from '../utils/flowRate';
 import type { ModSummary } from '../hooks/useMods';
 import type { ProfileSummary } from '../hooks/useProfiles';
 import '../styles/ModsPanel.css';
@@ -40,6 +43,11 @@ type ModsPanelProps = {
     clearingRecipeExport?: boolean;
     maintenanceError?: string | null;
     showRecipeMaintenance?: boolean;
+    defaultDurationTicks: number;
+    onDefaultDurationTicksChange: (value: number) => void;
+    flowRateUnit: FlowRateUnit;
+    onFlowRateUnitChange: (unit: FlowRateUnit) => void;
+    calculationError?: string | null;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -140,10 +148,16 @@ export default function ModsPanel({
     clearingRecipeExport = false,
     maintenanceError = null,
     showRecipeMaintenance = false,
+    defaultDurationTicks,
+    onDefaultDurationTicksChange,
+    flowRateUnit,
+    onFlowRateUnitChange,
+    calculationError,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
     const [modsOpen, setModsOpen] = useState(true);
+    const [calcOpen, setCalcOpen] = useState(false);
     const [toolsOpen, setToolsOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
     const [instancePath, setInstancePath] = useState('');
@@ -347,17 +361,65 @@ export default function ModsPanel({
                 <p className="mods-panel-hint">Установите версию Minecraft, затем импортируйте модпак.</p>
             ) : null}
 
-            {(profilesError || modsError || maintenanceError) && (
+            {(profilesError || modsError || maintenanceError || calculationError) && (
                 <div className="mods-panel-errors">
                     {profilesError ? <div className="mods-panel-error">{profilesError}</div> : null}
                     {modsError ? <div className="mods-panel-error">{modsError}</div> : null}
                     {maintenanceError ? (
                         <div className="mods-panel-error">{maintenanceError}</div>
                     ) : null}
+                    {calculationError ? (
+                        <div className="mods-panel-error" role="alert">
+                            {calculationError}
+                        </div>
+                    ) : null}
                 </div>
             )}
 
             <div className="mods-panel-sections">
+                <PanelSection
+                    title="Расчёт"
+                    open={calcOpen}
+                    onToggle={() => setCalcOpen((v) => !v)}
+                >
+                    <label className="mods-panel-field">
+                        <span className="mods-panel-field-label">Время операции (тиков)</span>
+                        <input
+                            className="mods-panel-input"
+                            type="number"
+                            min={1}
+                            step={1}
+                            value={defaultDurationTicks}
+                            onChange={(event) => {
+                                const next = Number.parseInt(event.target.value, 10);
+                                if (Number.isFinite(next) && next > 0) {
+                                    onDefaultDurationTicksChange(next);
+                                }
+                            }}
+                        />
+                    </label>
+                    <p className="mods-panel-hint">
+                        {TICKS_PER_SECOND} тиков = 1 сек. Новые рецепты без времени в jar получают это
+                        значение ({DEFAULT_DURATION_TICKS} по умолчанию).
+                    </p>
+                    <label className="mods-panel-field">
+                        <span className="mods-panel-field-label">Единица скорости на линиях</span>
+                        <select
+                            className="mods-panel-select"
+                            value={flowRateUnit}
+                            onChange={(event) =>
+                                onFlowRateUnitChange(event.target.value as FlowRateUnit)
+                            }
+                        >
+                            {(Object.keys(FLOW_RATE_UNIT_LABELS) as FlowRateUnit[]).map((unit) => (
+                                <option key={unit} value={unit}>
+                                    {FLOW_RATE_UNIT_LABELS[unit]}
+                                </option>
+                            ))}
+                        </select>
+                    </label>
+                </PanelSection>
+
                 <PanelSection
                     title="Импорт"
                     summary={activeProfile ? `${activeProfile.mod_count} мод.` : undefined}

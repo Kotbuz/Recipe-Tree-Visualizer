@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
+import { calculateProduction } from './api/graph';
 import {
     type RecipeSummary,
     type RecipeItem,
@@ -17,6 +18,7 @@ import { prepareForgeInstall } from './hooks/useForgePrepare';
 import { useVersionCatalog } from './hooks/useVersionCatalog';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
+import SlotQuantityBadge from './components/SlotQuantityBadge';
 import { mergeRecipeItems } from './utils/mergeRecipeItems';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useModDependencyDownload } from './hooks/useModDependencyDownload';
@@ -32,17 +34,26 @@ import {
 } from './utils/ingredientMatch';
 import {
     CANVAS_CONFIG,
+    DEFAULT_DURATION_TICKS,
+    TICKS_PER_SECOND,
+    CanvasConversionError,
+    buildConnectionFlowRates,
     buildCanvasBezierPath,
+    canvasToBackendGraph,
+    getCanvasBezierPoint,
     buildViewportBezierPath,
     createCanvasDocument,
     downloadCanvasDocument,
     getSlotAnchorCanvas,
+    isSlotConnected,
     normalizeCanvasPoint,
     pickCanvasDocumentFile,
     slotConnectionSide,
     useCanvasViewport,
     type CanvasNodeRecord,
 } from './canvas';
+import type { FlowRateUnit, ProductionTarget } from './types/production';
+import { FLOW_RATE_UNIT_LABELS, formatFlowRate, fromRatePerMinute, toRatePerMinute } from './utils/flowRate';
 import './styles/RecipeCanvas.css';
 
 type RecipeNode = CanvasNodeRecord;
@@ -93,7 +104,18 @@ type ItemRecipeContextMenu = {
     screenY: number;
 };
 
-type ContextMenu = RecipeContextMenu | NodeContextMenu | ItemRecipeContextMenu;
+type SlotContextMenu = {
+    type: 'slot';
+    nodeId: string;
+    slotType: SlotType;
+    itemIndex: number;
+    itemId?: string;
+    itemName: string;
+    screenX: number;
+    screenY: number;
+};
+
+type ContextMenu = RecipeContextMenu | NodeContextMenu | ItemRecipeContextMenu | SlotContextMenu;
 
 type TerminalKind = 'chest' | 'outpost';
 
@@ -123,6 +145,11 @@ const mapMachineName = (typeName: string) =>
         .replace(/.*:/, '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+const formatDurationLabel = (ticks: number) => {
+    const seconds = ticks / TICKS_PER_SECOND;
+    return seconds >= 10 ? `${ticks}t` : `${seconds.toFixed(1)}s`;
+};
 
 const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
 
@@ -375,6 +402,23 @@ export default function RecipeCanvas() {
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
     const [connections, setConnections] = useState<RecipeConnection[]>([]);
+    const [defaultDurationTicks, setDefaultDurationTicks] = useState(DEFAULT_DURATION_TICKS);
+    const [flowRateUnit, setFlowRateUnit] = useState<FlowRateUnit>('per_minute');
+    const [productionTarget, setProductionTarget] = useState<ProductionTarget | null>(null);
+    const [connectionFlowRates, setConnectionFlowRates] = useState<Map<string, number>>(
+        () => new Map(),
+    );
+    const [calculationError, setCalculationError] = useState<string | null>(null);
+    const [durationEditNodeId, setDurationEditNodeId] = useState<string | null>(null);
+    const [durationEditValue, setDurationEditValue] = useState(String(DEFAULT_DURATION_TICKS));
+    const [targetEditSlot, setTargetEditSlot] = useState<{
+        nodeId: string;
+        itemIndex: number;
+        itemId?: string;
+        itemName: string;
+    } | null>(null);
+    const [targetRateValue, setTargetRateValue] = useState('100');
+    const [targetRateUnit, setTargetRateUnit] = useState<FlowRateUnit>('per_minute');
     const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
     const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
@@ -437,6 +481,9 @@ export default function RecipeCanvas() {
             setVersion(nextVersion);
             setNodes([]);
             setConnections([]);
+            setProductionTarget(null);
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
             setContextMenu(null);
             setRecipeSearchQuery('');
             setSelectedRecipe(null);
@@ -488,6 +535,37 @@ export default function RecipeCanvas() {
     useEffect(() => {
         bumpLayout();
     }, [nodes, connections, transform, bumpLayout]);
+
+    useEffect(() => {
+        if (!productionTarget) {
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
+            return undefined;
+        }
+
+        const timer = window.setTimeout(async () => {
+            try {
+                const graph = canvasToBackendGraph(nodes, connections);
+                const plan = await calculateProduction({
+                    target_item_id: productionTarget.itemId,
+                    target_rate_per_minute: productionTarget.ratePerMinute,
+                    graph,
+                    version,
+                });
+                setConnectionFlowRates(buildConnectionFlowRates(nodes, connections, plan));
+                setCalculationError(null);
+            } catch (error) {
+                setConnectionFlowRates(new Map());
+                if (error instanceof CanvasConversionError || error instanceof Error) {
+                    setCalculationError(error.message);
+                } else {
+                    setCalculationError('Ошибка расчёта производительности');
+                }
+            }
+        }, 400);
+
+        return () => window.clearTimeout(timer);
+    }, [connections, nodes, productionTarget, version]);
 
     const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
         setNodes((current) =>
@@ -551,7 +629,81 @@ export default function RecipeCanvas() {
                     connection.from.nodeId !== nodeId && connection.to.nodeId !== nodeId,
             ),
         );
+        setProductionTarget((current) => (current?.nodeId === nodeId ? null : current));
     }, []);
+
+    const openDurationEditor = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node || node.kind !== 'recipe') {
+                return;
+            }
+            setDurationEditNodeId(nodeId);
+            setDurationEditValue(String(node.durationTicks ?? defaultDurationTicks));
+            setContextMenu(null);
+            setRecipeSearchQuery('');
+        },
+        [defaultDurationTicks, nodes],
+    );
+
+    const applyDurationEdit = useCallback(() => {
+        if (!durationEditNodeId) {
+            return;
+        }
+        const nextTicks = Number.parseInt(durationEditValue, 10);
+        if (!Number.isFinite(nextTicks) || nextTicks <= 0) {
+            return;
+        }
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === durationEditNodeId ? { ...node, durationTicks: nextTicks } : node,
+            ),
+        );
+        setDurationEditNodeId(null);
+    }, [durationEditNodeId, durationEditValue]);
+
+    const openTargetEditor = useCallback((menu: SlotContextMenu) => {
+        setTargetEditSlot({
+            nodeId: menu.nodeId,
+            itemIndex: menu.itemIndex,
+            itemId: menu.itemId,
+            itemName: menu.itemName,
+        });
+        if (productionTarget?.nodeId === menu.nodeId && productionTarget.itemIndex === menu.itemIndex) {
+            setTargetRateValue(String(fromRatePerMinute(productionTarget.ratePerMinute, flowRateUnit)));
+            setTargetRateUnit(flowRateUnit);
+        } else {
+            setTargetRateValue('100');
+            setTargetRateUnit(flowRateUnit);
+        }
+        setContextMenu(null);
+        setRecipeSearchQuery('');
+    }, [flowRateUnit, productionTarget]);
+
+    const applyTargetEdit = useCallback(() => {
+        if (!targetEditSlot) {
+            return;
+        }
+        const rate = Number.parseFloat(targetRateValue);
+        if (!Number.isFinite(rate) || rate <= 0) {
+            return;
+        }
+        if (!targetEditSlot.itemId) {
+            setCalculationError('Невозможно рассчитать: нет item_id у выбранного выхода');
+            setTargetEditSlot(null);
+            return;
+        }
+
+        setProductionTarget({
+            nodeId: targetEditSlot.nodeId,
+            slotType: 'output',
+            itemIndex: targetEditSlot.itemIndex,
+            itemId: targetEditSlot.itemId,
+            ratePerMinute: toRatePerMinute(rate, targetRateUnit),
+        });
+        setTargetEditSlot(null);
+        setCalculationError(null);
+    }, [targetEditSlot, targetRateUnit, targetRateValue]);
 
     const findCompatibleSlotAt = useCallback(
         (
@@ -659,6 +811,7 @@ export default function RecipeCanvas() {
     );
 
     const createNodeFromRecipe = (recipe: RecipeSummary, x: number, y: number) => {
+        const durationTicks = recipe.duration_ticks ?? defaultDurationTicks;
         const node: RecipeNode = {
             id: `${recipe.recipe_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             kind: 'recipe',
@@ -666,6 +819,7 @@ export default function RecipeCanvas() {
             x,
             y,
             machineName: mapMachineName(recipe.machine_type),
+            durationTicks,
             inputs: mergeRecipeItems(recipe.inputs).map((item) => ({
                 name: item.name,
                 amount: item.amount,
@@ -885,6 +1039,36 @@ export default function RecipeCanvas() {
         });
     };
 
+    const handleSlotContextMenu = (
+        node: RecipeNode,
+        slotType: SlotType,
+        index: number,
+        event: React.MouseEvent<HTMLDivElement, MouseEvent>,
+    ) => {
+        if (slotType !== 'output') {
+            return;
+        }
+
+        const itemName = getSlotItemName(node, slotType, index);
+        if (!itemName) {
+            return;
+        }
+
+        event.preventDefault();
+        event.stopPropagation();
+        setSelectedRecipe(null);
+        setContextMenu({
+            type: 'slot',
+            nodeId: node.id,
+            slotType,
+            itemIndex: index,
+            itemId: getSlotItemId(node, slotType, index),
+            itemName,
+            screenX: event.clientX,
+            screenY: event.clientY,
+        });
+    };
+
     const finishItemDrag = useCallback(
         (drag: ItemDragState, clientX: number, clientY: number) => {
             const distance = Math.hypot(
@@ -1011,9 +1195,21 @@ export default function RecipeCanvas() {
             name: 'recipe-tree',
             minecraftVersion: version,
             profileId: activeProfileId,
+            defaultDurationTicks,
+            flowRateUnit,
+            productionTarget,
         });
         downloadCanvasDocument(document);
-    }, [activeProfileId, connections, nodes, transform, version]);
+    }, [
+        activeProfileId,
+        connections,
+        defaultDurationTicks,
+        flowRateUnit,
+        nodes,
+        productionTarget,
+        transform,
+        version,
+    ]);
 
     const handleLoadCanvas = useCallback(async () => {
         try {
@@ -1026,11 +1222,16 @@ export default function RecipeCanvas() {
             }
             setNodes(document.nodes);
             setConnections(document.connections);
+            setDefaultDurationTicks(document.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS);
+            setFlowRateUnit(document.meta?.flowRateUnit ?? 'per_minute');
+            setProductionTarget(document.meta?.productionTarget ?? null);
             if (document.viewport) {
                 setViewportTransform(document.viewport);
             }
             setContextMenu(null);
             setRecipeSearchQuery('');
+            setDurationEditNodeId(null);
+            setTargetEditSlot(null);
         } catch {
             // пользователь отменил выбор или файл некорректен
         }
@@ -1245,16 +1446,21 @@ export default function RecipeCanvas() {
         }
     }, [handleInstancePathImport, pickFolder]);
 
-    const renderConnectionPath = (from: NodeSlot, to: NodeSlot) => {
-        const fromAnchor = getSlotAnchor(from.nodeId, from.slotType, from.itemIndex);
-        const toAnchor = getSlotAnchor(to.nodeId, to.slotType, to.itemIndex);
-        if (!fromAnchor || !toAnchor) return null;
+    const getConnectionAnchors = useCallback(
+        (from: NodeSlot, to: NodeSlot) => {
+            const fromAnchor = getSlotAnchor(from.nodeId, from.slotType, from.itemIndex);
+            const toAnchor = getSlotAnchor(to.nodeId, to.slotType, to.itemIndex);
+            if (!fromAnchor || !toAnchor) {
+                return null;
+            }
 
-        return buildCanvasBezierPath(
-            { ...fromAnchor, side: slotConnectionSide(from.slotType) },
-            { ...toAnchor, side: slotConnectionSide(to.slotType) },
-        );
-    };
+            return {
+                from: { ...fromAnchor, side: slotConnectionSide(from.slotType) },
+                to: { ...toAnchor, side: slotConnectionSide(to.slotType) },
+            };
+        },
+        [getSlotAnchor],
+    );
 
     const itemRecipeHeader =
         contextMenu?.type === 'item-recipe'
@@ -1278,12 +1484,18 @@ export default function RecipeCanvas() {
     const renderItemSlot = (
         node: RecipeNode,
         slotType: SlotType,
-        _item: RecipeItem,
+        item: RecipeItem,
         index: number,
     ) => {
         const displayName = getSlotItemName(node, slotType, index);
         const iconId = getSlotItemIconId(node, slotType, index);
         const isEmpty = !displayName;
+        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
+        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
+        const isTarget =
+            productionTarget?.nodeId === node.id &&
+            productionTarget.slotType === slotType &&
+            productionTarget.itemIndex === index;
 
         return (
             <div
@@ -1298,18 +1510,27 @@ export default function RecipeCanvas() {
                 }}
                 className={`recipe-node-item recipe-node-item--${slotType}${
                     isEmpty ? ' recipe-node-item--empty' : ''
+                }${showQuantity ? ' recipe-node-item--with-quantity' : ''}${
+                    isTarget ? ' recipe-node-item--target' : ''
                 }`}
+                onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
                 onMouseDown={(event) =>
                     handleItemMouseDown(node.id, slotType, index, event)
                 }
                 title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
             >
+                {showQuantity && slotType === 'input' && (
+                    <SlotQuantityBadge amount={item.amount} slotType="input" />
+                )}
                 {isEmpty ? (
                     <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
                         {slotType === 'input' ? 'IN' : 'OUT'}
                     </span>
                 ) : (
                     <ItemIconView itemName={displayName} iconId={iconId} />
+                )}
+                {showQuantity && slotType === 'output' && (
+                    <SlotQuantityBadge amount={item.amount} slotType="output" />
                 )}
             </div>
         );
@@ -1402,14 +1623,25 @@ export default function RecipeCanvas() {
                 >
                     <svg className="recipe-connections-layer" aria-hidden="true">
                         {connections.map((connection) => {
-                            const path = renderConnectionPath(connection.from, connection.to);
-                            if (!path) return null;
+                            const anchors = getConnectionAnchors(connection.from, connection.to);
+                            if (!anchors) return null;
+                            const path = buildCanvasBezierPath(anchors.from, anchors.to);
+                            const midpoint = getCanvasBezierPoint(anchors.from, anchors.to, 0.5);
+                            const flowRate = connectionFlowRates.get(connection.id);
                             return (
-                                <path
-                                    key={connection.id}
-                                    className="recipe-connection-line"
-                                    d={path}
-                                />
+                                <g key={connection.id}>
+                                    <path className="recipe-connection-line" d={path} />
+                                    {flowRate !== undefined && (
+                                        <text
+                                            className="recipe-connection-label"
+                                            x={midpoint.x}
+                                            y={midpoint.y - 6}
+                                            textAnchor="middle"
+                                        >
+                                            {formatFlowRate(flowRate, flowRateUnit)}
+                                        </text>
+                                    )}
+                                </g>
                             );
                         })}
                     </svg>
@@ -1437,7 +1669,15 @@ export default function RecipeCanvas() {
                                         handleMachineMouseDown(node.id, event)
                                     }
                                 >
-                                    {node.machineName}
+                                    <span>{node.machineName}</span>
+                                    {node.kind === 'recipe' && node.durationTicks !== undefined && (
+                                        <span
+                                            className="recipe-node-duration"
+                                            title={`${node.durationTicks} тиков`}
+                                        >
+                                            {formatDurationLabel(node.durationTicks)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div className="recipe-node-column recipe-node-column--outputs">
@@ -1529,16 +1769,177 @@ export default function RecipeCanvas() {
                                 }}
                                 onClick={(event) => event.stopPropagation()}
                             >
+                                {(() => {
+                                    const node = nodes.find(
+                                        (entry) => entry.id === contextMenu.nodeId,
+                                    );
+                                    const canEditDuration = node?.kind === 'recipe';
+                                    return (
+                                        <>
+                                            {canEditDuration && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openDurationEditor(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Изменить время операции…
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="recipe-node-context-item recipe-node-context-item--danger"
+                                                onClick={() => {
+                                                    removeNode(contextMenu.nodeId);
+                                                    closeMenu();
+                                                }}
+                                            >
+                                                Удалить ноду
+                                            </button>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {contextMenu?.type === 'slot' &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal recipe-context-modal--transparent"
+                            onClick={closeMenu}
+                        >
+                            <div
+                                className="recipe-node-context-panel"
+                                style={{
+                                    left: contextMenu.screenX,
+                                    top: contextMenu.screenY,
+                                }}
+                                onClick={(event) => event.stopPropagation()}
+                            >
                                 <button
                                     type="button"
                                     className="recipe-node-context-item"
-                                    onClick={() => {
-                                        removeNode(contextMenu.nodeId);
-                                        closeMenu();
-                                    }}
+                                    onClick={() => openTargetEditor(contextMenu)}
                                 >
-                                    Удалить ноду
+                                    Задать целевой выход…
                                 </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {durationEditNodeId &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setDurationEditNodeId(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">
+                                    Время операции (тиков)
+                                </div>
+                                <input
+                                    className="recipe-duration-modal-input"
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    value={durationEditValue}
+                                    onChange={(event) => setDurationEditValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            applyDurationEdit();
+                                        }
+                                    }}
+                                />
+                                <p className="recipe-duration-modal-hint">
+                                    {TICKS_PER_SECOND} тиков = 1 сек
+                                </p>
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setDurationEditNodeId(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyDurationEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {targetEditSlot &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setTargetEditSlot(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">
+                                    Целевой выход: {targetEditSlot.itemName}
+                                </div>
+                                <div className="recipe-target-modal-row">
+                                    <input
+                                        className="recipe-duration-modal-input"
+                                        type="number"
+                                        min={0.01}
+                                        step="any"
+                                        value={targetRateValue}
+                                        onChange={(event) => setTargetRateValue(event.target.value)}
+                                        onKeyDown={(event) => {
+                                            if (event.key === 'Enter') {
+                                                applyTargetEdit();
+                                            }
+                                        }}
+                                    />
+                                    <select
+                                        className="recipe-duration-modal-input"
+                                        value={targetRateUnit}
+                                        onChange={(event) =>
+                                            setTargetRateUnit(event.target.value as FlowRateUnit)
+                                        }
+                                    >
+                                        {(Object.keys(FLOW_RATE_UNIT_LABELS) as FlowRateUnit[]).map(
+                                            (unit) => (
+                                                <option key={unit} value={unit}>
+                                                    {FLOW_RATE_UNIT_LABELS[unit]}
+                                                </option>
+                                            ),
+                                        )}
+                                    </select>
+                                </div>
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setTargetEditSlot(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyTargetEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
                             </div>
                         </div>,
                         document.body,
@@ -1586,6 +1987,11 @@ export default function RecipeCanvas() {
                 clearingRecipeExport={maintenanceClearing}
                 maintenanceError={maintenanceError}
                 showRecipeMaintenance={isJvmExportVersion}
+                defaultDurationTicks={defaultDurationTicks}
+                onDefaultDurationTicksChange={setDefaultDurationTicks}
+                flowRateUnit={flowRateUnit}
+                onFlowRateUnitChange={setFlowRateUnit}
+                calculationError={calculationError}
             />
 
             <VersionManagerModal

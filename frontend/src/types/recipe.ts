@@ -12,6 +12,7 @@ export interface RecipeSummary {
     machine_name: string;
     inputs: RecipeItem[];
     outputs: RecipeItem[];
+    duration_ticks?: number | null;
 }
 
 export interface RecipeListResponse {
