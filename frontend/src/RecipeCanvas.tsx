@@ -13,11 +13,13 @@ import ExportStatusBanner from './components/ExportStatusBanner';
 import VersionManagerModal from './components/VersionManagerModal';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
+import { mergeRecipeItems } from './utils/mergeRecipeItems';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
 import { useModDependencyDownload } from './hooks/useModDependencyDownload';
 import { useMods } from './hooks/useMods';
 import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
+import { useVersionMaintenance } from './hooks/useVersionMaintenance';
 import {
     ingredientsCompatible,
     type IngredientIndex,
@@ -52,6 +54,7 @@ interface ItemDragState {
     sourceItemIndex: number;
     itemName: string;
     itemId?: string;
+    itemMetadata?: number;
     startX: number;
     startY: number;
     startClientX: number;
@@ -77,6 +80,7 @@ type ItemRecipeContextMenu = {
     type: 'item-recipe';
     itemName: string;
     itemId?: string;
+    itemMetadata?: number;
     sourceNodeId: string;
     sourceSlotType: SlotType;
     sourceItemIndex: number;
@@ -139,6 +143,16 @@ const getSlotItemId = (node: RecipeNode, slotType: SlotType, index: number) => {
     return items[index]?.item_id;
 };
 
+const getSlotItemMetadata = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        const items = node.inputs[0] ?? node.outputs[0];
+        return items?.metadata;
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.metadata;
+};
+
 const getSlotItemIconId = (node: RecipeNode, slotType: SlotType, index: number) => {
     if (node.kind === 'chest') {
         const items = node.inputs[0] ?? node.outputs[0];
@@ -179,6 +193,7 @@ const getSlotIngredientRef = (
 ): IngredientRef => ({
     name: getSlotItemName(node, slotType, index),
     itemId: getSlotItemId(node, slotType, index),
+    metadata: getSlotItemMetadata(node, slotType, index),
 });
 
 const findCompatibleSlotOnNode = (
@@ -220,7 +235,7 @@ const findMatchingSlotIndex = (
     return items.findIndex((item) =>
         ingredientsCompatible(
             dragged,
-            { name: item.name, itemId: item.item_id },
+            { name: item.name, itemId: item.item_id, metadata: item.metadata },
             ingredientIndex,
         ),
     );
@@ -248,13 +263,65 @@ const isSlotCompatible = (
 export default function RecipeCanvas() {
     const { version, versions, setVersion, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
         useMinecraftVersion();
-    const { mods, loading: modsLoading, uploading: modsUploading, error: modsError, refresh: refreshMods, upload: uploadMods } = useMods(version);
+    const { mods, loading: modsLoading, uploading: modsUploading, removingJar, error: modsError, refresh: refreshMods, upload: uploadMods, remove: removeMod } = useMods(version);
     const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version);
+    const {
+        reloading: maintenanceReloading,
+        clearing: maintenanceClearing,
+        error: maintenanceError,
+        reloadMods,
+        clearRecipeExport,
+    } = useVersionMaintenance(version);
+    const handleReloadMods = useCallback(async () => {
+        try {
+            const result = await reloadMods();
+            await refreshMods();
+            if (result.export_status) {
+                await refreshExportStatus();
+            }
+            await reloadCatalog();
+        } catch {
+            // ошибка уже в maintenanceError
+        }
+    }, [reloadMods, refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const handleClearRecipeExport = useCallback(async () => {
+        const confirmed = window.confirm(
+            'Удалить все JSON-файлы рецептов и ore_dict.json для этой версии?\n\n' +
+                'После очистки потребуется повторный JVM-экспорт (вручную или через «Скачать зависимости»).',
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await clearRecipeExport();
+            await refreshExportStatus();
+            await refreshMods();
+            await reloadCatalog();
+        } catch {
+            // ошибка уже в maintenanceError
+        }
+    }, [clearRecipeExport, refreshExportStatus, refreshMods, reloadCatalog]);
+
+    const handleModRemove = useCallback(
+        async (jarFilename: string) => {
+            try {
+                await removeMod(jarFilename);
+                await refreshExportStatus();
+            } catch {
+                // ошибка уже в modsError
+            }
+        },
+        [removeMod, refreshExportStatus],
+    );
+
     const handleDepsDownloadComplete = useCallback(async () => {
         await refreshMods();
         await refreshExportStatus();
         await reloadCatalog();
     }, [refreshMods, refreshExportStatus, reloadCatalog]);
+
     const {
         download: downloadMissingDeps,
         downloading: depsDownloading,
@@ -288,6 +355,7 @@ export default function RecipeCanvas() {
                 query: recipeSearchQuery,
                 focusItem,
                 focusRole,
+                focusMetadata: contextMenu.itemMetadata,
                 includeMods: true,
             };
         }
@@ -555,17 +623,19 @@ export default function RecipeCanvas() {
             x,
             y,
             machineName: mapMachineName(recipe.machine_type),
-            inputs: recipe.inputs.map((item) => ({
+            inputs: mergeRecipeItems(recipe.inputs).map((item) => ({
                 name: item.name,
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
+                metadata: item.metadata,
             })),
-            outputs: recipe.outputs.map((item) => ({
+            outputs: mergeRecipeItems(recipe.outputs).map((item) => ({
                 name: item.name,
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
+                metadata: item.metadata,
             })),
         };
         setNodes((current) => [...current, node]);
@@ -645,6 +715,7 @@ export default function RecipeCanvas() {
         const dragged: IngredientRef = {
             name: contextMenu.itemName,
             itemId: contextMenu.itemId,
+            metadata: contextMenu.itemMetadata,
         };
         const compatibleSlot = findCompatibleSlotOnNode(
             newNode,
@@ -730,6 +801,7 @@ export default function RecipeCanvas() {
         if (!itemName) return;
 
         const itemId = getSlotItemId(node, slotType, itemIndex);
+        const itemMetadata = getSlotItemMetadata(node, slotType, itemIndex);
 
         event.preventDefault();
         event.stopPropagation();
@@ -743,6 +815,7 @@ export default function RecipeCanvas() {
             sourceItemIndex: itemIndex,
             itemName,
             itemId,
+            itemMetadata,
             startX: anchor.x,
             startY: anchor.y,
             startClientX: event.clientX,
@@ -784,7 +857,7 @@ export default function RecipeCanvas() {
 
             const compatibleSlot = findCompatibleSlotAt(
                 dropPoint,
-                { name: drag.itemName, itemId: drag.itemId },
+                { name: drag.itemName, itemId: drag.itemId, metadata: drag.itemMetadata },
                 drag.sourceSlotType,
                 drag.sourceNodeId,
             );
@@ -804,6 +877,7 @@ export default function RecipeCanvas() {
                 type: 'item-recipe',
                 itemName: drag.itemName,
                 itemId: drag.itemId,
+                itemMetadata: drag.itemMetadata,
                 sourceNodeId: drag.sourceNodeId,
                 sourceSlotType: drag.sourceSlotType,
                 sourceItemIndex: drag.sourceItemIndex,
@@ -1015,6 +1089,15 @@ export default function RecipeCanvas() {
         );
     }, [coords, itemDragState]);
 
+    const isJvmExportVersion = exportStatus?.layout === 'jvm';
+    const missingDependencyCount =
+        isJvmExportVersion && exportStatus
+            ? exportStatus.missing_dependencies.reduce(
+                  (count, issue) => count + issue.requires.length,
+                  0,
+              )
+            : 0;
+
     const canvasStyle = {
         '--canvas-svg-offset': `${CANVAS_CONFIG.layers.connectionsSvgOffset}px`,
         '--canvas-svg-size': `${CANVAS_CONFIG.layers.connectionsSvgSize}px`,
@@ -1028,7 +1111,11 @@ export default function RecipeCanvas() {
                 downloadingDeps={depsDownloading}
                 depsError={depsError}
                 depsResult={depsResult}
-                onDownloadDependencies={() => void downloadMissingDeps()}
+                onDownloadDependencies={
+                    isJvmExportVersion && missingDependencyCount > 0
+                        ? () => void downloadMissingDeps()
+                        : undefined
+                }
             />
             <div
                 className="recipe-canvas"
@@ -1222,21 +1309,24 @@ export default function RecipeCanvas() {
                 modsError={modsError}
                 onModsUpload={handleModsUpload}
                 onModsRefresh={refreshMods}
+                onModRemove={(jarFilename) => void handleModRemove(jarFilename)}
+                removingJarFilename={removingJar}
                 onOpenVersionManager={() => setVersionManagerOpen(true)}
                 gameVersion={version}
                 versionsEmpty={versions.length === 0}
-                missingDependencyCount={
-                    exportStatus?.missing_dependencies.reduce(
-                        (count, issue) => count + issue.requires.length,
-                        0,
-                    ) ?? 0
-                }
+                missingDependencyCount={missingDependencyCount}
                 onDownloadDependencies={
-                    (exportStatus?.missing_dependencies.length ?? 0) > 0
+                    isJvmExportVersion && missingDependencyCount > 0
                         ? () => void downloadMissingDeps()
                         : undefined
                 }
                 downloadingDependencies={depsDownloading}
+                onReloadMods={() => void handleReloadMods()}
+                reloadingMods={maintenanceReloading}
+                onClearRecipeExport={() => void handleClearRecipeExport()}
+                clearingRecipeExport={maintenanceClearing}
+                maintenanceError={maintenanceError}
+                showRecipeMaintenance={isJvmExportVersion}
             />
 
             <VersionManagerModal

@@ -1,4 +1,4 @@
-import { useRef, useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import type { ModSummary } from '../hooks/useMods';
 import '../styles/ModsPanel.css';
 
@@ -14,12 +14,20 @@ type ModsPanelProps = {
     modsError: string | null;
     onModsUpload: (files: FileList) => void;
     onModsRefresh: () => void;
+    onModRemove?: (jarFilename: string) => void;
+    removingJarFilename?: string | null;
     onOpenVersionManager: () => void;
     gameVersion: string;
     versionsEmpty: boolean;
     missingDependencyCount?: number;
     onDownloadDependencies?: () => void;
     downloadingDependencies?: boolean;
+    onReloadMods?: () => void;
+    reloadingMods?: boolean;
+    onClearRecipeExport?: () => void;
+    clearingRecipeExport?: boolean;
+    maintenanceError?: string | null;
+    showRecipeMaintenance?: boolean;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -45,6 +53,20 @@ function loaderLabel(loader: string): string {
     }
 }
 
+function jarFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
+    return Array.from(dataTransfer.files).filter((file) =>
+        file.name.toLowerCase().endsWith('.jar'),
+    );
+}
+
+function toFileList(files: File[]): FileList {
+    const dataTransfer = new DataTransfer();
+    for (const file of files) {
+        dataTransfer.items.add(file);
+    }
+    return dataTransfer.files;
+}
+
 export default function ModsPanel({
     versions,
     version,
@@ -57,16 +79,84 @@ export default function ModsPanel({
     modsError,
     onModsUpload,
     onModsRefresh,
+    onModRemove,
+    removingJarFilename = null,
     onOpenVersionManager,
     gameVersion,
     versionsEmpty,
     missingDependencyCount = 0,
     onDownloadDependencies,
     downloadingDependencies = false,
+    onReloadMods,
+    reloadingMods = false,
+    onClearRecipeExport,
+    clearingRecipeExport = false,
+    maintenanceError = null,
+    showRecipeMaintenance = false,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
+    const [isDragOver, setIsDragOver] = useState(false);
+    const dragDepthRef = useRef(0);
     const fileInputRef = useRef<HTMLInputElement>(null);
     const compatibleCount = mods.filter((mod) => mod.compatible !== false).length;
+    const uploadDisabled = modsUploading || versionsEmpty;
+
+    const submitJarFiles = useCallback(
+        (files: File[]) => {
+            if (files.length === 0 || uploadDisabled) {
+                return;
+            }
+            onModsUpload(toFileList(files));
+        },
+        [onModsUpload, uploadDisabled],
+    );
+
+    const handleDragEnter = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (uploadDisabled) {
+                return;
+            }
+            dragDepthRef.current += 1;
+            setIsDragOver(true);
+        },
+        [uploadDisabled],
+    );
+
+    const handleDragLeave = useCallback((event: React.DragEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        dragDepthRef.current = Math.max(0, dragDepthRef.current - 1);
+        if (dragDepthRef.current === 0) {
+            setIsDragOver(false);
+        }
+    }, []);
+
+    const handleDragOver = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            if (!uploadDisabled) {
+                event.dataTransfer.dropEffect = 'copy';
+            }
+        },
+        [uploadDisabled],
+    );
+
+    const handleDrop = useCallback(
+        (event: React.DragEvent<HTMLDivElement>) => {
+            event.preventDefault();
+            event.stopPropagation();
+            dragDepthRef.current = 0;
+            setIsDragOver(false);
+            if (uploadDisabled) {
+                return;
+            }
+            submitJarFiles(jarFilesFromDataTransfer(event.dataTransfer));
+        },
+        [submitJarFiles, uploadDisabled],
+    );
 
     if (!expanded) {
         return (
@@ -181,12 +271,44 @@ export default function ModsPanel({
                     <div className="mods-panel-status">Нет подключённых модов</div>
                 ) : (
                     <ul className="mods-panel-list">
-                        {mods.map((mod) => (
+                        {mods.map((mod) => {
+                            const jarFilename = mod.jar_filename ?? '';
+                            const rowKey = jarFilename || mod.mod_id;
+                            const isRemoving = removingJarFilename === jarFilename;
+                            return (
                             <li
-                                key={mod.mod_id}
+                                key={rowKey}
                                 className={`mods-panel-list-item${mod.compatible === false ? ' mods-panel-list-item--inactive' : ''}`}
                             >
-                                <div className="mods-panel-mod-name">{mod.name}</div>
+                                <div className="mods-panel-list-item-header">
+                                    <div className="mods-panel-mod-name">{mod.name}</div>
+                                    {jarFilename && onModRemove ? (
+                                        <button
+                                            type="button"
+                                            className="mods-panel-mod-remove"
+                                            disabled={
+                                                modsUploading ||
+                                                isRemoving ||
+                                                Boolean(removingJarFilename)
+                                            }
+                                            aria-label={`Удалить мод ${mod.name}`}
+                                            title="Удалить из mods/"
+                                            onClick={() => {
+                                                const label = mod.name || jarFilename;
+                                                if (
+                                                    !window.confirm(
+                                                        `Удалить «${label}» из MinecraftVersions/${gameVersion}/mods/?`,
+                                                    )
+                                                ) {
+                                                    return;
+                                                }
+                                                onModRemove(jarFilename);
+                                            }}
+                                        >
+                                            {isRemoving ? '…' : '×'}
+                                        </button>
+                                    ) : null}
+                                </div>
                                 <div className="mods-panel-mod-meta">
                                     <span className="mods-panel-mod-loader">
                                         {loaderLabel(mod.loader)}
@@ -213,7 +335,8 @@ export default function ModsPanel({
                                     ) : null}
                                 </div>
                             </li>
-                        ))}
+                            );
+                        })}
                     </ul>
                 )}
 
@@ -231,14 +354,27 @@ export default function ModsPanel({
                         event.target.value = '';
                     }}
                 />
-                <button
-                    type="button"
-                    className="mods-panel-button mods-panel-button--upload"
-                    disabled={modsUploading || versionsEmpty}
-                    onClick={() => fileInputRef.current?.click()}
+                <div
+                    className={`mods-panel-dropzone${isDragOver ? ' mods-panel-dropzone--active' : ''}${uploadDisabled ? ' mods-panel-dropzone--disabled' : ''}`}
+                    onDragEnter={handleDragEnter}
+                    onDragLeave={handleDragLeave}
+                    onDragOver={handleDragOver}
+                    onDrop={handleDrop}
                 >
-                    {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
-                </button>
+                    <p className="mods-panel-dropzone-text">
+                        {modsUploading
+                            ? 'Загрузка…'
+                            : 'Перетащите .jar сюда или выберите файл'}
+                    </p>
+                    <button
+                        type="button"
+                        className="mods-panel-button mods-panel-button--upload"
+                        disabled={uploadDisabled}
+                        onClick={() => fileInputRef.current?.click()}
+                    >
+                        {modsUploading ? 'Загрузка…' : 'Добавить .jar'}
+                    </button>
+                </div>
                 {missingDependencyCount > 0 && onDownloadDependencies ? (
                     <button
                         type="button"
@@ -250,6 +386,29 @@ export default function ModsPanel({
                             ? 'Скачивание зависимостей…'
                             : `Скачать зависимости (${missingDependencyCount})`}
                     </button>
+                ) : null}
+                {showRecipeMaintenance && onReloadMods ? (
+                    <button
+                        type="button"
+                        className="mods-panel-button mods-panel-button--reload"
+                        disabled={reloadingMods || clearingRecipeExport || versionsEmpty}
+                        onClick={onReloadMods}
+                    >
+                        {reloadingMods ? 'Перезагрузка…' : 'Перезагрузить моды и рецепты'}
+                    </button>
+                ) : null}
+                {showRecipeMaintenance && onClearRecipeExport ? (
+                    <button
+                        type="button"
+                        className="mods-panel-button mods-panel-button--danger"
+                        disabled={clearingRecipeExport || reloadingMods || versionsEmpty}
+                        onClick={onClearRecipeExport}
+                    >
+                        {clearingRecipeExport ? 'Очистка…' : 'Очистить кэш рецептов'}
+                    </button>
+                ) : null}
+                {maintenanceError ? (
+                    <div className="mods-panel-error">{maintenanceError}</div>
                 ) : null}
             </div>
         </aside>

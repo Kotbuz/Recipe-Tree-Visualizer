@@ -5,7 +5,9 @@ from functools import lru_cache
 from pathlib import Path
 
 from app.recipes.adapters import item_id_to_display_name
+from app.recipes.ae2_item_match import ae2_items_compatible
 from app.recipes.ingredient import IngredientKind
+from app.recipes.item_ref import parse_item_needle
 from app.recipes.loaders.tag_loader import TagLoader, is_tag_id, normalize_tag_id
 from app.recipes.models import Recipe
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
@@ -51,14 +53,26 @@ class IngredientRegistry:
             return
         self._tag_members = self._tag_loader.merge_tag_maps(self._tag_members, loaded)
 
-    def register_from_recipes(self, recipes: tuple[Recipe, ...] | list[Recipe]) -> None:
+    def register_from_recipes(
+        self,
+        recipes: tuple[Recipe, ...] | list[Recipe],
+        *,
+        version: str | None = None,
+    ) -> None:
         for recipe in recipes:
             for part in [*recipe.inputs, *recipe.outputs]:
-                self.register(part.item_id)
+                self.register(part.item_id, metadata=part.metadata, version=version)
 
-    def register(self, ingredient_id: str) -> Ingredient:
+    def register(
+        self,
+        ingredient_id: str,
+        *,
+        metadata: int | None = None,
+        version: str | None = None,
+    ) -> Ingredient:
         normalized_id = self._normalize_ingredient_id(ingredient_id)
-        existing = self._ingredients.get(normalized_id)
+        registry_key = self._registry_key(normalized_id, metadata)
+        existing = self._ingredients.get(registry_key)
         if existing is not None:
             return existing
 
@@ -71,15 +85,44 @@ class IngredientRegistry:
                 icon_id=self._tag_to_icon_id(normalized_id, display),
             )
         else:
+            display = item_id_to_display_name(normalized_id)
+            icon_id = self._item_id_to_icon_id(normalized_id)
+            if version is not None:
+                from app.recipes.loaders.item_catalog_loader import (
+                    resolve_catalog_display_name,
+                    resolve_catalog_icon_id,
+                )
+
+                catalog_name = resolve_catalog_display_name(
+                    normalized_id,
+                    metadata,
+                    version=version,
+                )
+                if catalog_name is not None:
+                    display = catalog_name
+                catalog_icon = resolve_catalog_icon_id(
+                    normalized_id,
+                    metadata,
+                    version=version,
+                )
+                if catalog_icon is not None:
+                    icon_id = catalog_icon
+
             ingredient = Ingredient(
                 id=normalized_id,
                 kind=IngredientKind.ITEM,
-                display_name=item_id_to_display_name(normalized_id),
-                icon_id=self._item_id_to_icon_id(normalized_id),
+                display_name=display,
+                icon_id=icon_id,
             )
 
-        self._ingredients[normalized_id] = ingredient
+        self._ingredients[registry_key] = ingredient
         return ingredient
+
+    @staticmethod
+    def _registry_key(item_id: str, metadata: int | None) -> str:
+        if metadata is None:
+            return item_id
+        return f"{item_id}#{metadata}"
 
     def get(self, ingredient_id: str) -> Ingredient | None:
         normalized_id = self._normalize_ingredient_id(ingredient_id)
@@ -127,6 +170,18 @@ class IngredientRegistry:
         if self._matches_ingredient_candidates(normalized_needle, normalized_id):
             return True
 
+        if ":" in normalized_needle:
+            if ae2_items_compatible(normalized_id, normalized_needle):
+                return True
+            for ingredient in self._ingredients.values():
+                if ingredient.kind != IngredientKind.ITEM:
+                    continue
+                if ae2_items_compatible(normalized_id, ingredient.id) and (
+                    items_match(normalized_needle, ingredient.display_name.lower())
+                    or self._item_ids_equivalent(normalized_needle, ingredient.id)
+                ):
+                    return True
+
         needle_tag_id = self._needle_to_tag_id(normalized_needle)
         if needle_tag_id is not None and self._is_member_of_tag(normalized_id, needle_tag_id):
             return True
@@ -139,6 +194,7 @@ class IngredientRegistry:
         return False
 
     def _matches_ingredient_candidates(self, needle: str, ingredient_id: str) -> bool:
+        needle_base, _ = parse_item_needle(needle, None)
         display_name = item_id_to_display_name(ingredient_id)
         alias = self.resolve_alias(display_name).lower()
         candidates = {
@@ -146,8 +202,18 @@ class IngredientRegistry:
             display_name.lower(),
             alias,
         }
+
+        registered = self._ingredients.get(ingredient_id)
+        if registered is not None:
+            candidates.add(registered.display_name.lower())
+        else:
+            prefix = f"{ingredient_id}#"
+            for key, ingredient in self._ingredients.items():
+                if key.startswith(prefix):
+                    candidates.add(ingredient.display_name.lower())
+
         return any(
-            items_match(needle, candidate) or self._item_ids_equivalent(needle, candidate)
+            items_match(needle_base, candidate) or self._item_ids_equivalent(needle_base, candidate)
             for candidate in candidates
         )
 
@@ -222,5 +288,5 @@ def get_version_ingredient_registry(version: str) -> IngredientRegistry:
     registry.load_version(version)
     for jar_path in recipe_manager.mod_jar_paths_for_version(version):
         registry.merge_tags_from_jar(jar_path)
-    registry.register_from_recipes(recipe_manager.get_version_recipes(version))
+    registry.register_from_recipes(recipe_manager.get_version_recipes(version), version=version)
     return registry

@@ -103,6 +103,32 @@ _LEGACY_ITEM_METADATA: dict[str, dict[int, str]] = {
         meta: f"{_WOOL_ICON_BY_METADATA[meta].removesuffix('_wool')}_stained_glass_pane"
         for meta in _WOOL_ICON_BY_METADATA
     },
+    "minecraft:stone_slab": {
+        0: "smooth_stone_slab",
+        1: "sandstone_slab",
+        3: "cobblestone_slab",
+        4: "brick_slab",
+        5: "stone_brick_slab",
+        6: "nether_brick_slab",
+        7: "quartz_slab",
+    },
+    "minecraft:double_stone_slab": {
+        0: "smooth_stone_slab",
+        1: "sandstone_slab",
+        3: "cobblestone_slab",
+        4: "brick_slab",
+        5: "stone_brick_slab",
+        6: "nether_brick_slab",
+        7: "quartz_slab",
+    },
+    "minecraft:wooden_slab": {
+        meta: f"{wood}_slab" for meta, wood in _WOOD_ICON_BY_METADATA.items()
+    },
+    "minecraft:quartz_block": {
+        0: "quartz_block",
+        1: "chiseled_quartz_block",
+        2: "quartz_pillar",
+    },
 }
 
 _LEGACY_ITEM_ALIASES: dict[str, str] = {

@@ -56,6 +56,16 @@ def display_name_for_raw_type(raw_type: str) -> str:
         "minecraft:brewing": "Зельеварка",
         "minecraft:composting": "Компостер",
         "minecraft:anvil_repair": "Наковальня",
+        "ae2:smelt": "Печь",
+        "ae2:grind": "Камень пробуждения",
+        "ae2:press": "Высекатель",
+        "ae2:inscribe": "Высекатель",
+        "ae2:macerator": "Дробитель IC2",
+        "ae2:pulverizer": "Дробитель TE",
+        "ae2:mekcrusher": "Дробитель Mekanism",
+        "ae2:mekechamber": "Химкамера Mekanism",
+        "ae2:hccrusher": "Дробитель Hydraulicraft",
+        "ae2:crusher": "Дробитель RotaryCraft",
     }
     if raw_type in mapping:
         return mapping[raw_type]

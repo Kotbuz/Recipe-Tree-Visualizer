@@ -32,6 +32,7 @@ class RecipeService:
         produces_item: str | None = None,
         focus_item: str | None = None,
         focus_role: str | None = None,
+        focus_metadata: int | None = None,
         limit: int = 50,
         include_mods: bool = True,
     ) -> list[RecipeSummary]:
@@ -42,6 +43,7 @@ class RecipeService:
             produces_item=produces_item,
             focus_item=focus_item,
             focus_role=_parse_focus_role(focus_role),
+            focus_metadata=focus_metadata,
             limit=limit,
             include_mods=include_mods,
         )

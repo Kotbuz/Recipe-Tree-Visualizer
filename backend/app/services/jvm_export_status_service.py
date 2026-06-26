@@ -8,28 +8,30 @@ from pathlib import Path
 from loguru import logger
 
 from app.core.config import get_settings
-from app.recipes.loaders.recipe_paths import recipe_layout_for_version
+from app.core.recipe_layout import recipe_layout_for_version
 
 _FORGE_1710_DEPENDENCIES: dict[str, list[str]] = {
-    "appliedenergistics2": ["CodeChickenLib", "ForgeMultipart"],
-    "ae2": ["CodeChickenLib", "ForgeMultipart"],
+    # ForgeMultipart тянет CodeChickenCore; AE2 rv3 без multipart работает сам по себе.
+    "forgemultipart": ["CodeChickenCore"],
     "thaumcraft": ["Baubles"],
     "thermalexpansion": ["CoFHCore", "ThermalFoundation"],
     "buildcraft": ["BuildCraft|Core"],
 }
 
-_JAR_MOD_ID_HINTS: tuple[tuple[str, str], ...] = (
-    ("appliedenergistics2", "appliedenergistics2"),
-    ("industrialcraft", "ic2"),
-    ("mekanism", "mekanism"),
-    ("thaumcraft", "thaumcraft"),
-    ("buildcraft", "buildcraft"),
-    ("thermal", "thermalfoundation"),
-    ("cofh", "cofhcore"),
-)
-
 _CLASS_NOT_FOUND = re.compile(r"ClassNotFoundException:\s*(\S+)")
 _MOD_EXCEPTION = re.compile(r"Caught exception from (\w+)", re.IGNORECASE)
+_LOADER_EXCEPTION = re.compile(r"LoaderException:\s*(.+)")
+_FORGE_ERROR_LINE = re.compile(r"\[.*ERROR.*\]:\s*(.+)")
+
+# Библиотеки / API-моды без собственных рецептов крафта в экспорте.
+_LIBRARY_MOD_IDS = frozenset(
+    {
+        "codechickencore",
+        "codechickenlib",
+        "forgemultipart",
+        "forgemultipartcbe",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -69,13 +71,11 @@ class RecipeExportStatus:
         }
 
 
+from app.parser.jar_meta import guess_mod_id_from_jar_filename as _guess_mod_id_from_jar_filename
+
+
 def _guess_mod_id(jar_name: str) -> str:
-    lowered = jar_name.lower()
-    for needle, mod_id in _JAR_MOD_ID_HINTS:
-        if needle in lowered:
-            return mod_id
-    stem = Path(jar_name).stem.lower()
-    return stem.split("-", 1)[0]
+    return _guess_mod_id_from_jar_filename(jar_name)
 
 
 def _jar_provides_dependency(jar_name: str, dependency: str) -> bool:
@@ -136,6 +136,50 @@ def _find_missing_dependencies(
     return issues
 
 
+def _forge_log_path(version: str) -> Path:
+    for candidate in _forge_log_candidates(version):
+        if candidate.is_file():
+            return candidate
+    return _forge_log_candidates(version)[0]
+
+
+def _forge_log_candidates(version: str) -> list[Path]:
+    settings = get_settings()
+    repo_root = settings.minecraft_versions_path.parent
+    if not repo_root.is_dir():
+        repo_root = Path(__file__).resolve().parents[2]
+    return [
+        repo_root / "recipe-exporter" / "forge-runtime" / version / "logs" / "latest.log",
+        repo_root / "recipe-exporter" / "versions" / version / "run" / "logs" / "latest.log",
+    ]
+
+
+def _forge_crash_report_candidates(version: str) -> list[Path]:
+    return [path.parent.parent / "crash-reports" for path in _forge_log_candidates(version)]
+
+
+def _latest_crash_report_text(version: str) -> str:
+    reports: list[Path] = []
+    for crash_dir in _forge_crash_report_candidates(version):
+        if not crash_dir.is_dir():
+            continue
+        reports.extend(sorted(crash_dir.glob("crash-*.txt"), key=lambda path: path.stat().st_mtime, reverse=True))
+    if not reports:
+        return ""
+    return reports[0].read_text(encoding="utf-8", errors="replace")
+
+
+def _forge_diagnostic_text(version: str, log_path: Path | None = None) -> str:
+    parts: list[str] = []
+    resolved_log = log_path or _forge_log_path(version)
+    if resolved_log.is_file():
+        parts.append(resolved_log.read_text(encoding="utf-8", errors="replace"))
+    crash_text = _latest_crash_report_text(version)
+    if crash_text:
+        parts.append(crash_text)
+    return "\n".join(parts)
+
+
 def _parse_forge_log(log_path: Path) -> tuple[list[str], list[str]]:
     if not log_path.is_file():
         return [], []
@@ -146,14 +190,95 @@ def _parse_forge_log(log_path: Path) -> tuple[list[str], list[str]]:
     return class_errors, mod_errors
 
 
+def _extract_forge_loader_errors(log_path: Path, *, version: str | None = None) -> list[str]:
+    text = ""
+    if log_path.is_file():
+        text = log_path.read_text(encoding="utf-8", errors="replace")
+    if version is not None:
+        text = _forge_diagnostic_text(version, log_path)
+    elif not text:
+        return []
+
+    messages: list[str] = []
+    seen: set[str] = set()
+
+    def add(message: str) -> None:
+        cleaned = message.strip()
+        if cleaned and cleaned not in seen:
+            seen.add(cleaned)
+            messages.append(cleaned)
+
+    for match in _LOADER_EXCEPTION.finditer(text):
+        add(match.group(1))
+
+    for match in _FORGE_ERROR_LINE.finditer(text):
+        line = match.group(1).strip()
+        if "LoaderException" in line:
+            continue
+        if any(token in line for token in ("Exception", "Error", "incompatible", "crash")):
+            add(line)
+
+    if "IC2 is incompatible with this environment" in text:
+        add(
+            "IndustrialCraft 2: установлена experimental/dev-сборка — Forge не стартует. "
+            "Замените на обычный IC2 для 1.7.10 или временно уберите JAR из mods/."
+        )
+
+    if "codechicken.multipart" in text and "NoSuchFieldError" in text:
+        add(
+            "ForgeMultipart несовместим с Forge в JVM-экспортёре. "
+            "Удалите ForgeMultipart-*.jar из mods/ — для AE2 rv3-beta-6 он не обязателен."
+        )
+
+    if "ic2.core.IC2" in text and "NoSuchFieldError" in text:
+        add(
+            "IC2 Classic несовместим с Gradle dev-сервером (Forge 10.13.4.1614). "
+            "Временно уберите IC2Classic-*.jar из mods/."
+        )
+
+    if "appeng.util.Platform" in text and "NoSuchFieldError" in text:
+        add(
+            "AE2 rv3-beta-6 несовместим с Gradle dev-сервером (Forge 10.13.4.1614); "
+            "нужен universal Forge 10.13.4.1448. Перезапустите экспорт — бэкенд установит его автоматически."
+        )
+
+    return messages[:8]
+
+
+def _warn_incompatible_mod_jars(jar_names: list[str]) -> list[str]:
+    warnings: list[str] = []
+    for jar_name in jar_names:
+        lowered = jar_name.lower()
+        if "industrialcraft" in lowered and "experimental" in lowered:
+            warnings.append(
+                f"Мод {jar_name} — experimental/dev-сборка IC2. "
+                "При экспорте Forge обычно падает; используйте release IC2-2.2.x для 1.7.10."
+            )
+        if "forgemultipart" in lowered:
+            warnings.append(
+                f"Мод {jar_name} (ForgeMultipart) часто несовместим с JVM-экспортёром. "
+                "Для AE2 rv3-beta-6 его можно убрать из mods/."
+            )
+        if "ic2classic" in lowered:
+            warnings.append(
+                f"Мод {jar_name} (IC2 Classic) может ломать JVM-экспорт на Forge 10.13.4.1614. "
+                "Для экспорта AE2 временно уберите этот JAR из mods/."
+            )
+    return warnings
+
+
 def _build_warnings(
     *,
     jar_names: list[str],
     recipe_namespaces: set[str],
     missing_dependencies: list[ModDependencyIssue],
     log_class_errors: list[str],
+    log_loader_errors: list[str],
+    incompatible_jar_warnings: list[str],
+    exported_count: int,
 ) -> list[str]:
     warnings: list[str] = []
+    warnings.extend(incompatible_jar_warnings)
 
     for issue in missing_dependencies:
         deps = ", ".join(issue.missing_dependencies)
@@ -162,9 +287,25 @@ def _build_warnings(
             f"Добавьте их в MinecraftVersions/.../mods/ и перезапустите экспорт."
         )
 
+    if exported_count == 0 and jar_names:
+        for message in log_loader_errors[:5]:
+            warnings.append(f"Ошибка экспорта Forge: {message}")
+        if log_loader_errors or incompatible_jar_warnings:
+            warnings.append(
+                "Экспорт завершился без файлов рецептов. Устраните проблемные моды и "
+                "нажмите «Перезагрузить моды и рецепты»."
+            )
+        elif not warnings:
+            warnings.append(
+                "JVM-экспорт рецептов ещё не выполнен (0 файлов в recipe/). "
+                "Нажмите «Перезагрузить моды и рецепты» — экспорт запустится автоматически, "
+                "или запустите recipe-exporter вручную (Gradle / Docker)."
+            )
+        return warnings
+
     for jar_name in jar_names:
         mod_id = _guess_mod_id(jar_name)
-        if mod_id == "minecraft":
+        if mod_id == "minecraft" or mod_id in _LIBRARY_MOD_IDS:
             continue
         if mod_id not in recipe_namespaces:
             warnings.append(
@@ -175,7 +316,7 @@ def _build_warnings(
     for class_name in log_class_errors[:5]:
         if "codechicken" in class_name.lower():
             warnings.append(
-                "В логе экспорта: отсутствует CodeChickenLib / ForgeMultipart "
+                "В логе экспорта: возможно отсутствует CodeChickenCore или ForgeMultipart "
                 f"({class_name})."
             )
 
@@ -195,9 +336,22 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
     settings = get_settings()
     version_dir = settings.minecraft_versions_path / version
     mods_dir = version_dir / "mods"
-    recipe_dir = _recipe_dir(version)
 
     jar_names = _list_installed_mod_jars(mods_dir)
+    if layout != "jvm":
+        return RecipeExportStatus(
+            version=version,
+            layout=layout,
+            exported_recipe_count=0,
+            installed_mod_jars=tuple(jar_names),
+            recipe_mod_ids=(),
+            mods_without_recipes=(),
+            missing_dependencies=(),
+            warnings=(),
+            log_errors=(),
+        )
+
+    recipe_dir = _recipe_dir(version)
     recipe_namespaces = _recipe_namespaces(recipe_dir)
     exported_count = len(
         [
@@ -214,29 +368,27 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
                 _guess_mod_id(jar_name)
                 for jar_name in jar_names
                 if _guess_mod_id(jar_name) not in recipe_namespaces
+                and _guess_mod_id(jar_name) not in _LIBRARY_MOD_IDS
             }
         )
     )
 
-    log_path = (
-        settings.minecraft_versions_path.parent
-        / "recipe-exporter"
-        / "versions"
-        / version
-        / "run"
-        / "logs"
-        / "latest.log"
-    )
-    if not log_path.is_file():
-        repo_root = Path(__file__).resolve().parents[2]
-        log_path = repo_root / "recipe-exporter" / "versions" / version / "run" / "logs" / "latest.log"
-
+    log_path = _forge_log_path(version)
     log_class_errors, log_mod_errors = _parse_forge_log(log_path)
+    # After a successful export, ignore stale crash reports from the Gradle dev server.
+    log_loader_errors = _extract_forge_loader_errors(
+        log_path,
+        version=version if exported_count == 0 else None,
+    )
+    incompatible_jar_warnings = _warn_incompatible_mod_jars(jar_names)
     warnings = _build_warnings(
         jar_names=jar_names,
         recipe_namespaces=recipe_namespaces,
         missing_dependencies=missing_dependencies,
         log_class_errors=log_class_errors,
+        log_loader_errors=log_loader_errors,
+        incompatible_jar_warnings=incompatible_jar_warnings,
+        exported_count=exported_count,
     )
 
     return RecipeExportStatus(
@@ -248,7 +400,11 @@ def analyze_recipe_export_status(version: str) -> RecipeExportStatus:
         mods_without_recipes=mods_without_recipes,
         missing_dependencies=tuple(missing_dependencies),
         warnings=tuple(warnings),
-        log_errors=tuple(log_class_errors[:10] + [f"mod:{name}" for name in log_mod_errors[:10]]),
+        log_errors=tuple(
+            log_loader_errors[:10]
+            + [f"class:{name}" for name in log_class_errors[:5]]
+            + [f"mod:{name}" for name in log_mod_errors[:5]]
+        ),
     )
 
 

@@ -233,6 +233,9 @@ docs/uml/plantuml.jar
 LocalFiles/*
 !LocalFiles/.gitkeep
 
+# Ephemeral Forge JVM export workspace (server install, world, logs, AE2 generated config)
+recipe-exporter/forge-runtime/
+
 #
 
 package-lock.json

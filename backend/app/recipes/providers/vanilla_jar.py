@@ -7,6 +7,9 @@ from pathlib import Path, PurePosixPath
 import orjson
 
 from app.core.config import get_settings
+from app.recipes.loaders.ae2_recipe_loader import load_ae2_recipe_directory
+from app.recipes.loaders.export_recipe_repair import repair_exported_forge_recipe
+from app.recipes.loaders.ore_dict_loader import load_ore_dict
 from app.recipes.ingredients import create_ingredient_resolver
 from app.recipes.loaders.recipe_paths import (
     discover_recipe_file,
@@ -58,6 +61,7 @@ class VanillaJarProvider:
         recipes = ProviderResult()
         source = f"vanilla:{version}"
         parser = self._build_parser(version, self.resolve_jar_path(version) or recipe_dir)
+        ore_dict = load_ore_dict(version)
 
         for json_file in sorted(recipe_dir.glob("*.json")):
             if json_file.name.startswith("_"):
@@ -78,6 +82,8 @@ class VanillaJarProvider:
             if not isinstance(data, dict):
                 continue
 
+            data = repair_exported_forge_recipe(data, ore_dict=ore_dict)
+
             recipe_id = data.get("id")
             if not isinstance(recipe_id, str) or not recipe_id.strip():
                 recipe_id = f"minecraft:{json_file.stem}"
@@ -91,6 +97,11 @@ class VanillaJarProvider:
                 source=source,
                 mod_id=mod_id,
             )
+
+        ae2_dir = recipe_dir / "ae2-recipes"
+        ae2_result = load_ae2_recipe_directory(ae2_dir, version=version)
+        recipes.recipes.extend(ae2_result.recipes)
+        recipes.skipped.extend(ae2_result.skipped)
 
         return recipes
 

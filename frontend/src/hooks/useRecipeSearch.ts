@@ -13,6 +13,7 @@ export type RecipeSearchParams = {
     usesItem?: string;
     focusItem?: string;
     focusRole?: RecipeFocusRole;
+    focusMetadata?: number;
     includeMods?: boolean;
 };
 
@@ -55,6 +56,9 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
             if (focusItem && focusRole) {
                 url.searchParams.set('focus_item', focusItem);
                 url.searchParams.set('focus_role', focusRole);
+                if (params.focusMetadata != null) {
+                    url.searchParams.set('focus_metadata', String(params.focusMetadata));
+                }
             } else {
                 if (producesItem) {
                     url.searchParams.set('produces_item', producesItem);
@@ -92,6 +96,7 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         params.query,
         params.focusItem,
         params.focusRole,
+        params.focusMetadata,
         params.producesItem,
         params.usesItem,
         params.includeMods,

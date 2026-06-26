@@ -90,7 +90,7 @@ class ModDependencyService:
         export_error: str | None = None
 
         if all_resolved:
-            mod_service.scan_storage_mods(version)
+            mod_service.force_reload_version(version)
             try:
                 export_recipe_count = jvm_recipe_export_service.ensure_exported(
                     version,
@@ -101,7 +101,7 @@ class ModDependencyService:
                 export_error = str(exc)
                 logger.warning("Recipe export after dependency download failed: {}", exc)
         elif any(result.status == "downloaded" for result in results):
-            mod_service.scan_storage_mods(version)
+            mod_service.force_reload_version(version)
 
         return ModDependencyDownloadResponse(
             version=version,

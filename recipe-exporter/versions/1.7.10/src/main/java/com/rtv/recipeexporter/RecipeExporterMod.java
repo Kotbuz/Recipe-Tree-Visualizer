@@ -1,7 +1,7 @@
 package com.rtv.recipeexporter;
 
 import cpw.mods.fml.common.Mod;
-import cpw.mods.fml.common.event.FMLLoadCompleteEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
 
 @Mod(
     modid = RecipeExporterMod.MOD_ID,
@@ -12,7 +12,7 @@ public final class RecipeExporterMod {
   public static final String MOD_ID = "rtvrecipeexporter";
 
   @Mod.EventHandler
-  public void onLoadComplete(FMLLoadCompleteEvent event) {
-    RecipeDumper.onLoadComplete(event);
+  public void onServerStarting(FMLServerStartingEvent event) {
+    RecipeDumper.onServerStarting(event);
   }
 }

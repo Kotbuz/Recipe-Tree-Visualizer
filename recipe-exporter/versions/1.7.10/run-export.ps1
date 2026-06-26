@@ -4,15 +4,18 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
-$projectDir = Join-Path $PSScriptRoot "."
 $outputDir = Join-Path $RepoRoot "MinecraftVersions\$Version\recipe"
 $modsDir = Join-Path $RepoRoot "MinecraftVersions\$Version\mods"
+$backendDir = Join-Path $RepoRoot "backend"
 
-Push-Location $projectDir
+Push-Location $backendDir
 try {
-    & .\gradlew.bat runExport `
-        "-PoutputDir=$outputDir" `
-        "-PmodsDir=$modsDir"
+    uv run python -c @"
+from app.services.jvm_recipe_export_service import jvm_recipe_export_service
+
+count = jvm_recipe_export_service.ensure_exported('$Version', force=True)
+print(f'Exported {count} recipe file(s)')
+"@
 } finally {
     Pop-Location
 }

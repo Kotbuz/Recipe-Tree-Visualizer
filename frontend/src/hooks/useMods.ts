@@ -22,6 +22,7 @@ export function useMods(gameVersion: string) {
     const [mods, setMods] = useState<ModSummary[]>([]);
     const [loading, setLoading] = useState(true);
     const [uploading, setUploading] = useState(false);
+    const [removingJar, setRemovingJar] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
     const refresh = useCallback(async () => {
@@ -103,6 +104,46 @@ export function useMods(gameVersion: string) {
         [gameVersion, refresh],
     );
 
+    const remove = useCallback(
+        async (jarFilename: string) => {
+            if (!jarFilename || !gameVersion) {
+                return;
+            }
+
+            setRemovingJar(jarFilename);
+            setError(null);
+            try {
+                const url = new URL('/mods', window.location.origin);
+                url.searchParams.set('version', gameVersion);
+                url.searchParams.set('jar_filename', jarFilename);
+                const response = await fetch(url.toString(), { method: 'DELETE' });
+
+                if (!response.ok) {
+                    let detail = `Ошибка удаления (${response.status})`;
+                    try {
+                        const body = (await response.json()) as { detail?: string };
+                        if (body.detail) {
+                            detail = body.detail;
+                        }
+                    } catch {
+                        // ignore
+                    }
+                    throw new Error(detail);
+                }
+
+                await refresh();
+            } catch (removeError) {
+                const message =
+                    removeError instanceof Error ? removeError.message : 'Ошибка удаления мода';
+                setError(message);
+                throw removeError;
+            } finally {
+                setRemovingJar(null);
+            }
+        },
+        [gameVersion, refresh],
+    );
+
     const compatibleMods = mods.filter((mod) => mod.compatible !== false);
 
     return {
@@ -110,8 +151,10 @@ export function useMods(gameVersion: string) {
         compatibleMods,
         loading,
         uploading,
+        removingJar,
         error,
         refresh,
         upload,
+        remove,
     };
 }

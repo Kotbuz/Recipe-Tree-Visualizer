@@ -49,3 +49,17 @@ class RecipeExportStatusResponse(BaseModel):
     missing_dependencies: list[ModDependencyIssueResponse]
     warnings: list[str]
     log_errors: list[str] = []
+
+
+class ReloadModsResponse(BaseModel):
+    version: str
+    mod_count: int
+    export_status: RecipeExportStatusResponse
+    export_recipe_count: int | None = None
+    export_error: str | None = None
+
+
+class ClearRecipeExportResponse(BaseModel):
+    version: str
+    deleted_recipe_files: int
+    ore_dict_removed: bool

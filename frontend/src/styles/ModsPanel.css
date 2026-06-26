@@ -250,6 +250,40 @@
     background: #ffffff;
 }
 
+.mods-panel-list-item-header {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 0.5rem;
+}
+
+.mods-panel-mod-remove {
+    flex-shrink: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 1.75rem;
+    height: 1.75rem;
+    padding: 0;
+    border: 1px solid #fecaca;
+    border-radius: 8px;
+    background: #fff5f5;
+    color: #b91c1c;
+    font-size: 1.1rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.mods-panel-mod-remove:hover:not(:disabled) {
+    background: #fee2e2;
+    border-color: #f87171;
+}
+
+.mods-panel-mod-remove:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
 .mods-panel-mod-name {
     font-weight: 600;
     color: #111827;
@@ -316,6 +350,39 @@
     display: none;
 }
 
+.mods-panel-dropzone {
+    margin-top: 0.75rem;
+    padding: 1rem 0.85rem;
+    border: 2px dashed #cbd5e1;
+    border-radius: 10px;
+    background: #f8fafc;
+    text-align: center;
+    transition:
+        border-color 0.15s ease,
+        background-color 0.15s ease;
+}
+
+.mods-panel-dropzone--active {
+    border-color: #6366f1;
+    background: #eef2ff;
+}
+
+.mods-panel-dropzone--disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}
+
+.mods-panel-dropzone-text {
+    margin: 0 0 0.75rem;
+    color: #64748b;
+    font-size: 0.88rem;
+    line-height: 1.4;
+}
+
+.mods-panel-dropzone--active .mods-panel-dropzone-text {
+    color: #4338ca;
+}
+
 .mods-panel-button--upload {
     width: 100%;
     border-color: #6366f1;
@@ -329,6 +396,22 @@
     border-color: #c9a227;
     color: #4a3b00;
     background: #fff8e6;
+}
+
+.mods-panel-button--reload {
+    width: 100%;
+    margin-top: 0.5rem;
+    border-color: #0ea5e9;
+    color: #0c4a6e;
+    background: #e0f2fe;
+}
+
+.mods-panel-button--danger {
+    width: 100%;
+    margin-top: 0.5rem;
+    border-color: #f87171;
+    color: #991b1b;
+    background: #fef2f2;
 }
 
 .mods-panel-hint code {

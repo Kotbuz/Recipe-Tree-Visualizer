@@ -153,6 +153,8 @@ class JsonRecipeParser:
                 if ingredient is None:
                     raise JarParseError(f"Missing ingredient for symbol '{symbol}'")
                 parsed = self._resolve_ingredient(ingredient)
+                if parsed.item_id == "minecraft:air":
+                    continue
                 counts[(parsed.item_id, parsed.metadata)] += 1
 
         return [
@@ -168,6 +170,8 @@ class JsonRecipeParser:
         counts: Counter[tuple[str, int | None]] = Counter()
         for ingredient in ingredients:
             parsed = self._resolve_ingredient(ingredient)
+            if parsed.item_id == "minecraft:air":
+                continue
             counts[(parsed.item_id, parsed.metadata)] += 1
 
         return [

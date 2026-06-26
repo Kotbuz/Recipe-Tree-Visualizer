@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import tomllib
 import zipfile
+from pathlib import Path
 
 import orjson
 
 from app.parser.exceptions import JarParseError
+from app.parser.jar_meta import guess_display_name_from_jar_filename, guess_mod_id_from_jar_filename
 from app.parser.loaders import ModLoader
 from app.parser.models import RawModData, RawModMeta, RawRecipeFile
 from app.recipes.loaders.recipe_paths import discover_recipe_file, mod_jar_recipe_patterns
@@ -46,9 +48,43 @@ class JarReader:
                 loader=ModLoader.FORGE,
             )
         if "mcmod.info" in names:
-            return self._read_mcmod_info(archive.read("mcmod.info"))
-        raise JarParseError(
-            "Mod metadata not found (expected neoforge.mods.toml, fabric.mod.json, mods.toml, or mcmod.info)"
+            try:
+                return self._read_mcmod_info(archive.read("mcmod.info"))
+            except (JarParseError, orjson.JSONDecodeError):
+                pass
+        mcmod_path = next(
+            (name for name in names if name.lower().endswith("mcmod.info")),
+            None,
+        )
+        if mcmod_path is not None:
+            try:
+                return self._read_mcmod_info(archive.read(mcmod_path))
+            except (JarParseError, orjson.JSONDecodeError):
+                pass
+        return self._infer_meta_from_jar(archive, jar_path)
+
+    def _infer_meta_from_jar(self, archive: zipfile.ZipFile, jar_path: str) -> RawModMeta:
+        names = archive.namelist()
+        if any(name.startswith("ic2classic/") for name in names):
+            return RawModMeta(
+                mod_id="ic2",
+                name="IC2 Classic",
+                loader=ModLoader.FORGE,
+            )
+        if any(name.startswith("ic2/") for name in names):
+            return RawModMeta(
+                mod_id="ic2",
+                name="IndustrialCraft 2",
+                loader=ModLoader.FORGE,
+            )
+
+        filename = Path(jar_path).name
+        mod_id = guess_mod_id_from_jar_filename(filename)
+        name = guess_display_name_from_jar_filename(filename, mod_id)
+        return RawModMeta(
+            mod_id=mod_id,
+            name=name,
+            loader=ModLoader.FORGE,
         )
 
     def _read_mods_toml(self, raw: bytes, *, loader: ModLoader) -> RawModMeta:
@@ -90,20 +126,33 @@ class JarReader:
 
     def _read_mcmod_info(self, raw: bytes) -> RawModMeta:
         data = orjson.loads(raw)
-        if not isinstance(data, list) or not data:
+        entries: list[object]
+        if isinstance(data, dict):
+            if isinstance(data.get("modList"), list):
+                entries = data["modList"]
+            elif "modid" in data or "modId" in data:
+                entries = [data]
+            else:
+                raise JarParseError("mcmod.info object is missing modid")
+        elif isinstance(data, list):
+            entries = data
+        else:
+            raise JarParseError("mcmod.info must be a JSON array or object")
+
+        if not entries:
             raise JarParseError("mcmod.info must be a non-empty JSON array")
-        first = data[0]
+        first = entries[0]
         if not isinstance(first, dict):
             raise JarParseError("mcmod.info entry must be an object")
-        mod_id = first.get("modid")
+        mod_id = first.get("modid") or first.get("modId")
         if not mod_id:
             raise JarParseError("mcmod.info is missing modid")
         name = first.get("name") or mod_id
         mcversion = first.get("mcversion")
         minecraft_version = mcversion if isinstance(mcversion, str) and mcversion else None
         return RawModMeta(
-            mod_id=mod_id,
-            name=name,
+            mod_id=str(mod_id),
+            name=str(name),
             loader=ModLoader.FORGE,
             minecraft_version=minecraft_version,
         )

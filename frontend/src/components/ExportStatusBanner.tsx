@@ -101,11 +101,18 @@ export default function ExportStatusBanner({
                         </p>
                     ) : null}
                 </div>
-            ) : (
+            ) : status.warnings.length > 0 || (status.log_errors?.length ?? 0) > 0 ? null : (
                 <p className="export-status-banner__hint">
                     Положите JAR-файлы в <code>MinecraftVersions/{status.version}/mods/</code> или
                     используйте кнопку автоматической загрузки.
                 </p>
+            )}
+            {(status.log_errors?.length ?? 0) > 0 && (
+                <ul className="export-status-banner__list export-status-banner__log-errors">
+                    {status.log_errors!.map((entry) => (
+                        <li key={entry}>{entry}</li>
+                    ))}
+                </ul>
             )}
         </div>
     );

@@ -1,29 +1,61 @@
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
 from app.schemas.versions import (
+    ClearRecipeExportResponse,
     IngredientIndexResponse,
     ItemIconManifestResponse,
     RecipeExportStatusResponse,
+    ReloadModsResponse,
     VersionCatalogEntryResponse,
     VersionCatalogResponse,
     VersionInstallResponse,
     VersionListResponse,
 )
 from app.schemas.mod_dependencies import ModDependencyDownloadResponse
-from app.services.jvm_export_status_service import recipe_export_status_service
+from app.recipes.loaders.recipe_paths import recipe_layout_for_version
+from app.services.jvm_export_status_service import (
+    RecipeExportStatus,
+    _extract_forge_loader_errors,
+    _forge_log_path,
+    recipe_export_status_service,
+)
+from app.services.jvm_recipe_export_service import JvmRecipeExportError, jvm_recipe_export_service
 from app.schemas.vanilla_icons import VanillaIconRenderResponse
+from loguru import logger
 from app.services.minecraft_version_catalog import get_minecraft_version_catalog
 from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.mod_dependency_service import (
     ModDependencyDownloadError,
     mod_dependency_service,
 )
+from app.services.mod_service import ModVersionNotInstalledError, mod_service
 from app.services.version_install_service import version_install_service
 from app.services.version_service import version_service
 
 router = APIRouter(prefix="/versions", tags=["versions"])
+
+
+def _export_status_response(status: RecipeExportStatus) -> RecipeExportStatusResponse:
+    return RecipeExportStatusResponse(
+        version=status.version,
+        layout=status.layout,
+        exported_recipe_count=status.exported_recipe_count,
+        installed_mod_jars=list(status.installed_mod_jars),
+        recipe_mod_ids=list(status.recipe_mod_ids),
+        mods_without_recipes=list(status.mods_without_recipes),
+        missing_dependencies=[
+            {
+                "mod_id": issue.mod_id,
+                "jar_name": issue.jar_name,
+                "requires": list(issue.missing_dependencies),
+            }
+            for issue in status.missing_dependencies
+        ],
+        warnings=list(status.warnings),
+        log_errors=list(status.log_errors),
+    )
 
 
 @router.get("", response_model=VersionListResponse)
@@ -95,24 +127,7 @@ def get_recipe_export_status(version: str) -> RecipeExportStatusResponse:
     if version not in version_service.list_installed_versions():
         raise HTTPException(status_code=404, detail=f"Version not found: {version}")
     status = recipe_export_status_service.refresh_manifest(version)
-    return RecipeExportStatusResponse(
-        version=status.version,
-        layout=status.layout,
-        exported_recipe_count=status.exported_recipe_count,
-        installed_mod_jars=list(status.installed_mod_jars),
-        recipe_mod_ids=list(status.recipe_mod_ids),
-        mods_without_recipes=list(status.mods_without_recipes),
-        missing_dependencies=[
-            {
-                "mod_id": issue.mod_id,
-                "jar_name": issue.jar_name,
-                "requires": list(issue.missing_dependencies),
-            }
-            for issue in status.missing_dependencies
-        ],
-        warnings=list(status.warnings),
-        log_errors=list(status.log_errors),
-    )
+    return _export_status_response(status)
 
 
 @router.post(
@@ -146,6 +161,69 @@ def download_missing_mod_dependencies(version: str) -> ModDependencyDownloadResp
         export_triggered=result.export_triggered,
         export_recipe_count=result.export_recipe_count,
         export_error=result.export_error,
+    )
+
+
+@router.post("/{version}/reload-mods", response_model=ReloadModsResponse)
+def reload_mods(
+    version: str,
+    trigger_export: bool = Query(default=True),
+) -> ReloadModsResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    try:
+        summaries = mod_service.force_reload_version(version)
+    except ModVersionNotInstalledError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if trigger_export and recipe_layout_for_version(version) == "jvm":
+        export_recipe_count: int | None = None
+        export_error: str | None = None
+        try:
+            export_recipe_count = jvm_recipe_export_service.ensure_exported(version)
+            if export_recipe_count == 0:
+                loader_errors = _extract_forge_loader_errors(_forge_log_path(version), version=version)
+                if loader_errors:
+                    export_error = loader_errors[0]
+                else:
+                    export_error = "Экспорт завершился без файлов рецептов."
+        except JvmRecipeExportError as exc:
+            export_error = str(exc)
+            logger.warning("Recipe export during reload failed for {}: {}", version, exc)
+    else:
+        export_recipe_count = None
+        export_error = None
+
+    status = recipe_export_status_service.refresh_manifest(version)
+    return ReloadModsResponse(
+        version=version,
+        mod_count=len(summaries),
+        export_status=_export_status_response(status),
+        export_recipe_count=export_recipe_count,
+        export_error=export_error,
+    )
+
+
+@router.post("/{version}/clear-recipe-export", response_model=ClearRecipeExportResponse)
+def clear_recipe_export(
+    version: str,
+    include_ore_dict: bool = Query(default=True),
+) -> ClearRecipeExportResponse:
+    if version not in version_service.list_installed_versions():
+        raise HTTPException(status_code=404, detail=f"Version not found: {version}")
+    try:
+        deleted, ore_dict_removed = jvm_recipe_export_service.clear_exported_recipes(
+            version,
+            include_ore_dict=include_ore_dict,
+        )
+    except JvmRecipeExportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    recipe_export_status_service.refresh_manifest(version)
+    return ClearRecipeExportResponse(
+        version=version,
+        deleted_recipe_files=deleted,
+        ore_dict_removed=ore_dict_removed,
     )
 
 

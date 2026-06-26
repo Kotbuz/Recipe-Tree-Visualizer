@@ -19,11 +19,16 @@ minecraft {
     mcVersion = '1.7.10'
     username = 'RTVExporter'
 
-    if (exportOutputDir != null) {
+    if exportOutputDir != null) {
         def oreDictFile = new File(new File(exportOutputDir.toString()).parentFile, 'ore_dict.json')
+        def itemCatalogFile = new File(new File(exportOutputDir.toString()).parentFile, 'item_catalog.json')
+        def exportDirArg = exportOutputDir.toString().replace('\\', '/')
+        def oreDictArg = oreDictFile.absolutePath.replace('\\', '/')
+        def itemCatalogArg = itemCatalogFile.absolutePath.replace('\\', '/')
         extraRunJvmArguments.add('-Drtv.recipe.export=true')
-        extraRunJvmArguments.add("-Drtv.recipe.export.dir=${exportOutputDir}")
-        extraRunJvmArguments.add("-Drtv.ore.dict.export.file=${oreDictFile.absolutePath}")
+        extraRunJvmArguments.add("-Drtv.recipe.export.dir=${exportDirArg}")
+        extraRunJvmArguments.add("-Drtv.ore.dict.export.file=${oreDictArg}")
+        extraRunJvmArguments.add("-Drtv.item.catalog.export.file=${itemCatalogArg}")
     }
 }
 
@@ -74,7 +79,11 @@ tasks.register('runExport') {
 
 tasks.register('copyExportJar', Copy) {
     dependsOn tasks.named('jar')
-    from tasks.named('jar').flatMap { it.archiveFile }
+    from layout.buildDirectory.dir('libs')
+    include { details ->
+        def name = details.file.name
+        name.endsWith(".jar") && !name.contains("-dev") && !name.contains("-sources")
+    }
     into layout.projectDirectory.dir('../../dist')
     rename { "recipe-exporter-1.7.10.jar" }
 }

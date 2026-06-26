@@ -3,6 +3,7 @@ import { itemsMatch } from '../types/recipe';
 export type IngredientRef = {
     name: string;
     itemId?: string;
+    metadata?: number;
 };
 
 export type IngredientIndex = {
@@ -21,6 +22,86 @@ export const itemIdToDisplayName = (itemId: string): string => {
 const normalizeTagId = (raw: string): string => {
     const cleaned = raw.trim().replace(/^#/, '');
     return cleaned.startsWith('tag:') ? cleaned : `tag:${cleaned}`;
+};
+
+/** AE2: ae2:CableCovered в рецепте = Fluix ME Covered Cable в игре. */
+const AE2_CABLE_FAMILIES = new Set([
+    'CableGlass',
+    'CableCovered',
+    'CableSmart',
+    'CableDense',
+    'CableAnchor',
+]);
+const AE2_MATERIAL_VARIANTS = new Set(['Fluix', 'Quartz']);
+
+const ae2ItemFamilyParts = (itemId: string): { family: string; variant: string | null } | null => {
+    const normalized = itemId.trim().toLowerCase();
+    const prefix = 'appliedenergistics2:item.';
+    if (!normalized.startsWith(prefix)) {
+        return null;
+    }
+
+    const rest = itemId.split(':', 2)[1]!.replace(/^item\./i, '').toLowerCase();
+    const exactFamily = [...AE2_CABLE_FAMILIES].find((entry) => entry.toLowerCase() === rest);
+    if (exactFamily) {
+        return { family: exactFamily, variant: null };
+    }
+
+    const dot = rest.indexOf('.');
+    if (dot === -1) {
+        return null;
+    }
+
+    const family = rest.slice(0, dot);
+    const variant = rest.slice(dot + 1);
+    const canonicalFamily = [...AE2_CABLE_FAMILIES].find(
+        (entry) => entry.toLowerCase() === family,
+    );
+    if (!canonicalFamily) {
+        return null;
+    }
+
+    return { family: canonicalFamily, variant: variant || null };
+};
+
+const canonicalMaterialVariant = (variant: string): string => {
+    for (const material of AE2_MATERIAL_VARIANTS) {
+        if (variant.toLowerCase() === material.toLowerCase()) {
+            return material;
+        }
+    }
+    return variant;
+};
+
+const ae2CableVariantsCompatible = (
+    requiredVariant: string | null,
+    candidateVariant: string | null,
+): boolean => {
+    const required = requiredVariant ? canonicalMaterialVariant(requiredVariant) : null;
+    const candidate = candidateVariant ? canonicalMaterialVariant(candidateVariant) : null;
+
+    if (required === candidate) {
+        return true;
+    }
+    if (required != null && candidate != null && required.toLowerCase() === candidate.toLowerCase()) {
+        return true;
+    }
+    if (required == null) {
+        return candidate != null && AE2_MATERIAL_VARIANTS.has(candidate);
+    }
+    if (candidate == null) {
+        return AE2_MATERIAL_VARIANTS.has(required);
+    }
+    return false;
+};
+
+export const ae2ItemsCompatible = (requiredId: string, candidateId: string): boolean => {
+    const required = ae2ItemFamilyParts(requiredId);
+    const candidate = ae2ItemFamilyParts(candidateId);
+    if (!required || !candidate || required.family !== candidate.family) {
+        return false;
+    }
+    return ae2CableVariantsCompatible(required.variant, candidate.variant);
 };
 
 const needleToTagId = (needle: string, index: IngredientIndex): string | null => {
@@ -45,6 +126,13 @@ const itemIdsEquivalent = (left: string, right: string): boolean => {
         return true;
     }
     return a.split(':', 2).pop() === b.split(':', 2).pop();
+};
+
+const metadataCompatible = (left?: number, right?: number): boolean => {
+    if (left == null && right == null) {
+        return true;
+    }
+    return (left ?? 0) === (right ?? 0);
 };
 
 const isMemberOfTag = (itemId: string, tagId: string, index: IngredientIndex): boolean => {
@@ -77,6 +165,12 @@ export const ingredientMatches = (
             itemIdsEquivalent(normalizedNeedle, candidate),
     )) {
         return true;
+    }
+
+    if (normalizedNeedle.includes(':') && normalizedId.includes(':')) {
+        if (ae2ItemsCompatible(normalizedId, normalizedNeedle)) {
+            return true;
+        }
     }
 
     const needleTagId = needleToTagId(normalizedNeedle, index);
@@ -115,6 +209,10 @@ export const ingredientsCompatible = (
     const rightKey = right.itemId ?? right.name;
 
     if (itemIdsEquivalent(leftKey, rightKey)) {
+        return metadataCompatible(left.metadata, right.metadata);
+    }
+
+    if (left.itemId && right.itemId && ae2ItemsCompatible(left.itemId, right.itemId)) {
         return true;
     }
 

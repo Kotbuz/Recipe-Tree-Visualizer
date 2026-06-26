@@ -6,9 +6,10 @@ from pathlib import Path
 
 from app.parser.minecraft_version import mod_supports_game_version
 from app.parser.models import RawModMeta
-from app.recipes.adapters import item_id_to_display_name, to_recipe_summary
+from app.recipes.adapters import item_id_to_display_name, to_recipe_summary, _display_name_for_part
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.models import ProviderResult, Recipe
+from app.recipes.item_ref import normalize_item_ref, parse_item_needle
+from app.recipes.models import ProviderResult, Recipe, RecipeIO
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
@@ -46,48 +47,106 @@ class RecipeLookup:
         self,
         recipes: tuple[Recipe, ...],
         ingredient_registry: IngredientRegistry | None = None,
+        version: str | None = None,
     ) -> None:
         self._recipes = recipes
         self._ingredient_registry = ingredient_registry
+        self._version = version
 
-    def focus(self, item_id: str, role: RecipeIngredientRole) -> RecipeLookup:
-        needle = item_id.strip().lower()
+    def focus(
+        self,
+        item_id: str,
+        role: RecipeIngredientRole,
+        metadata: int | None = None,
+    ) -> RecipeLookup:
+        needle_base, needle_meta = parse_item_needle(item_id, metadata)
+        needle = needle_base.strip().lower()
         if not needle:
-            return RecipeLookup(self._recipes, self._ingredient_registry)
+            return RecipeLookup(self._recipes, self._ingredient_registry, self._version)
 
         filtered: list[Recipe] = []
         for recipe in self._recipes:
             parts = recipe.inputs if role == RecipeIngredientRole.INPUT else recipe.outputs
-            if any(self._ingredient_matches(needle, part.item_id) for part in parts):
+            if any(self._io_matches(needle, part, needle_meta) for part in parts):
                 filtered.append(recipe)
 
-        return RecipeLookup(tuple(filtered), self._ingredient_registry)
+        return RecipeLookup(tuple(filtered), self._ingredient_registry, self._version)
 
     def query(self, text: str) -> RecipeLookup:
-        needle = text.strip().lower()
+        needle_base, needle_meta = parse_item_needle(text, None)
+        needle = needle_base.strip().lower()
         if not needle:
-            return RecipeLookup(self._recipes, self._ingredient_registry)
+            return RecipeLookup(self._recipes, self._ingredient_registry, self._version)
 
         filtered = [
             recipe
             for recipe in self._recipes
-            if any(needle in item_id_to_display_name(part.item_id).lower() for part in recipe.outputs)
+            if any(
+                self._text_matches_part(needle, part, needle_meta)
+                for part in recipe.outputs
+            )
         ]
-        return RecipeLookup(tuple(filtered), self._ingredient_registry)
+        return RecipeLookup(tuple(filtered), self._ingredient_registry, self._version)
+
+    def _text_matches_part(
+        self,
+        needle: str,
+        part: RecipeIO,
+        metadata: int | None,
+    ) -> bool:
+        item_id, part_metadata = normalize_item_ref(part.item_id, part.metadata)
+        if metadata is not None:
+            normalized_part_meta = 0 if part_metadata is None else part_metadata
+            if normalized_part_meta != metadata:
+                return False
+
+        display_name = _display_name_for_part(
+            item_id,
+            metadata=part_metadata,
+            version=self._version,
+        ).lower()
+        if needle in display_name or needle in item_id.lower():
+            return True
+        return self._ingredient_matches(needle, item_id)
 
     def limit(self, count: int) -> RecipeLookup:
         if count <= 0:
-            return RecipeLookup((), self._ingredient_registry)
-        return RecipeLookup(self._recipes[:count], self._ingredient_registry)
+            return RecipeLookup((), self._ingredient_registry, self._version)
+        return RecipeLookup(self._recipes[:count], self._ingredient_registry, self._version)
 
     def all(self) -> list[Recipe]:
         return list(self._recipes)
 
     def summaries(self) -> list[RecipeSummary]:
         return [
-            to_recipe_summary(recipe, ingredient_registry=self._ingredient_registry)
+            to_recipe_summary(
+                recipe,
+                ingredient_registry=self._ingredient_registry,
+                version=self._version,
+            )
             for recipe in self._recipes
         ]
+
+    def _io_matches(self, needle: str, part: RecipeIO, metadata: int | None) -> bool:
+        item_id, part_metadata = normalize_item_ref(part.item_id, part.metadata)
+        if metadata is not None:
+            normalized_part_meta = 0 if part_metadata is None else part_metadata
+            if normalized_part_meta != metadata:
+                return False
+
+        if self._ingredient_matches(needle, item_id):
+            return True
+
+        if self._version is not None:
+            display_name = _display_name_for_part(
+                item_id,
+                metadata=part_metadata,
+                version=self._version,
+            )
+            if items_match(needle, display_name.lower()):
+                return True
+
+        return False
 
     def _ingredient_matches(self, needle: str, item_id: str) -> bool:
         if self._ingredient_registry is not None:
@@ -222,9 +281,9 @@ class RecipeManager:
         )
         registry = get_version_ingredient_registry(version)
         if recipe_type is None:
-            return RecipeLookup(recipes, registry)
+            return RecipeLookup(recipes, registry, version)
         filtered = tuple(recipe for recipe in recipes if recipe.recipe_type == recipe_type)
-        return RecipeLookup(filtered, registry)
+        return RecipeLookup(filtered, registry, version)
 
     def get_ingredient_registry(self, version: str) -> IngredientRegistry:
         return get_version_ingredient_registry(version)
@@ -238,6 +297,7 @@ class RecipeManager:
         produces_item: str | None = None,
         focus_item: str | None = None,
         focus_role: RecipeIngredientRole | None = None,
+        focus_metadata: int | None = None,
         limit: int = 50,
         include_mods: bool = True,
         include_synthetic: bool = True,
@@ -261,7 +321,7 @@ class RecipeManager:
             return []
 
         if normalized_focus_item and focus_role is not None:
-            lookup = lookup.focus(normalized_focus_item, focus_role)
+            lookup = lookup.focus(normalized_focus_item, focus_role, focus_metadata)
         else:
             if normalized_uses_item:
                 lookup = lookup.focus(normalized_uses_item, RecipeIngredientRole.INPUT)
@@ -288,6 +348,10 @@ class RecipeManager:
         _load_vanilla_version_recipes.cache_clear()
         _load_synthetic_version_recipes.cache_clear()
         get_version_ingredient_registry.cache_clear()
+        from app.recipes.loaders.item_catalog_loader import _parse_ae2_lang, load_item_catalog
+
+        load_item_catalog.cache_clear()
+        _parse_ae2_lang.cache_clear()
 
 
 recipe_manager = RecipeManager()

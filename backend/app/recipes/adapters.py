@@ -7,6 +7,10 @@ from app.recipes.legacy_item_icons import (
     resolve_legacy_display_name,
     resolve_legacy_icon_id,
 )
+from app.recipes.loaders.item_catalog_loader import (
+    resolve_catalog_display_name,
+    resolve_catalog_icon_id,
+)
 from app.recipes.models import Recipe
 from app.schemas.recipe_file import RecipeItem, RecipeSummary
 
@@ -28,6 +32,9 @@ def _display_name_for_part(
     version: str | None = None,
 ) -> str:
     if version is not None:
+        catalog_name = resolve_catalog_display_name(item_id, metadata, version=version)
+        if catalog_name is not None:
+            return catalog_name
         legacy_name = resolve_legacy_display_name(item_id, metadata, version=version)
         if legacy_name is not None:
             return legacy_name
@@ -42,6 +49,9 @@ def _icon_id_for_part(
     version: str | None = None,
 ) -> str:
     if version is not None:
+        catalog_icon = resolve_catalog_icon_id(item_id, metadata, version=version)
+        if catalog_icon is not None:
+            return catalog_icon
         legacy_icon = resolve_legacy_icon_id(item_id, metadata, version=version)
         if legacy_icon is not None:
             return legacy_icon

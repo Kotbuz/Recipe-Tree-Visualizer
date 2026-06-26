@@ -1,4 +1,6 @@
 .export-status-banner {
+    position: relative;
+    z-index: 25;
     margin: 0.75rem 1rem 0;
     padding: 0.75rem 1rem;
     border: 1px solid #c9a227;
@@ -7,6 +9,9 @@
     color: #4a3b00;
     font-size: 0.9rem;
     line-height: 1.45;
+    pointer-events: auto;
+    max-height: min(40vh, 320px);
+    overflow-y: auto;
 }
 
 .export-status-banner__title {
@@ -59,4 +64,16 @@
 
 .export-status-banner__result-row {
     margin: 0.2rem 0;
+}
+
+.export-status-banner__result-row a {
+    color: #1d4ed8;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    pointer-events: auto;
+}
+
+.export-status-banner__result-row a:hover {
+    color: #1e40af;
 }

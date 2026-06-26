@@ -55,7 +55,7 @@ def test_collect_missing_dependencies(tmp_path: Path, monkeypatch: pytest.Monkey
     recipe_dir = version_dir / "recipe"
     mods_dir.mkdir(parents=True)
     recipe_dir.mkdir(parents=True)
-    (mods_dir / "appliedenergistics2-rv3-beta-6.jar").write_bytes(b"j")
+    (mods_dir / "Thaumcraft-4.2.3.5.jar").write_bytes(b"j")
     (recipe_dir / "minecraft__test.json").write_text(
         json.dumps({"id": "minecraft:test"}),
         encoding="utf-8",
@@ -67,8 +67,7 @@ def test_collect_missing_dependencies(tmp_path: Path, monkeypatch: pytest.Monkey
     get_settings.cache_clear()
 
     missing = _collect_missing_dependencies(version)
-    assert "CodeChickenLib" in missing
-    assert "ForgeMultipart" in missing
+    assert "Baubles" in missing
 
 
 def test_download_missing_dependencies_no_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 
-ARG FORGE_VERSION=1.7.10-10.13.4.1614-1.7.10
+ARG FORGE_VERSION=1.7.10-10.13.4.1448-1.7.10
 
 FROM eclipse-temurin:8-jre-jammy
 ARG FORGE_VERSION

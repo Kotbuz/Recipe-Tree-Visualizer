@@ -18,12 +18,7 @@ class DiscoveredRecipeFile:
     filename: str
 
 
-def recipe_layout_for_version(version: str) -> str:
-    if version.startswith("1.7"):
-        return "jvm"
-    if version.startswith("1.12"):
-        return "assets"
-    return "data"
+from app.core.recipe_layout import recipe_layout_for_version
 
 
 def jar_recipe_patterns_for_version(version: str) -> tuple[re.Pattern[str], ...]:

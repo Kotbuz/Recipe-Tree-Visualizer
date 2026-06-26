@@ -1,7 +1,7 @@
 package com.rtv.recipeexporter;
 
 import cpw.mods.fml.common.FMLCommonHandler;
-import cpw.mods.fml.common.event.FMLLoadCompleteEvent;
+import cpw.mods.fml.common.event.FMLServerStartingEvent;
 import cpw.mods.fml.relauncher.Side;
 import java.io.File;
 import java.io.FileOutputStream;
@@ -9,6 +9,12 @@ import java.io.IOException;
 import java.io.OutputStreamWriter;
 import java.io.Writer;
 import java.nio.charset.StandardCharsets;
+import java.nio.file.FileVisitResult;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.SimpleFileVisitor;
+import java.nio.file.StandardCopyOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
 import java.util.Map;
 import net.minecraft.item.Item;
@@ -34,10 +40,7 @@ public final class RecipeDumper {
 
   private RecipeDumper() {}
 
-  public static void onLoadComplete(FMLLoadCompleteEvent event) {
-    if (event.getSide() != Side.SERVER) {
-      return;
-    }
+  public static void onServerStarting(FMLServerStartingEvent event) {
     if (!"true".equalsIgnoreCase(System.getProperty("rtv.recipe.export", "false"))) {
       return;
     }
@@ -50,13 +53,26 @@ public final class RecipeDumper {
 
     try {
       int count = dump(new File(outputPath));
+      int ae2Copied = copyAe2RecipeFiles(new File(outputPath));
       System.out.println("[rtvrecipeexporter] Exported " + count + " recipes to " + outputPath);
+      if (ae2Copied > 0) {
+        System.out.println(
+            "[rtvrecipeexporter] Copied " + ae2Copied + " AE2 recipe file(s) to " + outputPath);
+      }
 
       String oreDictPath = System.getProperty("rtv.ore.dict.export.file");
       if (oreDictPath != null && !oreDictPath.trim().isEmpty()) {
         int oreCount = OreDictDumper.dump(new File(oreDictPath));
         System.out.println(
             "[rtvrecipeexporter] Exported " + oreCount + " ore dict entries to " + oreDictPath);
+      }
+
+      String itemCatalogPath = System.getProperty("rtv.item.catalog.export.file");
+      if (itemCatalogPath != null && !itemCatalogPath.trim().isEmpty()) {
+        int itemCount = ItemCatalogDumper.dump(new File(itemCatalogPath));
+        System.out.println(
+            "[rtvrecipeexporter] Exported " + itemCount + " item catalog entries to "
+                + itemCatalogPath);
       }
     } catch (Exception exception) {
       exception.printStackTrace();
@@ -241,7 +257,7 @@ public final class RecipeDumper {
       StringBuilder line = new StringBuilder();
       for (int col = 0; col < width; col++) {
         Object cell = matrix[row * width + col];
-        if (cell == null || (cell instanceof ItemStack && ((ItemStack) cell).getItem() == null)) {
+        if (isEmptyIngredient(cell)) {
           line.append(' ');
           continue;
         }
@@ -267,6 +283,20 @@ public final class RecipeDumper {
     return payload;
   }
 
+  private static boolean isEmptyIngredient(Object cell) {
+    if (cell == null) {
+      return true;
+    }
+    if (cell instanceof ItemStack) {
+      ItemStack stack = (ItemStack) cell;
+      return stack.getItem() == null || stack.stackSize <= 0;
+    }
+    if (cell instanceof List) {
+      return ((List<?>) cell).isEmpty();
+    }
+    return false;
+  }
+
   private static String ingredientSignature(Object ingredient) {
     if (ingredient instanceof ItemStack) {
       ItemStack stack = (ItemStack) ingredient;
@@ -274,6 +304,13 @@ public final class RecipeDumper {
     }
     if (ingredient instanceof String) {
       return "ore:" + ingredient;
+    }
+    if (ingredient instanceof List) {
+      List<?> list = (List<?>) ingredient;
+      if (list.isEmpty()) {
+        return "empty";
+      }
+      return ingredientSignature(list.get(0));
     }
     return String.valueOf(ingredient);
   }
@@ -288,6 +325,34 @@ public final class RecipeDumper {
       ore.addProperty("type", "forge:ore_dict");
       return ore;
     }
+    if (ingredient instanceof List) {
+      List<?> list = (List<?>) ingredient;
+      if (list.isEmpty()) {
+        return unknownIngredient();
+      }
+      Object first = list.get(0);
+      if (first instanceof String) {
+        JsonObject ore = new JsonObject();
+        ore.addProperty("ore", (String) first);
+        ore.addProperty("type", "forge:ore_dict");
+        return ore;
+      }
+      if (first instanceof ItemStack) {
+        ItemStack stack = (ItemStack) first;
+        int[] oreIds = OreDictionary.getOreIDs(stack);
+        if (oreIds != null && oreIds.length > 0) {
+          JsonObject ore = new JsonObject();
+          ore.addProperty("ore", OreDictionary.getOreName(oreIds[0]));
+          ore.addProperty("type", "forge:ore_dict");
+          return ore;
+        }
+        return stackToIngredient(stack);
+      }
+    }
+    return unknownIngredient();
+  }
+
+  private static JsonObject unknownIngredient() {
     JsonObject unknown = new JsonObject();
     unknown.addProperty("item", "minecraft:air");
     return unknown;
@@ -297,9 +362,7 @@ public final class RecipeDumper {
     JsonObject ingredient = new JsonObject();
     ingredient.addProperty("item", getItemId(stack));
     int meta = normalizeMeta(stack.getItemDamage());
-    if (meta > 0) {
-      ingredient.addProperty("metadata", meta);
-    }
+    ingredient.addProperty("metadata", meta);
     return ingredient;
   }
 
@@ -307,9 +370,7 @@ public final class RecipeDumper {
     JsonObject result = new JsonObject();
     result.addProperty("item", getItemId(stack));
     int meta = normalizeMeta(stack.getItemDamage());
-    if (meta > 0) {
-      result.addProperty("metadata", meta);
-    }
+    result.addProperty("metadata", meta);
     int count = stack.stackSize;
     if (count > 1) {
       result.addProperty("count", count);
@@ -365,5 +426,40 @@ public final class RecipeDumper {
       int size = input == null ? 0 : input.length;
       return size <= 3 ? size : 3;
     }
+  }
+
+  private static int copyAe2RecipeFiles(File outputDir) throws IOException {
+    File sourceRoot = new File("config/AppliedEnergistics2/recipes/generated");
+    if (!sourceRoot.isDirectory()) {
+      return 0;
+    }
+
+    File targetRoot = new File(outputDir, "ae2-recipes");
+    if (!targetRoot.exists() && !targetRoot.mkdirs()) {
+      throw new IOException("Failed to create AE2 recipe directory: " + targetRoot.getAbsolutePath());
+    }
+
+    final int[] copied = {0};
+    Path sourcePath = sourceRoot.toPath();
+    Path targetPath = targetRoot.toPath();
+    Files.walkFileTree(
+        sourcePath,
+        new SimpleFileVisitor<Path>() {
+          @Override
+          public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
+            if (!file.getFileName().toString().endsWith(".recipe")) {
+              return FileVisitResult.CONTINUE;
+            }
+            Path relative = sourcePath.relativize(file);
+            Path destination = targetPath.resolve(relative);
+            if (destination.getParent() != null) {
+              Files.createDirectories(destination.getParent());
+            }
+            Files.copy(file, destination, StandardCopyOption.REPLACE_EXISTING);
+            copied[0]++;
+            return FileVisitResult.CONTINUE;
+          }
+        });
+    return copied[0];
   }
 }

@@ -60,7 +60,7 @@ export function useModDependencyDownload(
         } catch (err) {
             const message = err instanceof Error ? err.message : 'Не удалось скачать зависимости';
             setError(message);
-            throw err;
+            return null;
         } finally {
             setDownloading(false);
         }

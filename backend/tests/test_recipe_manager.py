@@ -1,6 +1,7 @@
 from app.recipes.adapters import item_id_to_display_name
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.manager import recipe_manager
+from app.recipes.manager import RecipeLookup, recipe_manager
+from app.recipes.models import Recipe, RecipeIO
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.recipes.types import RecipeType
@@ -71,6 +72,54 @@ def test_recipe_manager_loads_recipes_with_item_ids() -> None:
     assert recipes
     assert all(":" in recipe.id for recipe in recipes)
     assert all(part.item_id for recipe in recipes for part in recipe.inputs + recipe.outputs)
+
+
+def test_recipe_lookup_focus_respects_metadata() -> None:
+    brick_slab = Recipe(
+        id="minecraft:export/crafting/brick_slab",
+        recipe_type=RecipeType.CRAFTING_SHAPED,
+        category_id="crafting",
+        catalyst_id=None,
+        inputs=[RecipeIO(item_id="minecraft:brick_block", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:stone_slab", amount=6.0, metadata=4)],
+        duration_ticks=None,
+        source="vanilla",
+        mod_id="minecraft",
+        raw_type="crafting_shaped",
+    )
+    quartz_slab = Recipe(
+        id="minecraft:export/crafting/quartz_slab",
+        recipe_type=RecipeType.CRAFTING_SHAPED,
+        category_id="crafting",
+        catalyst_id=None,
+        inputs=[RecipeIO(item_id="minecraft:quartz_block", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:stone_slab", amount=6.0, metadata=7)],
+        duration_ticks=None,
+        source="vanilla",
+        mod_id="minecraft",
+        raw_type="crafting_shaped",
+    )
+
+    lookup = RecipeLookup((brick_slab, quartz_slab), None, "1.7.10")
+
+    all_slabs = lookup.focus("minecraft:stone_slab", RecipeIngredientRole.OUTPUT).all()
+    assert len(all_slabs) == 2
+
+    quartz_only = lookup.focus(
+        "minecraft:stone_slab",
+        RecipeIngredientRole.OUTPUT,
+        metadata=7,
+    ).all()
+    assert len(quartz_only) == 1
+    assert quartz_only[0].id == "minecraft:export/crafting/quartz_slab"
+
+    brick_only = lookup.focus(
+        "minecraft:stone_slab",
+        RecipeIngredientRole.OUTPUT,
+        metadata=4,
+    ).all()
+    assert len(brick_only) == 1
+    assert brick_only[0].id == "minecraft:export/crafting/brick_slab"
 
 
 def test_recipe_manager_focus_output() -> None:
