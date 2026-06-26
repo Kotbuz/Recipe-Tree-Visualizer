@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from app.calculator.constants import DEFAULT_OPERATION_TICKS
 from app.graph.errors import GraphValidationError
 from app.recipes.manager import recipe_manager
 from app.recipes.models import Recipe
@@ -93,6 +94,20 @@ class BipartiteGraphEngine:
         if recipe_node is None:
             raise GraphValidationError(f"Unknown recipe node: {recipe_node_id}")
         return self.get_recipe(recipe_node.recipe_id)
+
+    def duration_ticks_for_node(self, recipe_node_id: str) -> int:
+        recipe_node = self._recipe_nodes.get(recipe_node_id)
+        if recipe_node is None:
+            raise GraphValidationError(f"Unknown recipe node: {recipe_node_id}")
+
+        if recipe_node.duration_ticks is not None and recipe_node.duration_ticks > 0:
+            return recipe_node.duration_ticks
+
+        recipe = self.get_recipe(recipe_node.recipe_id)
+        if recipe.duration_ticks is not None and recipe.duration_ticks > 0:
+            return recipe.duration_ticks
+
+        return DEFAULT_OPERATION_TICKS
 
     def producer_recipe_nodes_for(self, item_id: str) -> list[str]:
         producers: list[str] = []

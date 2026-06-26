@@ -14,6 +14,7 @@ class RecipeSummary(BaseModel):
     machine_name: str
     inputs: list[RecipeItem]
     outputs: list[RecipeItem]
+    duration_ticks: int | None = None
 
 
 class RecipeListResponse(BaseModel):

@@ -84,6 +84,8 @@ backend/app/
 | GET | `/items/{id}/recipes` | ✅ альтернативные рецепты |
 | POST | `/graph/calculate` | ✅ расчёт производительности (items/min, машины, сырьё) |
 
+`GET /recipes` и `CanvasRecipeNode` поддерживают `duration_ticks` (override на ноде; иначе из рецепта, иначе 100 тиков).
+
 ## Переменные окружения
 
 | Переменная | Описание | По умолчанию |

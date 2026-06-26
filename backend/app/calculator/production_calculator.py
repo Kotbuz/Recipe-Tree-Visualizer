@@ -2,15 +2,13 @@ from __future__ import annotations
 
 from loguru import logger
 
+from app.calculator.constants import TICKS_PER_SECOND
 from app.calculator.machine_speed import machine_speed
 from app.graph.bipartite_graph import BipartiteGraphEngine
 from app.graph.errors import GraphValidationError
 from app.recipes.models import Recipe
 from app.schemas.canvas import CanvasGraph
 from app.schemas.graph import CalculateProductionRequest, ProductionPlan, ProductionStage
-
-_CRAFTS_PER_MACHINE_PER_MINUTE = 60.0
-_TICKS_PER_SECOND = 20.0
 
 
 class ProductionCalculator:
@@ -83,7 +81,7 @@ class ProductionCalculator:
         recipe = engine.get_recipe_for_node(recipe_node_id)
         output_per_craft = engine.output_per_craft(recipe, item_id, recipe_node_id)
         crafts_per_minute = rate_per_minute / output_per_craft
-        machine_throughput = self._machine_throughput_per_minute(recipe)
+        machine_throughput = self._machine_throughput_per_minute(engine, recipe_node_id, recipe)
         machine_count = crafts_per_minute / machine_throughput
 
         input_rates: dict[str, float] = {}
@@ -145,11 +143,12 @@ class ProductionCalculator:
         return raw_items
 
     @staticmethod
-    def _machine_throughput_per_minute(recipe: Recipe) -> float:
-        if recipe.duration_ticks is None or recipe.duration_ticks <= 0:
-            base_throughput = _CRAFTS_PER_MACHINE_PER_MINUTE
-        else:
-            seconds_per_craft = recipe.duration_ticks / _TICKS_PER_SECOND
-            base_throughput = 60.0 / seconds_per_craft
-
+    def _machine_throughput_per_minute(
+        engine: BipartiteGraphEngine,
+        recipe_node_id: str,
+        recipe: Recipe,
+    ) -> float:
+        duration_ticks = engine.duration_ticks_for_node(recipe_node_id)
+        seconds_per_craft = duration_ticks / TICKS_PER_SECOND
+        base_throughput = 60.0 / seconds_per_craft
         return base_throughput * machine_speed(recipe.catalyst_id)

@@ -15,6 +15,7 @@ class CanvasRecipeNode(BaseModel):
     node_id: str
     recipe_id: str
     kind: str | None = None
+    duration_ticks: int | None = None
     x: float = 0
     y: float = 0
 
