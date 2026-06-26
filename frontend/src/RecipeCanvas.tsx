@@ -20,6 +20,8 @@ import {
 } from './utils/ingredientMatch';
 import {
     CANVAS_CONFIG,
+    DEFAULT_DURATION_TICKS,
+    TICKS_PER_SECOND,
     buildCanvasBezierPath,
     buildViewportBezierPath,
     createCanvasDocument,
@@ -109,6 +111,11 @@ const mapMachineName = (typeName: string) =>
         .replace(/.*:/, '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c: string) => c.toUpperCase());
+
+const formatDurationLabel = (ticks: number) => {
+    const seconds = ticks / TICKS_PER_SECOND;
+    return seconds >= 10 ? `${ticks}t` : `${seconds.toFixed(1)}s`;
+};
 
 const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
 
@@ -246,6 +253,9 @@ export default function RecipeCanvas() {
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
     const [connections, setConnections] = useState<RecipeConnection[]>([]);
+    const [defaultDurationTicks, setDefaultDurationTicks] = useState(DEFAULT_DURATION_TICKS);
+    const [durationEditNodeId, setDurationEditNodeId] = useState<string | null>(null);
+    const [durationEditValue, setDurationEditValue] = useState(String(DEFAULT_DURATION_TICKS));
     const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
     const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
@@ -422,6 +432,36 @@ export default function RecipeCanvas() {
         );
     }, []);
 
+    const openDurationEditor = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node || node.kind !== 'recipe') {
+                return;
+            }
+            setDurationEditNodeId(nodeId);
+            setDurationEditValue(String(node.durationTicks ?? defaultDurationTicks));
+            setContextMenu(null);
+            setRecipeSearchQuery('');
+        },
+        [defaultDurationTicks, nodes],
+    );
+
+    const applyDurationEdit = useCallback(() => {
+        if (!durationEditNodeId) {
+            return;
+        }
+        const nextTicks = Number.parseInt(durationEditValue, 10);
+        if (!Number.isFinite(nextTicks) || nextTicks <= 0) {
+            return;
+        }
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === durationEditNodeId ? { ...node, durationTicks: nextTicks } : node,
+            ),
+        );
+        setDurationEditNodeId(null);
+    }, [durationEditNodeId, durationEditValue]);
+
     const findCompatibleSlotAt = useCallback(
         (
             point: { x: number; y: number },
@@ -528,6 +568,7 @@ export default function RecipeCanvas() {
     );
 
     const createNodeFromRecipe = (recipe: RecipeSummary, x: number, y: number) => {
+        const durationTicks = recipe.duration_ticks ?? defaultDurationTicks;
         const node: RecipeNode = {
             id: `${recipe.recipe_id}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
             kind: 'recipe',
@@ -535,6 +576,7 @@ export default function RecipeCanvas() {
             x,
             y,
             machineName: mapMachineName(recipe.machine_type),
+            durationTicks,
             inputs: recipe.inputs.map((item) => ({
                 name: item.name,
                 amount: item.amount,
@@ -872,20 +914,23 @@ export default function RecipeCanvas() {
             connections,
             viewport: transform,
             name: 'recipe-tree',
+            defaultDurationTicks,
         });
         downloadCanvasDocument(document);
-    }, [connections, nodes, transform]);
+    }, [connections, defaultDurationTicks, nodes, transform]);
 
     const handleLoadCanvas = useCallback(async () => {
         try {
             const document = await pickCanvasDocumentFile();
             setNodes(document.nodes);
             setConnections(document.connections);
+            setDefaultDurationTicks(document.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS);
             if (document.viewport) {
                 setViewportTransform(document.viewport);
             }
             setContextMenu(null);
             setRecipeSearchQuery('');
+            setDurationEditNodeId(null);
         } catch {
             // пользователь отменил выбор или файл некорректен
         }
@@ -1062,7 +1107,15 @@ export default function RecipeCanvas() {
                                         handleMachineMouseDown(node.id, event)
                                     }
                                 >
-                                    {node.machineName}
+                                    <span>{node.machineName}</span>
+                                    {node.kind === 'recipe' && node.durationTicks !== undefined && (
+                                        <span
+                                            className="recipe-node-duration"
+                                            title={`${node.durationTicks} тиков`}
+                                        >
+                                            {formatDurationLabel(node.durationTicks)}
+                                        </span>
+                                    )}
                                 </div>
                             </div>
                             <div className="recipe-node-column recipe-node-column--outputs">
@@ -1154,16 +1207,87 @@ export default function RecipeCanvas() {
                                 }}
                                 onClick={(event) => event.stopPropagation()}
                             >
-                                <button
-                                    type="button"
-                                    className="recipe-node-context-item"
-                                    onClick={() => {
-                                        removeNode(contextMenu.nodeId);
-                                        closeMenu();
+                                {(() => {
+                                    const node = nodes.find(
+                                        (entry) => entry.id === contextMenu.nodeId,
+                                    );
+                                    const canEditDuration = node?.kind === 'recipe';
+                                    return (
+                                        <>
+                                            {canEditDuration && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openDurationEditor(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Изменить время операции…
+                                                </button>
+                                            )}
+                                            <button
+                                                type="button"
+                                                className="recipe-node-context-item recipe-node-context-item--danger"
+                                                onClick={() => {
+                                                    removeNode(contextMenu.nodeId);
+                                                    closeMenu();
+                                                }}
+                                            >
+                                                Удалить ноду
+                                            </button>
+                                        </>
+                                    );
+                                })()}
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {durationEditNodeId &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setDurationEditNodeId(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">
+                                    Время операции (тиков)
+                                </div>
+                                <input
+                                    className="recipe-duration-modal-input"
+                                    type="number"
+                                    min={1}
+                                    step={1}
+                                    value={durationEditValue}
+                                    onChange={(event) => setDurationEditValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            applyDurationEdit();
+                                        }
                                     }}
-                                >
-                                    Удалить ноду
-                                </button>
+                                />
+                                <p className="recipe-duration-modal-hint">
+                                    {TICKS_PER_SECOND} тиков = 1 сек
+                                </p>
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setDurationEditNodeId(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyDurationEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
                             </div>
                         </div>,
                         document.body,
@@ -1177,6 +1301,8 @@ export default function RecipeCanvas() {
                 onSave={handleSaveCanvas}
                 onLoad={handleLoadCanvas}
                 modCount={0}
+                defaultDurationTicks={defaultDurationTicks}
+                onDefaultDurationTicksChange={setDefaultDurationTicks}
             />
         </div>
     );

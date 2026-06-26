@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from '../canvas';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
@@ -8,6 +9,8 @@ type ModsPanelProps = {
     onSave: () => void;
     onLoad: () => void;
     modCount?: number;
+    defaultDurationTicks: number;
+    onDefaultDurationTicksChange: (value: number) => void;
 };
 
 export default function ModsPanel({
@@ -17,6 +20,8 @@ export default function ModsPanel({
     onSave,
     onLoad,
     modCount = 0,
+    defaultDurationTicks,
+    onDefaultDurationTicksChange,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
 
@@ -70,6 +75,30 @@ export default function ModsPanel({
                     ))}
                 </select>
             </label>
+
+            <div className="mods-panel-section">
+                <div className="mods-panel-section-title">Настройки расчёта</div>
+                <label className="mods-panel-field">
+                    <span className="mods-panel-field-label">Время операции по умолчанию (тиков)</span>
+                    <input
+                        className="mods-panel-input"
+                        type="number"
+                        min={1}
+                        step={1}
+                        value={defaultDurationTicks}
+                        onChange={(event) => {
+                            const next = Number.parseInt(event.target.value, 10);
+                            if (Number.isFinite(next) && next > 0) {
+                                onDefaultDurationTicksChange(next);
+                            }
+                        }}
+                    />
+                </label>
+                <p className="mods-panel-hint">
+                    {TICKS_PER_SECOND} тиков = 1 сек. Новые рецепты без времени в jar получают это
+                    значение ({DEFAULT_DURATION_TICKS} по умолчанию).
+                </p>
+            </div>
 
             <p className="mods-panel-hint">
                 Здесь будет список подключённых модов и управление ими. Панель не влияет на размер
