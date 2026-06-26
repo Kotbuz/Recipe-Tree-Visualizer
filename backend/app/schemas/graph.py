@@ -24,3 +24,4 @@ class ProductionPlan(BaseModel):
     target_item_id: str
     target_rate_per_minute: float
     stages: list[ProductionStage]
+    total_raw_items: dict[str, float] = Field(default_factory=dict)

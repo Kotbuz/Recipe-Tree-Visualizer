@@ -78,11 +78,11 @@ backend/app/
 |-------|------|--------|
 | GET | `/health` | ✅ реализован |
 | GET | `/mods` | ✅ список (пустой до импорта) |
-| POST | `/mods/upload` | 🔜 заготовка (501) |
+| POST | `/mods/upload` | ✅ загрузка `.jar` |
 | POST | `/mods/modpack` | 🔜 заготовка (501) |
 | GET | `/items/search` | ✅ поиск (пустой до индексации) |
 | GET | `/items/{id}/recipes` | ✅ альтернативные рецепты |
-| POST | `/graph/calculate` | 🔜 заготовка (501) |
+| POST | `/graph/calculate` | ✅ расчёт производительности (items/min, машины, сырьё) |
 
 ## Переменные окружения
 

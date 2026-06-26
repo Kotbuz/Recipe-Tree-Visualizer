@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+from loguru import logger
+
+from app.calculator.machine_speed import machine_speed
 from app.graph.bipartite_graph import BipartiteGraphEngine
 from app.graph.errors import GraphValidationError
 from app.recipes.models import Recipe
@@ -19,6 +22,7 @@ class ProductionCalculator:
             include_synthetic=request.include_synthetic,
         )
         self.validate_graph(request.graph, engine=engine)
+        engine.validate_acyclic_from_target(request.target_item_id)
 
         stages: list[ProductionStage] = []
         visited_recipe_nodes: set[str] = set()
@@ -35,10 +39,20 @@ class ProductionCalculator:
                 f"No recipe in graph produces {request.target_item_id}"
             )
 
+        total_raw_items = self._collect_raw_items(engine, stages)
+        logger.info(
+            "Production plan for {} @ {}/min: {} stages, {} raw inputs",
+            request.target_item_id,
+            request.target_rate_per_minute,
+            len(stages),
+            len(total_raw_items),
+        )
+
         return ProductionPlan(
             target_item_id=request.target_item_id,
             target_rate_per_minute=request.target_rate_per_minute,
             stages=stages,
+            total_raw_items=total_raw_items,
         )
 
     def validate_graph(
@@ -58,11 +72,10 @@ class ProductionCalculator:
         stages: list[ProductionStage],
         visited_recipe_nodes: set[str],
     ) -> None:
-        producer_nodes = engine.producer_recipe_nodes_for(item_id)
-        if not producer_nodes:
+        recipe_node_id = engine.select_producer_recipe_node(item_id)
+        if recipe_node_id is None:
             return
 
-        recipe_node_id = producer_nodes[0]
         if recipe_node_id in visited_recipe_nodes:
             return
         visited_recipe_nodes.add(recipe_node_id)
@@ -75,7 +88,12 @@ class ProductionCalculator:
 
         input_rates: dict[str, float] = {}
         for recipe_input in recipe.inputs:
-            input_rate = crafts_per_minute * recipe_input.amount
+            amount_per_craft = engine.input_per_craft(
+                recipe,
+                recipe_input.item_id,
+                recipe_node_id,
+            )
+            input_rate = crafts_per_minute * amount_per_craft
             input_rates[recipe_input.item_id] = (
                 input_rates.get(recipe_input.item_id, 0.0) + input_rate
             )
@@ -96,19 +114,42 @@ class ProductionCalculator:
 
         for recipe_input in recipe.inputs:
             input_rate = input_rates[recipe_input.item_id]
-            if engine.has_upstream_recipe(recipe_input.item_id):
-                self._plan_item(
-                    engine,
-                    recipe_input.item_id,
-                    input_rate,
-                    stages,
-                    visited_recipe_nodes,
-                )
+            upstream_items = engine.connected_input_items_for(
+                recipe_node_id,
+                recipe_input.item_id,
+            )
+            if not upstream_items and engine.has_upstream_recipe(recipe_input.item_id):
+                upstream_items = [recipe_input.item_id]
+
+            for upstream_item_id in upstream_items:
+                if engine.has_upstream_recipe(upstream_item_id):
+                    self._plan_item(
+                        engine,
+                        upstream_item_id,
+                        input_rate,
+                        stages,
+                        visited_recipe_nodes,
+                    )
+
+    @staticmethod
+    def _collect_raw_items(
+        engine: BipartiteGraphEngine,
+        stages: list[ProductionStage],
+    ) -> dict[str, float]:
+        raw_items: dict[str, float] = {}
+        for stage in stages:
+            for item_id, rate in stage.input_rates.items():
+                if engine.has_upstream_recipe(item_id):
+                    continue
+                raw_items[item_id] = raw_items.get(item_id, 0.0) + rate
+        return raw_items
 
     @staticmethod
     def _machine_throughput_per_minute(recipe: Recipe) -> float:
         if recipe.duration_ticks is None or recipe.duration_ticks <= 0:
-            return _CRAFTS_PER_MACHINE_PER_MINUTE
+            base_throughput = _CRAFTS_PER_MACHINE_PER_MINUTE
+        else:
+            seconds_per_craft = recipe.duration_ticks / _TICKS_PER_SECOND
+            base_throughput = 60.0 / seconds_per_craft
 
-        seconds_per_craft = recipe.duration_ticks / _TICKS_PER_SECOND
-        return 60.0 / seconds_per_craft
+        return base_throughput * machine_speed(recipe.catalyst_id)
