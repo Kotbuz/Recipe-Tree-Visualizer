@@ -8,6 +8,7 @@ class CalculateProductionRequest(BaseModel):
     target_rate_per_minute: float = Field(gt=0)
     graph: CanvasGraph
     version: str = "26.2"
+    profile_id: str | None = None
     include_mods: bool = True
     include_synthetic: bool = True
 

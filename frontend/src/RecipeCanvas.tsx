@@ -551,6 +551,7 @@ export default function RecipeCanvas() {
                     target_rate_per_minute: productionTarget.ratePerMinute,
                     graph,
                     version,
+                    profile_id: activeProfileId,
                 });
                 setConnectionFlowRates(buildConnectionFlowRates(nodes, connections, plan));
                 setCalculationError(null);
@@ -565,7 +566,7 @@ export default function RecipeCanvas() {
         }, 400);
 
         return () => window.clearTimeout(timer);
-    }, [connections, nodes, productionTarget, version]);
+    }, [activeProfileId, connections, nodes, productionTarget, version]);
 
     const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
         setNodes((current) =>
