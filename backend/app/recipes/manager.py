@@ -12,6 +12,7 @@ from app.recipes.focus import RecipeIngredientRole
 from app.recipes.ingredient import IngredientKind
 from app.recipes.item_ref import normalize_item_ref, parse_item_needle
 from app.recipes.models import ProviderResult, Recipe, RecipeIO
+from app.recipes.providers.kubejs_data import KubejsDataProvider
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
@@ -40,6 +41,7 @@ def resolve_recipe_scope(
 _default_vanilla_provider = VanillaJarProvider()
 _default_mod_provider = ModJarProvider()
 _default_synthetic_provider = SyntheticProvider()
+_default_kubejs_provider = KubejsDataProvider()
 
 
 @lru_cache(maxsize=32)
@@ -50,6 +52,12 @@ def _load_vanilla_version_recipes(mc_version: str, profile_id: str) -> tuple[Rec
 
         recipe_export_status_service.log_warnings(mc_version, profile_id=profile_id)
     result = _default_vanilla_provider.load(mc_version, profile_id=profile_id)
+    return tuple(result.recipes)
+
+
+@lru_cache(maxsize=32)
+def _load_kubejs_version_recipes(mc_version: str, profile_id: str) -> tuple[Recipe, ...]:
+    result = _default_kubejs_provider.load(mc_version, profile_id)
     return tuple(result.recipes)
 
 
@@ -450,10 +458,12 @@ class RecipeManager:
         vanilla_provider: VanillaJarProvider | None = None,
         mod_provider: ModJarProvider | None = None,
         synthetic_provider: SyntheticProvider | None = None,
+        kubejs_provider: KubejsDataProvider | None = None,
     ) -> None:
         self._vanilla_provider = vanilla_provider or _default_vanilla_provider
         self._mod_provider = mod_provider or _default_mod_provider
         self._synthetic_provider = synthetic_provider or _default_synthetic_provider
+        self._kubejs_provider = kubejs_provider or _default_kubejs_provider
         self._mod_loads: dict[str, _ModLoad] = {}
         self._version_recipe_cache: dict[tuple[str, bool, bool], tuple[Recipe, ...]] = {}
         self._version_bundle_cache: dict[tuple[str, bool, bool], _VersionRecipeBundle] = {}
@@ -612,6 +622,9 @@ class RecipeManager:
             for recipe in self._mod_recipes_for_version(storage_key):
                 merged[recipe.id] = recipe
 
+        for recipe in self._load_kubejs_recipes(mc_version, resolved_profile):
+            merged[recipe.id] = recipe
+
         recipes = tuple(merged.values())
         self._version_recipe_cache[cache_key] = recipes
         return recipes
@@ -736,17 +749,25 @@ class RecipeManager:
             return _load_synthetic_version_recipes(version)
         return tuple(self._synthetic_provider.load(version).recipes)
 
+    def _load_kubejs_recipes(self, mc_version: str, profile_id: str) -> tuple[Recipe, ...]:
+        if self._kubejs_provider is _default_kubejs_provider:
+            return _load_kubejs_version_recipes(mc_version, profile_id)
+        return tuple(self._kubejs_provider.load(mc_version, profile_id).recipes)
+
     def _clear_caches(self) -> None:
         self._version_recipe_cache.clear()
         self._version_bundle_cache.clear()
         _load_vanilla_version_recipes.cache_clear()
         _load_synthetic_version_recipes.cache_clear()
+        _load_kubejs_version_recipes.cache_clear()
         get_version_ingredient_registry.cache_clear()
         get_profile_ingredient_registry.cache_clear()
         from app.recipes.loaders.item_catalog_loader import _parse_ae2_lang, load_item_catalog
+        from app.services.kubejs_assets import clear_kubejs_asset_index_cache
 
         load_item_catalog.cache_clear()
         _parse_ae2_lang.cache_clear()
+        clear_kubejs_asset_index_cache()
 
 
 recipe_manager = RecipeManager()

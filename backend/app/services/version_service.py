@@ -223,6 +223,17 @@ class VersionService:
                 candidate = directory / candidate_name
                 if candidate.is_file():
                     return candidate
+
+        from app.services.kubejs_assets import resolve_kubejs_item_icon_path
+
+        kubejs_path = resolve_kubejs_item_icon_path(
+            version,
+            safe_name,
+            profile_id=profile_id,
+        )
+        if kubejs_path is not None:
+            return kubejs_path
+
         return None
 
     def resolve_item_icon(
@@ -239,6 +250,44 @@ class VersionService:
         if jar_bytes is not None:
             return ("bytes", jar_bytes)
 
+        mod_jar_bytes = self.read_mod_jar_texture_bytes(version, filename, profile_id=profile_id)
+        if mod_jar_bytes is not None:
+            return ("bytes", mod_jar_bytes)
+
+        return None
+
+    def read_mod_jar_texture_bytes(
+        self,
+        version: str,
+        filename: str,
+        profile_id: str | None = None,
+    ) -> bytes | None:
+        safe_name = Path(filename).name
+        if safe_name != filename or not safe_name.endswith(".png"):
+            return None
+
+        icon_id = texture_id_from_icon_filename(safe_name)
+        mods_dir = self.mods_dir(version, profile_id)
+        if not mods_dir.is_dir():
+            return None
+
+        for jar_path in sorted(mods_dir.glob("*.jar")):
+            payload = self._read_texture_bytes_from_jar(jar_path, icon_id)
+            if payload is not None:
+                return payload
+        return None
+
+    def _read_texture_bytes_from_jar(self, jar_path: Path, icon_id: str) -> bytes | None:
+        try:
+            with zipfile.ZipFile(jar_path) as archive:
+                for variant_id in _texture_id_variants(icon_id):
+                    for entry in archive.namelist():
+                        if not entry.endswith(f"/{variant_id}.png"):
+                            continue
+                        if "/textures/item/" in entry or "/textures/block/" in entry:
+                            return archive.read(entry)
+        except (OSError, zipfile.BadZipFile):
+            return None
         return None
 
     def read_jar_texture_bytes(self, version: str, filename: str) -> bytes | None:
