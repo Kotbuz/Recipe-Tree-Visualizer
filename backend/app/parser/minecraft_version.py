@@ -10,6 +10,7 @@ _FABRIC_CONSTRAINT = re.compile(
     r"^\s*(>=|<=|>|<|=)?\s*(\d+(?:\.\d+)*)\s*(?:\s+(>=|<=|>|<)\s*(\d+(?:\.\d+)*))?\s*$"
 )
 _FILENAME_VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
+_MC_VERSION_IN_NAME = re.compile(r"mc(\d+\.\d+(?:\.\d+)?)", re.IGNORECASE)
 _UNRESOLVED_VERSION_MARKERS = ("${", "@file", "@forgeversion")
 _UNION_RANGE_SPLIT = re.compile(r"\s*,\s*(?=[\[\(])")
 
@@ -170,8 +171,8 @@ def _looks_like_minecraft_version(candidate: str, *, game_version: str | None = 
         return False
     if parts[0] >= 100:
         return False
-    if parts[0] >= 20:
-        return True
+    if parts[0] >= 25:
+        return len(parts) <= 2
     if parts[0] != 1:
         return False
     if len(parts) == 2:
@@ -192,6 +193,18 @@ def infer_minecraft_version_from_filename(
     game_version: str | None = None,
 ) -> str | None:
     stem = Path(filename).stem
+
+    mc_prefixed = _MC_VERSION_IN_NAME.findall(stem)
+    if mc_prefixed:
+        if game_version is not None:
+            for candidate in mc_prefixed:
+                try:
+                    if version_labels_compatible(candidate, game_version):
+                        return candidate
+                except ValueError:
+                    continue
+        return mc_prefixed[0]
+
     candidates: list[str] = []
     for part in stem.replace("_", "-").split("-"):
         normalized = part[2:] if part.lower().startswith("mc") else part
@@ -202,6 +215,15 @@ def infer_minecraft_version_from_filename(
 
     if not candidates:
         return None
+
+    if game_version is not None:
+        compatible = [
+            candidate
+            for candidate in candidates
+            if version_labels_compatible(candidate, game_version)
+        ]
+        if compatible:
+            candidates = compatible
 
     return max(candidates, key=lambda value: (len(parse_version_tuple(value)), value))
 

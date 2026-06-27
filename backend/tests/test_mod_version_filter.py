@@ -47,6 +47,18 @@ def test_mod_supports_neoforge_modpack_jars() -> None:
         jar_path="kubejs-neoforge-2101.7.2-build.368.jar",
         game_version="1.21.1",
     )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="inventorysorter-1.21.1-24.0.24.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="moreoverlays-1.24.2-mc1.21.1-neoforge.jar",
+        game_version="1.21.1",
+    )
 
 
 def test_mod_supports_game_version_from_metadata() -> None:
