@@ -47,3 +47,6 @@ class ImportModpackResponse(BaseModel):
     jars_imported: int
     config_files_imported: int
     script_files_imported: int
+    kubejs_server_scripts_imported: int = 0
+    kubejs_data_files_imported: int = 0
+    kubejs_asset_files_imported: int = 0

@@ -25,6 +25,12 @@ from app.services.profile_storage import (
     write_profile_meta,
 )
 from app.services.version_service import version_service
+from app.services.kubejs_import import (
+    KubejsImportStats,
+    copy_kubejs_from_directory,
+    copy_kubejs_from_zip_members,
+    detect_kubejs_root,
+)
 from app.services.modpack_version_detector import (
     detect_modpack_version_from_directory,
     detect_modpack_version_from_zip,
@@ -74,6 +80,9 @@ class ModpackImportStats:
     jars_imported: int
     config_files_imported: int
     script_files_imported: int
+    kubejs_server_scripts_imported: int = 0
+    kubejs_data_files_imported: int = 0
+    kubejs_asset_files_imported: int = 0
 
 
 class ProfileService:
@@ -385,19 +394,38 @@ class ProfileService:
                     stats.jars_imported + 1,
                     stats.config_files_imported,
                     stats.script_files_imported,
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
             elif relative.parts[0] == "config":
                 stats = ModpackImportStats(
                     stats.jars_imported,
                     stats.config_files_imported + 1,
                     stats.script_files_imported,
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
             elif relative.parts[0] == "scripts":
                 stats = ModpackImportStats(
                     stats.jars_imported,
                     stats.config_files_imported,
                     stats.script_files_imported + 1,
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
+
+        kubejs_prefix = detect_kubejs_root(names, is_zip=True)
+        if kubejs_prefix:
+            kubejs_stats = copy_kubejs_from_zip_members(
+                archive,
+                names,
+                kubejs_prefix,
+                profile_dir / "kubejs",
+            )
+            stats = self._merge_kubejs_stats(stats, kubejs_stats)
 
         return stats
 
@@ -432,6 +460,9 @@ class ProfileService:
                     jar_count,
                     stats.config_files_imported,
                     stats.script_files_imported,
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
                 continue
 
@@ -446,14 +477,43 @@ class ProfileService:
                     stats.jars_imported,
                     sum(1 for _ in destination.rglob("*") if _.is_file()),
                     stats.script_files_imported,
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
             elif category == "scripts":
                 stats = ModpackImportStats(
                     stats.jars_imported,
                     stats.config_files_imported,
                     sum(1 for _ in destination.rglob("*") if _.is_file()),
+                    stats.kubejs_server_scripts_imported,
+                    stats.kubejs_data_files_imported,
+                    stats.kubejs_asset_files_imported,
                 )
+
+        kubejs_prefix = detect_kubejs_root(source_root, is_zip=False)
+        if kubejs_prefix:
+            kubejs_stats = copy_kubejs_from_directory(
+                source_root / kubejs_prefix,
+                profile_dir / "kubejs",
+            )
+            stats = self._merge_kubejs_stats(stats, kubejs_stats)
+
         return stats
+
+    def _merge_kubejs_stats(
+        self,
+        stats: ModpackImportStats,
+        kubejs_stats: KubejsImportStats,
+    ) -> ModpackImportStats:
+        return ModpackImportStats(
+            stats.jars_imported,
+            stats.config_files_imported,
+            stats.script_files_imported,
+            kubejs_stats.server_script_files,
+            kubejs_stats.data_files,
+            kubejs_stats.asset_files,
+        )
 
     def _count_jars_under_prefix(
         self,

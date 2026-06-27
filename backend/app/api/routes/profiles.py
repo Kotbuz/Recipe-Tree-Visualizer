@@ -104,6 +104,9 @@ async def import_modpack(
         jars_imported=stats.jars_imported,
         config_files_imported=stats.config_files_imported,
         script_files_imported=stats.script_files_imported,
+        kubejs_server_scripts_imported=stats.kubejs_server_scripts_imported,
+        kubejs_data_files_imported=stats.kubejs_data_files_imported,
+        kubejs_asset_files_imported=stats.kubejs_asset_files_imported,
     )
 
 
@@ -134,6 +137,9 @@ def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResp
         jars_imported=stats.jars_imported,
         config_files_imported=stats.config_files_imported,
         script_files_imported=stats.script_files_imported,
+        kubejs_server_scripts_imported=stats.kubejs_server_scripts_imported,
+        kubejs_data_files_imported=stats.kubejs_data_files_imported,
+        kubejs_asset_files_imported=stats.kubejs_asset_files_imported,
     )
 
 

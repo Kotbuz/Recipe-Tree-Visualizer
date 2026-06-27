@@ -78,6 +78,9 @@ class VersionService:
     def scripts_dir(self, version: str, profile_id: str | None = None) -> Path:
         return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "scripts"
 
+    def kubejs_dir(self, version: str, profile_id: str | None = None) -> Path:
+        return self.profile_dir(version, self._resolve_profile_id(version, profile_id)) / "kubejs"
+
     def ensure_version_layout(self, version: str) -> Path:
         version_dir = self._version_dir(version)
         version_dir.mkdir(parents=True, exist_ok=True)
