@@ -11,6 +11,7 @@ _FABRIC_CONSTRAINT = re.compile(
 )
 _FILENAME_VERSION = re.compile(r"^\d+\.\d+(?:\.\d+)?$")
 _UNRESOLVED_VERSION_MARKERS = ("${", "@file", "@forgeversion")
+_UNION_RANGE_SPLIT = re.compile(r"\s*,\s*(?=[\[\(])")
 
 
 def _is_unresolved_version_label(version: str | None) -> bool:
@@ -59,6 +60,11 @@ def version_in_constraint(constraint: str, game_version: str) -> bool:
     if not normalized:
         return False
 
+    if _UNION_RANGE_SPLIT.search(normalized):
+        parts = [part.strip() for part in _UNION_RANGE_SPLIT.split(normalized) if part.strip()]
+        if len(parts) > 1:
+            return any(version_in_constraint(part, game_version) for part in parts)
+
     bracket = _BRACKET_RANGE.match(normalized)
     if bracket:
         return _version_in_bracket_range(
@@ -89,7 +95,15 @@ def _version_in_bracket_range(
         upper_cmp = _compare_versions(game_version, end)
         lower_ok = lower_cmp > 0 or (start_inclusive and lower_cmp == 0)
         upper_ok = upper_cmp < 0 or (end_inclusive and upper_cmp == 0)
-        return lower_ok and upper_ok
+        if lower_ok and upper_ok:
+            return True
+        return _minecraft_patch_line_compatible(
+            game_version,
+            start=start,
+            end=end,
+            start_inclusive=start_inclusive,
+            end_inclusive=end_inclusive,
+        )
 
     if start and not end:
         lower_cmp = _compare_versions(game_version, start)
@@ -124,18 +138,72 @@ def _apply_compare(game_version: str, spec_version: str, operator: str) -> bool:
     return cmp == 0
 
 
-def infer_minecraft_version_from_filename(filename: str) -> str | None:
+def _minecraft_patch_line_compatible(
+    game_version: str,
+    *,
+    start: str,
+    end: str,
+    start_inclusive: bool,
+    end_inclusive: bool,
+) -> bool:
+    """NeoForge: [1.21,1.21.1) covers the whole 1.21.x line, including 1.21.1."""
+    if end_inclusive or not start or not end:
+        return False
+    try:
+        start_parts = parse_version_tuple(start)
+        end_parts = parse_version_tuple(end)
+        game_parts = parse_version_tuple(game_version)
+    except ValueError:
+        return False
+    if len(start_parts) < 2 or len(end_parts) < 2:
+        return False
+    if start_parts[:2] != end_parts[:2] or game_parts[:2] != start_parts[:2]:
+        return False
+    lower_cmp = _compare_versions(game_version, start)
+    return lower_cmp > 0 or (start_inclusive and lower_cmp == 0)
+
+
+def _looks_like_minecraft_version(candidate: str, *, game_version: str | None = None) -> bool:
+    try:
+        parts = parse_version_tuple(candidate)
+    except ValueError:
+        return False
+    if parts[0] >= 100:
+        return False
+    if parts[0] >= 20:
+        return True
+    if parts[0] != 1:
+        return False
+    if len(parts) == 2:
+        return parts[1] >= 7
+    if parts[1] >= 18:
+        return True
+    if game_version is not None:
+        try:
+            return _compare_versions(game_version, "1.13") < 0
+        except ValueError:
+            pass
+    return parts[1] >= 7
+
+
+def infer_minecraft_version_from_filename(
+    filename: str,
+    *,
+    game_version: str | None = None,
+) -> str | None:
     stem = Path(filename).stem
     candidates: list[str] = []
     for part in stem.replace("_", "-").split("-"):
-        if _FILENAME_VERSION.fullmatch(part):
-            candidates.append(part)
+        normalized = part[2:] if part.lower().startswith("mc") else part
+        if not _FILENAME_VERSION.fullmatch(normalized):
+            continue
+        if _looks_like_minecraft_version(normalized, game_version=game_version):
+            candidates.append(normalized)
 
-    for candidate in candidates:
-        major = int(candidate.split(".", maxsplit=1)[0])
-        if candidate.startswith("1.") or major >= 20:
-            return candidate
-    return None
+    if not candidates:
+        return None
+
+    return max(candidates, key=lambda value: (len(parse_version_tuple(value)), value))
 
 
 def mod_supports_game_version(
@@ -157,7 +225,7 @@ def mod_supports_game_version(
             return version_in_constraint(minecraft_version_range, game_version)
         except ValueError:
             pass
-    inferred = infer_minecraft_version_from_filename(jar_path)
+    inferred = infer_minecraft_version_from_filename(jar_path, game_version=game_version)
     if inferred is not None:
         return version_labels_compatible(inferred, game_version)
     return True

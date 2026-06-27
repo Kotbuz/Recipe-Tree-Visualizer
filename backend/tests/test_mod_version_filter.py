@@ -23,6 +23,30 @@ def test_version_in_constraint_bracket_and_fabric() -> None:
     assert not version_in_constraint("[1.18.2,1.19)", "1.19")
     assert version_in_constraint(">=1.21.11 <1.21.12", "1.21.11")
     assert not version_in_constraint(">=1.21.11 <1.21.12", "1.21.12")
+    assert version_in_constraint("[1.21,1.21.1)", "1.21.1")
+    assert version_in_constraint("[1.21, 1.21.1)", "1.21.1")
+    assert version_in_constraint("[1.21,) , (,1.21.1]", "1.21.1")
+
+
+def test_mod_supports_neoforge_modpack_jars() -> None:
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range="[1.21,1.21.1)",
+        jar_path="Chargers-1.21.1-7.0.0.3.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="Applied-Mekanistics-1.6.3.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="kubejs-neoforge-2101.7.2-build.368.jar",
+        game_version="1.21.1",
+    )
 
 
 def test_mod_supports_game_version_from_metadata() -> None:
