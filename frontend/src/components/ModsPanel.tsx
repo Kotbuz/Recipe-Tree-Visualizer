@@ -64,6 +64,15 @@ type ModsPanelProps = {
     /** DOM-узел в шапке холста, куда вставляется кнопка «Модпак». */
     toggleContainer?: HTMLElement | null;
     onExpandedChange?: (expanded: boolean) => void;
+    onBakeRecipes?: () => void;
+    bakingRecipes?: boolean;
+    recipeBakeStatus?: {
+        has_snapshot: boolean;
+        recipe_count: number;
+        exported_at?: string | null;
+        last_error?: string | null;
+    } | null;
+    recipeBakeError?: string | null;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -202,6 +211,10 @@ export default function ModsPanel({
     calculationError,
     toggleContainer = null,
     onExpandedChange,
+    onBakeRecipes,
+    bakingRecipes = false,
+    recipeBakeStatus = null,
+    recipeBakeError = null,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
@@ -226,6 +239,7 @@ export default function ModsPanel({
         showIntegrityTools ||
         (missingDependencyCount > 0 && Boolean(onDownloadDependencies)) ||
         Boolean(onReloadMods) ||
+        Boolean(onBakeRecipes) ||
         (showRecipeMaintenance && Boolean(onClearRecipeExport));
     const integrityBusy = integrityChecking || integritySyncing;
     const canSyncIntegrity = Boolean(integrityReport?.can_sync);
@@ -782,6 +796,42 @@ export default function ModsPanel({
                                         ? 'Скачивание…'
                                         : `Зависимости (${missingDependencyCount})`}
                                 </button>
+                            ) : null}
+                            {onBakeRecipes ? (
+                                <>
+                                    {recipeBakeStatus?.has_snapshot ? (
+                                        <p className="mods-panel-hint">
+                                            Снимок: {recipeBakeStatus.recipe_count} рецептов
+                                            {recipeBakeStatus.exported_at
+                                                ? ` · ${recipeBakeStatus.exported_at.slice(0, 19).replace('T', ' ')}`
+                                                : ''}
+                                        </p>
+                                    ) : (
+                                        <p className="mods-panel-hint">
+                                            In-game снимок не собран — поиск может пропускать KubeJS/машины.
+                                        </p>
+                                    )}
+                                    {recipeBakeError ? (
+                                        <p className="mods-panel-error">{recipeBakeError}</p>
+                                    ) : recipeBakeStatus?.last_error ? (
+                                        <p className="mods-panel-error">{recipeBakeStatus.last_error}</p>
+                                    ) : null}
+                                    <button
+                                        type="button"
+                                        className="mods-panel-btn mods-panel-btn--primary mods-panel-btn--block"
+                                        disabled={
+                                            bakingRecipes ||
+                                            versionsEmpty ||
+                                            integrityBusy ||
+                                            reloadingMods
+                                        }
+                                        onClick={onBakeRecipes}
+                                    >
+                                        {bakingRecipes
+                                            ? 'Сборка рецептов… (до ~15 мин)'
+                                            : 'Собрать рецепты (in-game)'}
+                                    </button>
+                                </>
                             ) : null}
                             {onReloadMods ? (
                                 <button

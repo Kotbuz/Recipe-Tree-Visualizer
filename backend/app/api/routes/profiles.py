@@ -16,6 +16,11 @@ from app.schemas.profiles import (
     ProfileSyncRequest,
     ProfileSyncResponse,
 )
+from app.schemas.recipe_bake import (
+    RecipeBakeRequest,
+    RecipeBakeResponse,
+    RecipeBakeStatusResponse,
+)
 from app.services.profile_service import (
     InvalidInstancePathError,
     InvalidModpackError,
@@ -25,6 +30,7 @@ from app.services.profile_service import (
     profile_service,
 )
 from app.services.profile_integrity import ProfileSyncSourceUnavailableError
+from app.services.neo_recipe_export_service import NeoRecipeExportError, neo_recipe_export_service
 from app.services.profile_storage import validate_profile_id
 from app.services.version_service import version_service
 
@@ -219,6 +225,63 @@ def sync_profile_from_source_route(
         kubejs_data_files_synced=stats.kubejs_data_files_synced,
         kubejs_asset_files_synced=stats.kubejs_asset_files_synced,
         integrity=_integrity_response(version, report),
+    )
+
+
+@router.get("/{profile_id}/bake-recipes/status", response_model=RecipeBakeStatusResponse)
+def recipe_bake_status(version: str, profile_id: str) -> RecipeBakeStatusResponse:
+    _require_version(version)
+    try:
+        profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    status = neo_recipe_export_service.get_status(version, profile_id)
+    return RecipeBakeStatusResponse(
+        version=version,
+        profile_id=profile_id,
+        has_snapshot=bool(status.get("has_snapshot")),
+        recipe_count=int(status.get("recipe_count", 0)),
+        exported_at=status.get("exported_at"),
+        minecraft_version=status.get("minecraft_version"),
+        loader_version=status.get("loader_version"),
+        last_error=status.get("last_error"),
+    )
+
+
+@router.post("/{profile_id}/bake-recipes", response_model=RecipeBakeResponse)
+def bake_profile_recipes(
+    version: str,
+    profile_id: str,
+    body: RecipeBakeRequest | None = None,
+) -> RecipeBakeResponse:
+    _require_version(version)
+    try:
+        profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    request = body or RecipeBakeRequest()
+    try:
+        result = neo_recipe_export_service.bake_profile(
+            version,
+            profile_id,
+            force=request.force,
+            source_path_override=request.source_path,
+        )
+    except NeoRecipeExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    status_code = result.get("status", "error")
+    return RecipeBakeResponse(
+        version=version,
+        profile_id=profile_id,
+        status=status_code,
+        recipe_count=int(result.get("recipe_count", 0)),
+        duration_seconds=result.get("duration_seconds"),
+        log_tail=result.get("log_tail"),
+        error=result.get("error"),
+        kept_previous_snapshot=bool(result.get("kept_previous_snapshot")),
     )
 
 

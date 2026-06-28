@@ -28,6 +28,7 @@ import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import { useVersionMaintenance } from './hooks/useVersionMaintenance';
 import { useProfileIntegrity } from './hooks/useProfileIntegrity';
+import { useRecipeBake } from './hooks/useRecipeBake';
 import {
     ingredientsCompatible,
     itemIdToDisplayName,
@@ -337,6 +338,17 @@ export default function RecipeCanvas() {
         syncFromSource,
         clearReport: clearIntegrityReport,
     } = useProfileIntegrity(version, activeProfileId);
+    const {
+        baking: bakingRecipes,
+        error: recipeBakeError,
+        status: recipeBakeStatus,
+        refreshStatus: refreshRecipeBakeStatus,
+        bakeRecipes,
+    } = useRecipeBake(version, activeProfileId);
+
+    useEffect(() => {
+        void refreshRecipeBakeStatus();
+    }, [refreshRecipeBakeStatus, activeProfileId]);
 
     useEffect(() => {
         clearIntegrityReport();
@@ -354,6 +366,24 @@ export default function RecipeCanvas() {
             // ошибка уже в maintenanceError
         }
     }, [reloadMods, refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const handleBakeRecipes = useCallback(async () => {
+        const confirmed = window.confirm(
+            'Запустить in-game экспорт рецептов из инстанса лаунчера?\n\n' +
+                'NeoForge поднимет сервер с полным модпаком (~8 ГБ RAM, 5–20 мин). ' +
+                'При ошибке останется предыдущий снимок.',
+        );
+        if (!confirmed) {
+            return;
+        }
+        const result = await bakeRecipes({
+            force: true,
+            sourcePath: integritySourcePath.trim() || undefined,
+        });
+        if (result?.status === 'ok') {
+            await handleReloadMods();
+        }
+    }, [bakeRecipes, integritySourcePath, handleReloadMods]);
 
     const handleCheckIntegrity = useCallback(async () => {
         try {
@@ -2095,6 +2125,14 @@ export default function RecipeCanvas() {
                 flowRateUnit={flowRateUnit}
                 onFlowRateUnitChange={setFlowRateUnit}
                 calculationError={calculationError}
+                onBakeRecipes={
+                    !isJvmExportVersion && activeProfileId !== 'default'
+                        ? () => void handleBakeRecipes()
+                        : undefined
+                }
+                bakingRecipes={bakingRecipes}
+                recipeBakeStatus={recipeBakeStatus}
+                recipeBakeError={recipeBakeError}
             />
 
             <VersionManagerModal

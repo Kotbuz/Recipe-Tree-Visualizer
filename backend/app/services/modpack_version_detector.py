@@ -371,6 +371,13 @@ def _parse_mmc_pack(data: dict[str, object]) -> ModpackVersionInfo | None:
                     forge_version = normalize_forge_build(raw)
                     if forge_version:
                         break
+        elif uid in {"net.neoforged", "net.neoforged.neoforge", "net.neoforged.forge"}:
+            loader = "neoforge"
+            for raw in (version_raw, cached_raw):
+                if raw:
+                    forge_version = normalize_forge_build(raw) or raw.strip()
+                    if forge_version:
+                        break
 
     if mc_version is None:
         return None

@@ -50,6 +50,7 @@ class ImportModpackResponse(BaseModel):
     kubejs_server_scripts_imported: int = 0
     kubejs_data_files_imported: int = 0
     kubejs_asset_files_imported: int = 0
+    recipe_bake_started: bool = False
 
 
 class IntegrityIssueResponse(BaseModel):
