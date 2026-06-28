@@ -2,10 +2,9 @@
     max-width: 360px;
     margin: 1rem auto;
     padding: 1rem;
-    background: #ffffff;
-    border-radius: 18px;
-    border: 1px solid rgba(15, 23, 42, 0.08);
-    box-shadow: 0 20px 45px rgba(15, 23, 42, 0.08);
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    box-shadow: var(--ui-shadow);
 }
 
 .block-preview-card h3 {

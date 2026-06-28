@@ -42,6 +42,13 @@ def display_name_matches(needle: str, display_name: str) -> bool:
     return items_match(needle.strip().lower(), display_name.strip().lower())
 
 
+def text_query_contains(needle: str, text: str) -> bool:
+    """Подстрока для текстового поиска в модалке (tech → basic technium)."""
+    if not needle or not text:
+        return False
+    return needle.strip().lower() in text.strip().lower()
+
+
 _QUARTZ_DUST_TAG_KEYS = frozenset(
     {
         "tag:ae2:all_quartz_dust",

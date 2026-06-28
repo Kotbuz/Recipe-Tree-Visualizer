@@ -209,6 +209,34 @@ def test_focus_output_flint_excludes_flint_and_steel() -> None:
     assert [recipe.id for recipe in results] == ["minecraft:flint_from_gravel"]
 
 
+def test_query_finds_partial_output_name_match() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.registry import IngredientRegistry
+
+    technium_recipe = Recipe(
+        id="techopolis:basic_technium",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="techopolis:custom_machinery",
+        catalyst_id="techopolis:basic_technium_machine",
+        inputs=[
+            RecipeIO(item_id="tag:c:gears/stone", amount=4.0),
+            RecipeIO(item_id="immersiveengineering:treated_wood_horizontal", amount=4.0),
+        ],
+        outputs=[RecipeIO(item_id="techopolis:basic_technium_ingot", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="techopolis",
+        raw_type="techopolis:basic_technium_machine",
+    )
+    recipes = (technium_recipe,)
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle(recipes, version="1.21.1", registry=registry)
+    lookup = RecipeLookup(recipes, registry, "1.21.1", bundle=bundle)
+
+    results = lookup.query("tech").all()
+    assert [recipe.id for recipe in results] == ["techopolis:basic_technium"]
+
+
 def test_focus_returns_empty_for_unknown_item_without_scanning() -> None:
     from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
     from app.recipes.models import Recipe, RecipeIO

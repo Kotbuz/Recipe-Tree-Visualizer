@@ -30,7 +30,14 @@ from app.recipes.registry import (
 )
 from app.recipes.types import RecipeType
 from app.schemas.recipe_file import RecipeSummary
-from app.services.item_matching import display_name_matches, item_id_path_matches, items_match, looks_like_quartz_dust_ref, quartz_dust_tag_lookup_keys
+from app.services.item_matching import (
+    display_name_matches,
+    item_id_path_matches,
+    items_match,
+    looks_like_quartz_dust_ref,
+    quartz_dust_tag_lookup_keys,
+    text_query_contains,
+)
 from app.services.profile_storage import profile_storage_key
 from app.services.version_service import version_service
 
@@ -320,14 +327,37 @@ class RecipeLookup:
 
         filtered: list[Recipe] = []
         for recipe in self._recipes:
-            if any(
-                self._text_search_matches(needle, part, needle_meta)
-                for part in recipe.outputs
-            ):
+            if self._recipe_text_query_matches(needle, needle_meta, recipe):
                 filtered.append(recipe)
                 if limit is not None and len(filtered) >= limit:
                     break
         return RecipeLookup(tuple(filtered), self._ingredient_registry, self._version, bundle=self._bundle)
+
+    def _recipe_text_query_matches(
+        self,
+        needle: str,
+        metadata: int | None,
+        recipe: Recipe,
+    ) -> bool:
+        if text_query_contains(needle, recipe.id):
+            return True
+        if recipe.catalyst_id and text_query_contains(needle, recipe.catalyst_id):
+            return True
+        if recipe.raw_type and text_query_contains(needle, recipe.raw_type):
+            return True
+        if recipe.mod_id and text_query_contains(needle, recipe.mod_id):
+            return True
+
+        from app.recipes.category import display_name_for_raw_type
+
+        machine_name = display_name_for_raw_type(recipe.raw_type or recipe.recipe_type.value)
+        if text_query_contains(needle, machine_name):
+            return True
+
+        for part in recipe.outputs:
+            if self._text_search_matches(needle, part, metadata):
+                return True
+        return False
 
     def _text_search_matches(
         self,
@@ -349,6 +379,8 @@ class RecipeLookup:
         if display_name_matches(needle, cheap_display):
             return True
 
+        catalog_name: str | None = None
+        legacy_name: str | None = None
         if self._version is not None:
             from app.recipes.legacy_item_icons import resolve_legacy_display_name
             from app.recipes.loaders.item_catalog_loader import resolve_catalog_display_name
@@ -367,6 +399,15 @@ class RecipeLookup:
             )
             if legacy_name is not None and display_name_matches(needle, legacy_name):
                 return True
+
+        if text_query_contains(needle, item_id_lower):
+            return True
+        if text_query_contains(needle, cheap_display):
+            return True
+        if catalog_name is not None and text_query_contains(needle, catalog_name):
+            return True
+        if legacy_name is not None and text_query_contains(needle, legacy_name):
+            return True
 
         if items_match(needle, cheap_display):
             return True

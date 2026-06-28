@@ -1,23 +1,31 @@
 /* Плоский компактный стиль панели модпака */
 
 .mods-panel-toggle {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.55rem;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-bg);
+    color: var(--ui-text);
+    font-weight: 600;
+    font-size: 0.82rem;
+    box-shadow: var(--ui-shadow-sm);
+    cursor: pointer;
+    pointer-events: auto;
+    white-space: nowrap;
+}
+
+.mods-panel-toggle--topbar {
+    height: 100%;
+}
+
+.mods-panel-toggle:not(.mods-panel-toggle--topbar) {
     position: fixed;
     top: 0.5rem;
     right: 0.5rem;
     z-index: 30;
-    display: inline-flex;
-    align-items: center;
-    gap: 0.35rem;
     padding: 0.3rem 0.5rem;
-    border: 1px solid #94a3b8;
-    border-radius: 0;
-    background: #fff;
-    color: #1e293b;
-    font-weight: 600;
-    font-size: 0.78rem;
-    box-shadow: 1px 1px 0 #cbd5e1;
-    cursor: pointer;
-    pointer-events: auto;
 }
 
 .mods-panel-toggle:hover {
@@ -33,15 +41,15 @@
     top: 0;
     right: 0;
     bottom: 0;
-    width: min(280px, 88vw);
+    width: var(--mods-panel-width, min(280px, 88vw));
     z-index: 30;
     display: flex;
     flex-direction: column;
     gap: 0.4rem;
     padding: 0.5rem;
-    background: #f8fafc;
-    border-left: 1px solid #94a3b8;
-    box-shadow: -2px 0 8px rgba(15, 23, 42, 0.06);
+    background: var(--ui-bg-muted);
+    border-left: 1px solid var(--ui-border);
+    box-shadow: -2px 0 0 #cbd5e1;
     pointer-events: auto;
     font-size: 0.78rem;
     overflow-y: auto;

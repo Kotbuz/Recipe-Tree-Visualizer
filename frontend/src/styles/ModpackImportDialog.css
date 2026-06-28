@@ -5,15 +5,15 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    background: rgba(15, 23, 42, 0.45);
+    background: var(--ui-overlay);
     padding: 1rem;
 }
 
 .modpack-import-dialog {
     width: min(420px, 100%);
-    background: #f8fafc;
-    border: 1px solid #94a3b8;
-    box-shadow: 2px 2px 0 #cbd5e1;
+    background: var(--ui-bg-muted);
+    border: 1px solid var(--ui-border);
+    box-shadow: var(--ui-shadow);
     padding: 0.75rem;
     font-size: 0.82rem;
     color: #0f172a;

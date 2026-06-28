@@ -418,6 +418,8 @@ export default function RecipeCanvas() {
         lastResult: depsResult,
     } = useModDependencyDownload(version, activeProfileId, handleDepsDownloadComplete);
     const [versionManagerOpen, setVersionManagerOpen] = useState(false);
+    const [modsPanelExpanded, setModsPanelExpanded] = useState(false);
+    const [modsToggleSlot, setModsToggleSlot] = useState<HTMLDivElement | null>(null);
     const [pendingModpackImport, setPendingModpackImport] = useState<
         | {
               kind: 'zip';
@@ -1639,7 +1641,11 @@ export default function RecipeCanvas() {
     } as React.CSSProperties;
 
     return (
-        <div className="recipe-canvas-page" style={canvasStyle}>
+        <div
+            className="recipe-canvas-page"
+            data-mods-panel-expanded={modsPanelExpanded ? 'true' : undefined}
+            style={canvasStyle}
+        >
             <ExportStatusBanner
                 status={exportStatus}
                 loading={exportStatusLoading}
@@ -1652,6 +1658,14 @@ export default function RecipeCanvas() {
                         : undefined
                 }
             />
+            <header className="recipe-canvas-topbar">
+                <div className="recipe-canvas-toolbar">
+                    ПКМ по холсту — добавить ноду • Тяните за блок крафта — перемещение •
+                    Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
+                    панорама
+                </div>
+                <div ref={setModsToggleSlot} className="recipe-canvas-topbar-slot" />
+            </header>
             <div
                 className="recipe-canvas"
                 ref={viewportRef}
@@ -1663,14 +1677,6 @@ export default function RecipeCanvas() {
                 onMouseLeave={handlePanMouseUp}
                 style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
-                <div className="recipe-canvas-toolbar">
-                    <div>
-                        ПКМ по холсту — добавить ноду • Тяните за блок крафта — перемещение •
-                        Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
-                        панорама
-                    </div>
-                </div>
-
                 {dragPreviewPath && (
                     <svg className="recipe-connections-screen-layer" aria-hidden="true">
                         <path
@@ -2031,6 +2037,8 @@ export default function RecipeCanvas() {
             </div>
 
             <ModsPanel
+                toggleContainer={modsToggleSlot}
+                onExpandedChange={setModsPanelExpanded}
                 versions={versions}
                 version={version}
                 onVersionChange={handleVersionChange}

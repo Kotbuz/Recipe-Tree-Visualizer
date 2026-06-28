@@ -4,7 +4,6 @@
     margin: 0.75rem 1rem 0;
     padding: 0.75rem 1rem;
     border: 1px solid #c9a227;
-    border-radius: 8px;
     background: #fff8e6;
     color: #4a3b00;
     font-size: 0.9rem;
@@ -12,6 +11,7 @@
     pointer-events: auto;
     max-height: min(40vh, 320px);
     overflow-y: auto;
+    box-shadow: var(--ui-shadow-sm);
 }
 
 .export-status-banner__title {
@@ -40,8 +40,7 @@
     margin-top: 0.5rem;
     padding: 0.45rem 0.75rem;
     border: 1px solid #9a7b12;
-    border-radius: 6px;
-    background: #fff;
+    background: var(--ui-bg);
     color: #4a3b00;
     font-weight: 600;
     cursor: pointer;

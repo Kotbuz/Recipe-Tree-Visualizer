@@ -1,4 +1,5 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from '../canvas';
 import type { FlowRateUnit } from '../types/production';
 import { FLOW_RATE_UNIT_LABELS } from '../utils/flowRate';
@@ -60,6 +61,9 @@ type ModsPanelProps = {
     flowRateUnit: FlowRateUnit;
     onFlowRateUnitChange: (unit: FlowRateUnit) => void;
     calculationError?: string | null;
+    /** DOM-узел в шапке холста, куда вставляется кнопка «Модпак». */
+    toggleContainer?: HTMLElement | null;
+    onExpandedChange?: (expanded: boolean) => void;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -196,6 +200,8 @@ export default function ModsPanel({
     flowRateUnit,
     onFlowRateUnitChange,
     calculationError,
+    toggleContainer = null,
+    onExpandedChange,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
@@ -203,6 +209,13 @@ export default function ModsPanel({
     const [calcOpen, setCalcOpen] = useState(false);
     const [toolsOpen, setToolsOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
+
+    useEffect(() => {
+        onExpandedChange?.(expanded);
+    }, [expanded, onExpandedChange]);
+
+    const openPanel = useCallback(() => setExpanded(true), []);
+    const closePanel = useCallback(() => setExpanded(false), []);
     const [instancePath, setInstancePath] = useState('');
     const dragDepthRef = useRef(0);
     const modpackInputRef = useRef<HTMLInputElement>(null);
@@ -281,13 +294,13 @@ export default function ModsPanel({
     );
 
     if (!expanded) {
-        return (
+        const toggleButton = (
             <button
                 type="button"
-                className="mods-panel-toggle"
+                className="mods-panel-toggle mods-panel-toggle--topbar"
                 aria-label="Открыть панель модпаков"
                 aria-expanded={false}
-                onClick={() => setExpanded(true)}
+                onClick={openPanel}
             >
                 <span className="mods-panel-toggle-label">Модпак</span>
                 <span className="mods-panel-badge">
@@ -295,6 +308,12 @@ export default function ModsPanel({
                 </span>
             </button>
         );
+
+        if (toggleContainer) {
+            return createPortal(toggleButton, toggleContainer);
+        }
+
+        return toggleButton;
     }
 
     return (
@@ -309,7 +328,7 @@ export default function ModsPanel({
                         type="button"
                         className="mods-panel-collapse"
                         aria-label="Свернуть"
-                        onClick={() => setExpanded(false)}
+                        onClick={closePanel}
                     >
                         ×
                     </button>
