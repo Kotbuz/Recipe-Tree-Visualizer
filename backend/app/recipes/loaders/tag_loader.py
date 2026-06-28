@@ -29,7 +29,7 @@ class TagLoader:
                     if not match:
                         continue
                     namespace, relative_path = match.groups()
-                    tag_name = PurePosixPath(relative_path).stem
+                    tag_name = str(PurePosixPath(relative_path).with_suffix("")).replace("\\", "/")
                     tag_id = normalize_tag_id(f"{namespace}:{tag_name}")
                     try:
                         payload = json.loads(archive.read(entry))
