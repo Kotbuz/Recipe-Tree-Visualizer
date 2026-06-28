@@ -12,7 +12,12 @@ from app.recipes.loaders.tag_loader import TagLoader, is_tag_id, normalize_tag_i
 from app.recipes.loaders.tag_snapshot_loader import load_tag_snapshot, merge_snapshot_aliases
 from app.recipes.models import Recipe
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
-from app.services.item_matching import items_match, quartz_dust_tags_compatible
+from app.services.item_matching import (
+    display_name_matches,
+    item_id_path_matches,
+    items_match,
+    quartz_dust_tags_compatible,
+)
 
 DEFAULT_ALIASES: dict[str, str] = {
     "planks": "oak planks",
@@ -20,6 +25,8 @@ DEFAULT_ALIASES: dict[str, str] = {
     "logs that burn": "oak log",
     "wooden tool materials": "oak planks",
     "stone tool materials": "cobblestone",
+    "leathers": "leather",
+    "treated wood": "treated wood horizontal",
 }
 
 
@@ -192,9 +199,9 @@ class IngredientRegistry:
         results: list[Ingredient] = []
         for ingredient in self._ingredients.values():
             if (
-                needle in ingredient.id.lower()
-                or needle in ingredient.display_name.lower()
-                or needle in self.resolve_alias(ingredient.display_name).lower()
+                item_id_path_matches(needle, ingredient.id)
+                or display_name_matches(needle, ingredient.display_name)
+                or display_name_matches(needle, self.resolve_alias(ingredient.display_name))
             ):
                 results.append(ingredient)
                 if len(results) >= limit:
@@ -333,9 +340,27 @@ class IngredientRegistry:
 
         members = self.resolve_tag(tag_id)
         if members:
-            return self._item_id_to_icon_id(members[0])
+            return self._item_id_to_icon_id(self._pick_representative_member(tag_id, members))
 
         return self._display_name_to_icon_id(display_name)
+
+    @staticmethod
+    def _pick_representative_member(tag_id: str, members: list[str]) -> str:
+        path = tag_id.removeprefix("tag:c:")
+        material = path.split("/", 1)[-1].lower() if "/" in path else ""
+        material_variants = [material]
+        if material.endswith("s") and len(material) > 1:
+            material_variants.append(material[:-1])
+
+        for variant in material_variants:
+            if not variant:
+                continue
+            for member in sorted(members):
+                member_path = member.split(":", 1)[-1].lower()
+                if variant in member_path:
+                    return member
+
+        return sorted(members)[0]
 
 
 _default_tag_loader = TagLoader()

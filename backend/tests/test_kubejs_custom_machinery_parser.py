@@ -53,6 +53,46 @@ ServerEvents.recipes(event => {
 """
 
 
+def test_parse_solidifier_treated_wood_variants() -> None:
+    string_fluid = """
+    ServerEvents.recipes(event => {
+      event.recipes.custommachinery.custom_machine('techopolis:solidifier', 100)
+        .requireItem('minecraft:oak_planks')
+        .requireFluid('125x immersiveengineering:creosote')
+        .produceItem('immersiveengineering:treated_wood_horizontal')
+        .id('techopolis:solidifier/treated_wood')
+    })
+    """
+    fluid_of = """
+    ServerEvents.recipes(event => {
+      event.recipes.custommachinery.custom_machine('techopolis:solidifier', 100)
+        .requireItem('minecraft:oak_planks')
+        .requireFluid(Fluid.of('immersiveengineering:creosote', 125))
+        .produceItem('immersiveengineering:treated_wood_horizontal')
+        .id('techopolis:solidifier/treated_wood_fluid_of')
+    })
+    """
+    fluid_tag = """
+    ServerEvents.recipes(event => {
+      event.recipes.custommachinery.custom_machine('techopolis:solidifier', 100)
+        .requireItem('minecraft:oak_planks')
+        .requireFluidTag('#c:creosote', 125)
+        .produceItem('immersiveengineering:treated_wood_horizontal')
+        .id('techopolis:solidifier/treated_wood_tag')
+    })
+    """
+
+    for snippet in (string_fluid, fluid_of, fluid_tag):
+        recipes = parse_custom_machinery_script(snippet, source_file="Solidifier.js")
+        assert len(recipes) == 1
+        recipe = recipes[0]
+        assert recipe.catalyst_id == "techopolis:solidifier"
+        assert recipe.outputs[0].item_id == "immersiveengineering:treated_wood_horizontal"
+        input_ids = {part.item_id: part.amount for part in recipe.inputs}
+        assert input_ids["minecraft:oak_planks"] == 1.0
+        assert any(key.startswith("fluid:") and input_ids[key] == 125.0 for key in input_ids)
+
+
 def test_parse_fluid_recycler_helper() -> None:
     recipes = parse_custom_machinery_script(RECYCLING_SNIPPET, source_file="Recycling.js")
     assert len(recipes) == 1

@@ -1056,7 +1056,7 @@
     "alltheores:steel_gear"
   ],
   "tag:c:gears/stone": [
-    "minecraft:flint"
+    "alltheores:stone_gear"
   ],
   "tag:c:gears/zinc": [
     "alltheores:zinc_gear"

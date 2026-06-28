@@ -12,6 +12,36 @@ def items_match(required_name: str, candidate_name: str) -> bool:
     return required.endswith(f" {candidate}")
 
 
+def item_id_path_matches(needle: str, item_id: str) -> bool:
+    """Сопоставление по id предмета без ложных срабатываний (flint ≠ flint_and_steel)."""
+    normalized = item_id.strip().lower()
+    needle = needle.strip().lower()
+    if not needle or not normalized:
+        return False
+
+    if items_match(needle, normalized):
+        return True
+
+    path = normalized.split(":", 1)[-1]
+    if items_match(needle, path):
+        return True
+    if needle.replace(" ", "_") == path:
+        return True
+
+    if ":" in needle:
+        needle_path = needle.split(":", 1)[-1]
+        return items_match(needle_path, path) or needle_path.replace(" ", "_") == path
+
+    return False
+
+
+def display_name_matches(needle: str, display_name: str) -> bool:
+    """Точное совпадение отображаемого имени (flint ≠ flint and steel)."""
+    if not needle or not display_name:
+        return False
+    return items_match(needle.strip().lower(), display_name.strip().lower())
+
+
 _QUARTZ_DUST_TAG_KEYS = frozenset(
     {
         "tag:ae2:all_quartz_dust",

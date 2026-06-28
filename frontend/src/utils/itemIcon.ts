@@ -14,6 +14,8 @@ const ICON_ALIASES: Readonly<Record<string, string>> = {
     'logs that burn': 'oak log',
     'wooden tool materials': 'oak planks',
     'stone tool materials': 'cobblestone',
+    leathers: 'leather',
+    'treated wood': 'treated wood horizontal',
 };
 
 /** Обобщённые теги рецептов → конкретный предмет для иконки. */

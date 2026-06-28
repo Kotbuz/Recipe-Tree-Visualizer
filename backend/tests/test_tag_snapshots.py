@@ -47,6 +47,17 @@ def test_registry_resolves_common_tags_from_snapshot() -> None:
     assert registry.ingredient_matches("cheap glass block", "tag:c:glass_blocks/cheap")
 
 
+def test_tag_icons_use_representative_members() -> None:
+    registry = IngredientRegistry()
+    registry.load_version("1.21.1")
+
+    stone_gear = registry.register("tag:c:gears/stone")
+    assert stone_gear.icon_id == "alltheores_stone_gear"
+
+    leathers = registry.register("tag:c:leathers")
+    assert leathers.icon_id == "leather"
+
+
 def test_bundled_snapshot_file_is_valid_json() -> None:
     path = Path(__file__).resolve().parents[1] / "data" / "tag_snapshots" / "1.21.1.json"
     assert path.is_file()

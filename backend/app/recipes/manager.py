@@ -30,7 +30,7 @@ from app.recipes.registry import (
 )
 from app.recipes.types import RecipeType
 from app.schemas.recipe_file import RecipeSummary
-from app.services.item_matching import items_match, looks_like_quartz_dust_ref, quartz_dust_tag_lookup_keys
+from app.services.item_matching import display_name_matches, item_id_path_matches, items_match, looks_like_quartz_dust_ref, quartz_dust_tag_lookup_keys
 from app.services.profile_storage import profile_storage_key
 from app.services.version_service import version_service
 
@@ -342,11 +342,11 @@ class RecipeLookup:
                 return False
 
         item_id_lower = item_id.lower()
-        if needle in item_id_lower:
+        if item_id_path_matches(needle, item_id_lower):
             return True
 
         cheap_display = item_id_to_display_name(item_id).lower()
-        if needle in cheap_display:
+        if display_name_matches(needle, cheap_display):
             return True
 
         if self._version is not None:
@@ -358,14 +358,14 @@ class RecipeLookup:
                 part_metadata,
                 version=self._version,
             )
-            if catalog_name is not None and needle in catalog_name.lower():
+            if catalog_name is not None and display_name_matches(needle, catalog_name):
                 return True
             legacy_name = resolve_legacy_display_name(
                 item_id,
                 part_metadata,
                 version=self._version,
             )
-            if legacy_name is not None and needle in legacy_name.lower():
+            if legacy_name is not None and display_name_matches(needle, legacy_name):
                 return True
 
         if items_match(needle, cheap_display):
@@ -401,7 +401,7 @@ class RecipeLookup:
             metadata=part_metadata,
             version=self._version,
         ).lower()
-        if needle in display_name or needle in item_id.lower():
+        if display_name_matches(needle, display_name) or item_id_path_matches(needle, item_id):
             return True
         return self._ingredient_matches(needle, item_id)
 
@@ -438,9 +438,7 @@ class RecipeLookup:
         item_id_lower = item_id.lower()
         cheap_display = item_id_to_display_name(item_id).lower()
 
-        if items_match(needle, item_id_lower) or items_match(needle, cheap_display):
-            return True
-        if needle in item_id_lower or needle in cheap_display:
+        if item_id_path_matches(needle, item_id_lower) or display_name_matches(needle, cheap_display):
             return True
 
         if self._version is not None:

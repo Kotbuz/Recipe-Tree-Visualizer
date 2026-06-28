@@ -19,7 +19,7 @@ _CM_START = re.compile(
 _FUNCTION_DEF = re.compile(r"function\s+(\w+)\s*\(([^)]*)\)\s*\{", re.MULTILINE)
 _CHAIN_METHOD = re.compile(r"\.(\w+)\s*\(", re.MULTILINE)
 _METHOD_CALL = re.compile(
-    r"(?:\.|recipe\.)(?:requireItem|requireFluid|produceItem|produceFluid|produceFluidPerTick|produceChemical|id)\s*\(",
+    r"(?:\.|recipe\.)(?:requireItem|requireFluid|requireFluidTag|produceItem|produceFluid|produceFluidPerTick|produceChemical|id)\s*\(",
     re.MULTILINE,
 )
 _RECIPE_ANY_LINE = re.compile(r"^\s*recipe\.\w+\s*\(", re.MULTILINE)
@@ -28,6 +28,10 @@ _ITEM_OF = re.compile(
     re.DOTALL,
 )
 _FLUID_PREFIX = re.compile(r"^\d+x\s+", re.IGNORECASE)
+_FLUID_OF = re.compile(
+    r"Fluid\.of\s*\(\s*(['\"])(?P<fluid>.*?)\1\s*,\s*(?P<amount>\d+)",
+    re.DOTALL,
+)
 
 
 @dataclass(frozen=True)
@@ -220,6 +224,10 @@ def _parse_custom_machine_at(
                 item_inputs.append(io)
         elif method_name == "requireFluid":
             io = _parse_fluid_material(arg_text)
+            if io is not None:
+                fluid_inputs.append(io)
+        elif method_name == "requireFluidTag":
+            io = _parse_fluid_tag_material(arg_text)
             if io is not None:
                 fluid_inputs.append(io)
         elif method_name == "produceItem":
@@ -435,6 +443,13 @@ def _parse_item_output(raw: str) -> RecipeIO | None:
 
 
 def _parse_fluid_material(raw: str) -> RecipeIO | None:
+    fluid_of = _FLUID_OF.search(raw)
+    if fluid_of:
+        literal = normalize_kubejs_item_id(fluid_of.group("fluid"))
+        amount = float(fluid_of.group("amount"))
+        fluid_id = literal if literal.startswith("fluid:") else f"fluid:{literal}"
+        return RecipeIO(item_id=fluid_id, amount=amount)
+
     first_arg = raw.split(",")[0].strip()
     literal = _unwrap_literal(first_arg)
     if literal is None:
@@ -447,3 +462,17 @@ def _parse_fluid_material(raw: str) -> RecipeIO | None:
         literal = normalize_kubejs_item_id(rest.strip())
     fluid_id = literal if literal.startswith("fluid:") else f"fluid:{literal}"
     return RecipeIO(item_id=fluid_id, amount=amount)
+
+
+def _parse_fluid_tag_material(raw: str) -> RecipeIO | None:
+    parts = [part.strip() for part in raw.split(",") if part.strip()]
+    if len(parts) >= 2:
+        tag_literal = _unwrap_literal(parts[0])
+        amount = _parse_duration_ticks(parts[1])
+        if tag_literal is not None and amount is not None:
+            tag_id = normalize_kubejs_item_id(tag_literal)
+            if not tag_id.startswith("tag:"):
+                tag_id = f"tag:{tag_id}"
+            return RecipeIO(item_id=f"fluid:{tag_id}", amount=float(amount))
+
+    return _parse_fluid_material(raw)

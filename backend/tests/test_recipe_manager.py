@@ -145,9 +145,7 @@ def test_recipe_service_still_returns_summaries() -> None:
 
 def test_focus_finds_recipes_by_tag_member_item() -> None:
     from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
-    from app.recipes.models import Recipe, RecipeIO
     from app.recipes.registry import IngredientRegistry
-    from app.recipes.types import RecipeType
 
     recipe = Recipe(
         id="test:quartz_dust_smelt",
@@ -171,6 +169,44 @@ def test_focus_finds_recipes_by_tag_member_item() -> None:
     results = lookup.focus("alltheores:quartz_dust", RecipeIngredientRole.INPUT).all()
     assert len(results) == 1
     assert results[0].id == "test:quartz_dust_smelt"
+
+
+def test_focus_output_flint_excludes_flint_and_steel() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.registry import IngredientRegistry
+
+    flint_recipe = Recipe(
+        id="minecraft:flint_from_gravel",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="minecraft:gravel", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:flint", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    flint_and_steel_recipe = Recipe(
+        id="minecraft:flint_and_steel",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[
+            RecipeIO(item_id="minecraft:iron_ingot", amount=1.0),
+            RecipeIO(item_id="minecraft:flint", amount=1.0),
+        ],
+        outputs=[RecipeIO(item_id="minecraft:flint_and_steel", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    recipes = (flint_recipe, flint_and_steel_recipe)
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle(recipes, version="1.21.1", registry=registry)
+    lookup = RecipeLookup(recipes, registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("flint", RecipeIngredientRole.OUTPUT).all()
+    assert [recipe.id for recipe in results] == ["minecraft:flint_from_gravel"]
 
 
 def test_focus_returns_empty_for_unknown_item_without_scanning() -> None:

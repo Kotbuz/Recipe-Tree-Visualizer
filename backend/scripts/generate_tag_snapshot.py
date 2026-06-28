@@ -17,7 +17,7 @@ NEOFORGE_URLS: dict[str, str] = {
 # Common modpack tags not shipped in NeoForge core (gears/rods/plates from ore mods).
 CURATED_EXTENSIONS: dict[str, dict[str, list[str]]] = {
     "1.21.1": {
-        "tag:c:gears/stone": ["minecraft:flint"],
+        "tag:c:gears/stone": ["alltheores:stone_gear"],
         "tag:c:gears/copper": ["minecraft:copper_ingot"],
         "tag:c:gears/aluminum": ["alltheores:aluminum_gear"],
         "tag:c:gears/steel": ["alltheores:steel_gear"],
