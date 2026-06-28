@@ -37,6 +37,12 @@ def _display_name_for_part(
     metadata: int | None = None,
     version: str | None = None,
 ) -> str:
+    if item_id.startswith("tag:"):
+        return item_id_to_display_name(item_id)
+
+    if ":" in item_id and not item_id.startswith("minecraft:"):
+        return item_id_to_display_name(item_id)
+
     if version is not None:
         catalog_name = resolve_catalog_display_name(item_id, metadata, version=version)
         if catalog_name is not None:

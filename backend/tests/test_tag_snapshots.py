@@ -17,13 +17,14 @@ def test_common_tag_display_name() -> None:
     assert common_tag_display_name("tag:c:glass_blocks/cheap") == "Cheap Glass Block"
     assert common_tag_display_name("tag:c:gears/stone") == "Stone Gear"
     assert common_tag_display_name("tag:c:ingots/copper") == "Copper Ingot"
+    assert common_tag_display_name("tag:c:dusts/alltheores_quartz") == "Quartz Dust"
 
 
 def test_common_tag_aliases() -> None:
     aliases = common_tag_aliases("tag:c:dusts/redstone")
     assert aliases["dusts/redstone"] == "Redstone Dust"
     assert aliases["dusts redstone"] == "Redstone Dust"
-    assert aliases["redstone"] == "Redstone Dust"
+    assert aliases["redstone dust"] == "Redstone Dust"
 
 
 def test_load_bundled_tag_snapshot() -> None:

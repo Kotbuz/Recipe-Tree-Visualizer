@@ -1506,35 +1506,39 @@ export default function RecipeCanvas() {
         return (
             <div
                 key={slotKey(node.id, slotType, index)}
-                ref={(element) => {
-                    const key = slotKey(node.id, slotType, index);
-                    if (element) {
-                        itemRefs.current.set(key, element);
-                    } else {
-                        itemRefs.current.delete(key);
-                    }
-                }}
-                className={`recipe-node-item recipe-node-item--${slotType}${
-                    isEmpty ? ' recipe-node-item--empty' : ''
-                }${showQuantity ? ' recipe-node-item--with-quantity' : ''}${
-                    isTarget ? ' recipe-node-item--target' : ''
+                className={`recipe-node-slot-row recipe-node-slot-row--${slotType}${
+                    isTarget ? ' recipe-node-slot-row--target' : ''
                 }`}
-                onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
-                onMouseDown={(event) =>
-                    handleItemMouseDown(node.id, slotType, index, event)
-                }
-                title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
             >
                 {showQuantity && slotType === 'input' && (
                     <SlotQuantityBadge amount={item.amount} slotType="input" />
                 )}
-                {isEmpty ? (
-                    <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
-                        {slotType === 'input' ? 'IN' : 'OUT'}
-                    </span>
-                ) : (
-                    <ItemIconView itemName={displayName} iconId={iconId} />
-                )}
+                <div
+                    ref={(element) => {
+                        const key = slotKey(node.id, slotType, index);
+                        if (element) {
+                            itemRefs.current.set(key, element);
+                        } else {
+                            itemRefs.current.delete(key);
+                        }
+                    }}
+                    className={`recipe-node-item recipe-node-item--${slotType}${
+                        isEmpty ? ' recipe-node-item--empty' : ''
+                    }${isTarget ? ' recipe-node-item--target' : ''}`}
+                    onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
+                    onMouseDown={(event) =>
+                        handleItemMouseDown(node.id, slotType, index, event)
+                    }
+                    title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
+                >
+                    {isEmpty ? (
+                        <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
+                            {slotType === 'input' ? 'IN' : 'OUT'}
+                        </span>
+                    ) : (
+                        <ItemIconView itemName={displayName} iconId={iconId} />
+                    )}
+                </div>
                 {showQuantity && slotType === 'output' && (
                     <SlotQuantityBadge amount={item.amount} slotType="output" />
                 )}

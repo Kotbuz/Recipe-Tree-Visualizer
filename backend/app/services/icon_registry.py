@@ -1,12 +1,18 @@
 from __future__ import annotations
 
 from app.recipes.manager import recipe_manager
-from app.recipes.registry import get_version_ingredient_registry
 
 
-def icon_id_for_ingredient(ingredient_id: str, version: str) -> str:
-    registry = get_version_ingredient_registry(version)
-    ingredient = registry.register(ingredient_id)
+def icon_id_for_ingredient(
+    ingredient_id: str,
+    version: str,
+    *,
+    profile_id: str | None = None,
+) -> str:
+    from app.recipes.registry import get_profile_ingredient_registry
+
+    registry = get_profile_ingredient_registry(version, profile_id)
+    ingredient = registry.register(ingredient_id, version=version)
     return ingredient.icon_id
 
 
@@ -18,7 +24,7 @@ def collect_recipe_icon_ids(
 ) -> list[str]:
     from app.recipes.registry import get_profile_ingredient_registry
 
-    get_profile_ingredient_registry(version, profile_id)
+    registry = get_profile_ingredient_registry(version, profile_id)
     icon_ids: set[str] = set()
 
     recipes = recipe_manager.get_version_recipes(
@@ -29,6 +35,7 @@ def collect_recipe_icon_ids(
     )
     for recipe in recipes:
         for part in [*recipe.inputs, *recipe.outputs]:
-            icon_ids.add(icon_id_for_ingredient(part.item_id, version))
+            ingredient = registry.register(part.item_id, metadata=part.metadata, version=version)
+            icon_ids.add(ingredient.icon_id)
 
     return sorted(icon_ids)

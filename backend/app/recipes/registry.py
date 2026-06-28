@@ -94,7 +94,10 @@ class IngredientRegistry:
         else:
             display = item_id_to_display_name(normalized_id)
             icon_id = self._item_id_to_icon_id(normalized_id)
-            if version is not None:
+            use_catalog = version is not None and (
+                ":" not in normalized_id or normalized_id.startswith("minecraft:")
+            )
+            if use_catalog:
                 from app.recipes.loaders.item_catalog_loader import (
                     resolve_catalog_display_name,
                     resolve_catalog_icon_id,
@@ -265,8 +268,13 @@ class IngredientRegistry:
 
     @staticmethod
     def _item_id_to_icon_id(item_id: str) -> str:
-        raw = item_id.split(":", maxsplit=1)[-1]
-        return raw.replace(" ", "_").lower()
+        if ":" in item_id:
+            namespace, path = item_id.split(":", 1)
+            normalized_path = path.replace(" ", "_").lower()
+            if namespace != "minecraft":
+                return f"{namespace}_{normalized_path}"
+            return normalized_path
+        return item_id.replace(" ", "_").lower()
 
     @staticmethod
     def _display_name_to_icon_id(display_name: str) -> str:

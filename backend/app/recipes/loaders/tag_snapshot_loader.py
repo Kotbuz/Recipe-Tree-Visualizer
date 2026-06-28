@@ -6,6 +6,22 @@ from pathlib import Path
 
 from app.recipes.loaders.tag_loader import TagLoader, normalize_tag_id
 
+_MOD_MATERIAL_PREFIXES: frozenset[str] = frozenset(
+    {
+        "alltheores",
+        "mekanism",
+        "actuallyadditions",
+        "immersiveengineering",
+        "ae2",
+        "appliedenergistics2",
+        "create",
+        "thermal",
+        "enderio",
+        "techopolis",
+    }
+)
+
+
 _CATEGORY_LABELS: dict[str, str] = {
     "dusts": "dust",
     "gems": "",
@@ -39,7 +55,7 @@ def common_tag_display_name(tag_id: str) -> str | None:
         return segments[0].title()
 
     category = path.split("/", 1)[0]
-    material = segments[-1]
+    material = _humanize_tag_material(segments[-1])
     material_title = material.title()
 
     if category == "glass_blocks" and material == "cheap":
@@ -76,13 +92,21 @@ def common_tag_aliases(tag_id: str) -> dict[str, str]:
     aliases[path.replace("/", " ").lower()] = display
 
     if len(segments) >= 2:
-        material = segments[-1].replace("_", " ")
+        material = _humanize_tag_material(segments[-1])
         category = segments[0].replace("_", " ")
-        aliases[material.lower()] = display
         aliases[f"{category} {material}".lower()] = display
         aliases[f"{material} {category}".lower()] = display
+        if " " in material or "_" in segments[-1]:
+            aliases[material.lower()] = display
 
     return aliases
+
+
+def _humanize_tag_material(raw_material: str) -> str:
+    parts = [part for part in raw_material.replace("_", " ").split() if part]
+    if len(parts) >= 2 and parts[0].lower() in _MOD_MATERIAL_PREFIXES:
+        parts = parts[1:]
+    return " ".join(parts)
 
 
 @lru_cache

@@ -26,11 +26,18 @@ export function itemIconFileName(itemName: string): string {
     return `${normalizeItemFileName(resolveIconItemName(itemName))}.png`;
 }
 
-/** Нормализует icon_id с бэкенда (minecraft:oak_planks → oak_planks). */
+/** Нормализует icon_id с бэкенда (minecraft:oak_planks → oak_planks, alltheores:quartz_dust → alltheores_quartz_dust). */
 export function normalizeIconId(iconId: string): string {
     const trimmed = iconId.trim().replace(/\.png$/i, '');
-    const withoutNamespace = trimmed.includes(':') ? trimmed.split(':', 2)[1] : trimmed;
-    return withoutNamespace.replace(/\s+/g, '_').toLowerCase();
+    if (trimmed.includes(':')) {
+        const [namespace, path] = trimmed.split(':', 2);
+        const normalizedPath = path.replace(/\s+/g, '_').toLowerCase();
+        if (namespace !== 'minecraft') {
+            return `${namespace}_${normalizedPath}`;
+        }
+        return normalizedPath;
+    }
+    return trimmed.replace(/\s+/g, '_').toLowerCase();
 }
 
 /** Имя PNG из icon_id, который приходит с бэкенда (IngredientRegistry). */

@@ -1,28 +1,37 @@
 .slot-quantity-badge {
-    font-size: 0.72rem;
+    flex: 0 0 auto;
+    min-width: 1.1rem;
+    font-size: 0.78rem;
     font-weight: 700;
     color: #475569;
     line-height: 1;
     white-space: nowrap;
+    text-align: center;
 }
 
 .slot-quantity-badge--input {
-    margin-right: 0.2rem;
+    margin-right: 0.35rem;
 }
 
 .slot-quantity-badge--output {
-    margin-left: 0.2rem;
+    margin-left: 0.35rem;
 }
 
-.recipe-node-item--with-quantity {
-    display: inline-flex;
+.recipe-node-slot-row {
+    display: flex;
     align-items: center;
 }
 
-.recipe-node-item--with-quantity.recipe-node-item--input {
+.recipe-node-slot-row--input {
     flex-direction: row;
+    justify-content: flex-end;
 }
 
-.recipe-node-item--with-quantity.recipe-node-item--output {
+.recipe-node-slot-row--output {
     flex-direction: row;
+    justify-content: flex-start;
+}
+
+.recipe-node-slot-row + .recipe-node-slot-row {
+    margin-top: -1px;
 }

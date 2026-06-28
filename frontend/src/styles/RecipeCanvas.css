@@ -132,8 +132,12 @@
     align-items: flex-start;
 }
 
-.recipe-node-column .recipe-node-item + .recipe-node-item {
+.recipe-node-column .recipe-node-slot-row + .recipe-node-slot-row {
     margin-top: -1px;
+}
+
+.recipe-node-column .recipe-node-item + .recipe-node-item {
+    margin-top: 0;
 }
 
 .recipe-node-column--machine {

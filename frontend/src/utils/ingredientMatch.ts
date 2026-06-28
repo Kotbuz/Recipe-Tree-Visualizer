@@ -41,6 +41,27 @@ const CATEGORY_LABELS: Record<string, string> = {
     coins: 'coin',
 };
 
+const MOD_MATERIAL_PREFIXES = new Set([
+    'alltheores',
+    'mekanism',
+    'actuallyadditions',
+    'immersiveengineering',
+    'ae2',
+    'appliedenergistics2',
+    'create',
+    'thermal',
+    'enderio',
+    'techopolis',
+]);
+
+const humanizeTagMaterial = (rawMaterial: string): string => {
+    const parts = rawMaterial.replace(/_/g, ' ').split(/\s+/).filter(Boolean);
+    if (parts.length >= 2 && MOD_MATERIAL_PREFIXES.has(parts[0]!.toLowerCase())) {
+        return parts.slice(1).join(' ');
+    }
+    return parts.join(' ');
+};
+
 export const commonTagDisplayName = (itemId: string): string | null => {
     const normalized = itemId.startsWith('tag:') ? itemId : itemId.startsWith('#') ? `tag:${itemId.slice(1)}` : null;
     if (!normalized?.startsWith('tag:c:')) {
@@ -57,7 +78,7 @@ export const commonTagDisplayName = (itemId: string): string | null => {
     }
 
     const category = path.split('/', 1)[0]!;
-    const material = segments[segments.length - 1]!;
+    const material = humanizeTagMaterial(segments[segments.length - 1]!);
     const materialTitle = titleCase(material);
 
     if (category === 'glass_blocks' && material === 'cheap') {

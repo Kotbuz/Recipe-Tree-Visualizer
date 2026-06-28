@@ -29,8 +29,22 @@ def _texture_id_variants(icon_id: str) -> tuple[str, ...]:
 
 
 def texture_id_from_icon_filename(filename: str) -> str:
-    display_name = Path(filename).name.removesuffix(".png").replace("_", " ")
+    stem = Path(filename).name.removesuffix(".png")
+    if "_" in stem:
+        namespace, _, path = stem.partition("_")
+        if namespace not in {"minecraft", "tag"} and path:
+            return stem
+    display_name = stem.replace("_", " ")
     return item_name_to_texture_id(display_name)
+
+
+def _mod_icon_id_parts(icon_id: str) -> tuple[str | None, str]:
+    if "_" not in icon_id:
+        return None, icon_id
+    namespace, _, path = icon_id.partition("_")
+    if not path or namespace in {"minecraft", "tag"}:
+        return None, icon_id
+    return namespace, path
 
 
 class VersionService:
@@ -267,12 +281,22 @@ class VersionService:
             return None
 
         icon_id = texture_id_from_icon_filename(safe_name)
+        namespace_hint, texture_id = _mod_icon_id_parts(icon_id)
         mods_dir = self.mods_dir(version, profile_id)
         if not mods_dir.is_dir():
             return None
 
-        for jar_path in sorted(mods_dir.glob("*.jar")):
-            payload = self._read_texture_bytes_from_jar(jar_path, icon_id)
+        jar_paths = sorted(mods_dir.glob("*.jar"))
+        if namespace_hint:
+            preferred = [
+                jar_path
+                for jar_path in jar_paths
+                if namespace_hint.lower() in jar_path.name.lower()
+            ]
+            jar_paths = preferred + [jar_path for jar_path in jar_paths if jar_path not in preferred]
+
+        for jar_path in jar_paths:
+            payload = self._read_texture_bytes_from_jar(jar_path, texture_id)
             if payload is not None:
                 return payload
         return None
