@@ -473,6 +473,11 @@
     background: #fffbeb;
 }
 
+.mods-panel-integrity--info {
+    border-color: #93c5fd;
+    background: #eff6ff;
+}
+
 .mods-panel-integrity-summary {
     margin: 0;
     color: #334155;

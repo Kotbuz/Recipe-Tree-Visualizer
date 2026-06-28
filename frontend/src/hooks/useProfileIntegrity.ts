@@ -76,7 +76,7 @@ export function useProfileIntegrity(version: string, profileId?: string) {
                     throw new Error(detail);
                 }
                 const data = (await response.json()) as ProfileIntegrityReport;
-                if (data.source_path && !activePath) {
+                if (data.source_path && !sourcePath) {
                     setSourcePath(data.source_path);
                 }
                 setReport(data);

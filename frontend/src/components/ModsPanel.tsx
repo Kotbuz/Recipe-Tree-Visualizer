@@ -85,6 +85,26 @@ function loaderLabel(loader: string): string {
     }
 }
 
+function integritySummary(report: ProfileIntegrityReport): string {
+    if (!report.healthy) {
+        return 'Не всё из модпака подгружено в профиль.';
+    }
+    if (!report.source_available) {
+        return 'Файлы в профиле на месте. Сравнение с инстансом недоступно.';
+    }
+    return 'Все нужные файлы на месте.';
+}
+
+function integrityToneClass(report: ProfileIntegrityReport): string {
+    if (!report.healthy) {
+        return ' mods-panel-integrity--warn';
+    }
+    if (!report.source_available) {
+        return ' mods-panel-integrity--info';
+    }
+    return ' mods-panel-integrity--ok';
+}
+
 function zipFilesFromDataTransfer(dataTransfer: DataTransfer): File[] {
     return Array.from(dataTransfer.files).filter((file) =>
         file.name.toLowerCase().endsWith('.zip'),
@@ -195,13 +215,7 @@ export default function ModsPanel({
         Boolean(onReloadMods) ||
         (showRecipeMaintenance && Boolean(onClearRecipeExport));
     const integrityBusy = integrityChecking || integritySyncing;
-    const canSyncIntegrity =
-        Boolean(integrityReport?.can_sync) ||
-        Boolean(
-            integrityReport?.needs_source_path &&
-                onSyncIntegrity &&
-                integritySourcePath.trim(),
-        );
+    const canSyncIntegrity = Boolean(integrityReport?.can_sync);
 
     const canDeleteActive =
         Boolean(onProfileDelete) && activeProfileId !== 'default' && !versionsEmpty;
@@ -637,20 +651,23 @@ export default function ModsPanel({
                                             : 'Проверить целостность'}
                                     </button>
                                     {integrityReport ? (
+                                        (() => {
+                                            const profileIssues = integrityReport.issues.filter(
+                                                (issue) => issue.category !== 'source',
+                                            );
+                                            const sourceNotice = integrityReport.issues.find(
+                                                (issue) => issue.category === 'source',
+                                            );
+                                            return (
                                         <div
-                                            className={`mods-panel-integrity${
-                                                integrityReport.healthy
-                                                    ? ' mods-panel-integrity--ok'
-                                                    : ' mods-panel-integrity--warn'
-                                            }`}
+                                            className={`mods-panel-integrity${integrityToneClass(integrityReport)}`}
                                         >
                                             <p className="mods-panel-integrity-summary">
-                                                {integrityReport.healthy
-                                                    ? 'Все нужные файлы на месте.'
-                                                    : 'Не всё из модпака подгружено в профиль.'}
+                                                {integritySummary(integrityReport)}
                                             </p>
+                                            {profileIssues.length > 0 ? (
                                             <ul className="mods-panel-integrity-list">
-                                                {integrityReport.issues.map((issue) => (
+                                                {profileIssues.map((issue) => (
                                                     <li
                                                         key={issue.category}
                                                         className={`mods-panel-integrity-item mods-panel-integrity-item--${issue.status}`}
@@ -659,15 +676,13 @@ export default function ModsPanel({
                                                     </li>
                                                 ))}
                                             </ul>
+                                            ) : null}
                                             {integrityReport.needs_source_path ||
                                             !integrityReport.source_available ? (
                                                 <div className="mods-panel-integrity-source">
-                                                    {integrityReport.source_path ? (
+                                                    {sourceNotice ? (
                                                         <p className="mods-panel-hint">
-                                                            Сохранённый путь:{' '}
-                                                            <span className="mods-panel-path">
-                                                                {integrityReport.source_path}
-                                                            </span>
+                                                            {sourceNotice.message}
                                                         </p>
                                                     ) : null}
                                                     <label className="mods-panel-field">
@@ -687,6 +702,10 @@ export default function ModsPanel({
                                                             }
                                                         />
                                                     </label>
+                                                    <p className="mods-panel-hint">
+                                                        Если путь изменился — укажите его и нажмите
+                                                        «Проверить целостность» снова.
+                                                    </p>
                                                     {onBrowseIntegrityFolder ? (
                                                         <button
                                                             type="button"
@@ -728,6 +747,8 @@ export default function ModsPanel({
                                                 </button>
                                             ) : null}
                                         </div>
+                                            );
+                                        })()
                                     ) : null}
                                 </>
                             ) : null}
