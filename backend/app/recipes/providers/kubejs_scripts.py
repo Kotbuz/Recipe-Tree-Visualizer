@@ -10,6 +10,7 @@ from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.jar_recipe_loader import try_add_recipe
 from app.recipes.models import Recipe
 from app.recipes.providers.kubejs_script_models import KubejsScriptResult
+from app.recipes.providers.kubejs_custom_machinery_parser import parse_custom_machinery_scripts
 from app.recipes.providers.kubejs_script_parser import (
     apply_kubejs_removes,
     parse_kubejs_server_scripts,
@@ -36,7 +37,14 @@ class KubejsScriptProvider:
             removes=parsed.removes,
             dynamic_expressions=parsed.dynamic_expressions,
         )
-        if not parsed.recipe_payloads and not parsed.removes:
+
+        cm_recipes = parse_custom_machinery_scripts(scripts_dir)
+        result.recipes.extend(cm_recipes)
+
+        if not parsed.recipe_payloads and not parsed.removes and not cm_recipes:
+            return result
+
+        if not parsed.recipe_payloads:
             return result
 
         parser = self._parser or self._build_parser(version, profile_id)

@@ -66,6 +66,7 @@ def display_name_for_raw_type(raw_type: str) -> str:
         "ae2:mekechamber": "Химкамера Mekanism",
         "ae2:hccrusher": "Дробитель Hydraulicraft",
         "ae2:crusher": "Дробитель RotaryCraft",
+        "custommachinery:custom_machine": "Custom Machinery",
     }
     if raw_type in mapping:
         return mapping[raw_type]
