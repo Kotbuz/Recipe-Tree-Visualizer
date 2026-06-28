@@ -13,7 +13,8 @@ RUN mkdir -p baked-mods dist
 # Build on host first; image still starts without jar (bake will fail with clear log).
 COPY docker/run-neo-export.sh docker/neoforge_launcher.py docker/export-server.py docker/entrypoint.sh ./
 COPY dist/ dist/
-RUN chmod +x run-neo-export.sh entrypoint.sh export-server.py \
+RUN sed -i 's/\r$//' run-neo-export.sh entrypoint.sh export-server.py \
+    && chmod +x run-neo-export.sh entrypoint.sh export-server.py \
     && if [ -f dist/recipe-exporter-neo-1.21.1.jar ]; then \
          cp -f dist/recipe-exporter-neo-1.21.1.jar baked-mods/rtv-recipe-exporter-neo.jar; \
        fi
