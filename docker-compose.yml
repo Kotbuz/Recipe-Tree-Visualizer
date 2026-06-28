@@ -33,7 +33,6 @@ services:
     restart: unless-stopped
 
   recipe-exporter-neo:
-    profiles: ["neo-recipes"]
     build:
       context: ./recipe-exporter-neo
       dockerfile: docker/Dockerfile
@@ -75,6 +74,8 @@ services:
       - "8000:8000"
     depends_on:
       renderer:
+        condition: service_healthy
+      recipe-exporter-neo:
         condition: service_healthy
     restart: unless-stopped
 

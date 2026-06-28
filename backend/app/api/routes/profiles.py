@@ -125,7 +125,7 @@ async def import_modpack(
 def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResponse:
     _require_version(version)
     try:
-        profile, stats = profile_service.import_from_instance_path(
+        profile, stats, bake_started = profile_service.import_from_instance_path(
             version,
             Path(body.path),
             name=body.name,
@@ -151,6 +151,7 @@ def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResp
         kubejs_server_scripts_imported=stats.kubejs_server_scripts_imported,
         kubejs_data_files_imported=stats.kubejs_data_files_imported,
         kubejs_asset_files_imported=stats.kubejs_asset_files_imported,
+        recipe_bake_started=bake_started,
     )
 
 

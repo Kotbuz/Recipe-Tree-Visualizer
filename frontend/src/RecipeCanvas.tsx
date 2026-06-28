@@ -1420,8 +1420,11 @@ export default function RecipeCanvas() {
 
                 const profileName = importResult?.profile?.name ?? 'модпак';
                 const jarCount = importResult?.jars_imported ?? 0;
+                const bakeNote = importResult?.recipe_bake_started
+                    ? ' Запущена фоновая сборка рецептов из инстанса (~5–20 мин).'
+                    : '';
                 setImportFlowSuccess(
-                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».`,
+                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».${bakeNote}`,
                 );
             } catch (flowError) {
                 const message =
