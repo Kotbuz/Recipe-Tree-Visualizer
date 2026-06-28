@@ -32,6 +32,13 @@ def schedule_neo_recipe_bake_after_import(
             minecraft_version,
         )
         return False
+    if minecraft_version not in settings.neo_recipe_export_supported_list():
+        logger.info(
+            "Auto recipe bake skipped for {}: in-game export пока только для {}",
+            minecraft_version,
+            ", ".join(sorted(settings.neo_recipe_export_supported_list())),
+        )
+        return False
 
     def _run() -> None:
         from app.services.neo_recipe_export_service import neo_recipe_export_service

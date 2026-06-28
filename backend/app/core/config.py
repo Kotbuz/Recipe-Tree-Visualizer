@@ -33,6 +33,14 @@ class Settings(BaseSettings):
     neo_recipe_exporter_url: str = ""
     neo_recipe_exporter_timeout_seconds: float = 3600.0
     auto_bake_recipes_after_instance_import: bool = True
+    neo_recipe_export_supported_versions: str = "1.21.1"
+
+    def neo_recipe_export_supported_list(self) -> frozenset[str]:
+        return frozenset(
+            part.strip()
+            for part in self.neo_recipe_export_supported_versions.split(",")
+            if part.strip()
+        )
     curseforge_api_key: str = ""
     curseforge_user_agent: str = (
         "Recipe-Tree-Visualizer/1.0 (https://github.com/Kotbuz/Recipe-Tree-Visualizer)"

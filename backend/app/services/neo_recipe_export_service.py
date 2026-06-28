@@ -72,6 +72,14 @@ class NeoRecipeExportService:
                 "NeoForge in-game export пока только для data-layout (1.16+)."
             )
 
+        supported = self._settings.neo_recipe_export_supported_list()
+        if mc_version not in supported:
+            raise NeoRecipeExportError(
+                f"In-game export для Minecraft {mc_version} пока не поддержан. "
+                f"Доступно: {', '.join(sorted(supported))}. "
+                "Для других версий используются рецепты из jar/kubejs."
+            )
+
         loader = meta.get("loader") if isinstance(meta.get("loader"), str) else None
         loader_version = (
             meta.get("forge_version") if isinstance(meta.get("forge_version"), str) else None
