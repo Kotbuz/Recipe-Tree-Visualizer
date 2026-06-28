@@ -143,6 +143,89 @@ def test_recipe_service_still_returns_summaries() -> None:
     assert any("oak planks" in output.name.lower() for recipe in results for output in recipe.outputs)
 
 
+def test_focus_finds_recipes_by_tag_member_item() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.models import Recipe, RecipeIO
+    from app.recipes.registry import IngredientRegistry
+    from app.recipes.types import RecipeType
+
+    recipe = Recipe(
+        id="test:quartz_dust_smelt",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="tag:c:dusts/alltheores_quartz", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:glass", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="test",
+    )
+    registry = IngredientRegistry()
+    registry._tag_members = {
+        "tag:c:dusts/alltheores_quartz": frozenset({"alltheores:quartz_dust"}),
+    }
+    registry._item_tag_index = None
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("alltheores:quartz_dust", RecipeIngredientRole.INPUT).all()
+    assert len(results) == 1
+    assert results[0].id == "test:quartz_dust_smelt"
+
+
+def test_focus_returns_empty_for_unknown_item_without_scanning() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.models import Recipe, RecipeIO
+    from app.recipes.registry import IngredientRegistry
+    from app.recipes.types import RecipeType
+
+    recipe = Recipe(
+        id="test:stick",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="minecraft:stick", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:torch", amount=4.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    assert lookup.focus("unknown:item_xyz", RecipeIngredientRole.INPUT).all() == []
+
+
+def test_focus_matches_quartz_dust_via_ae2_tag() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.models import Recipe, RecipeIO
+    from app.recipes.registry import IngredientRegistry
+    from app.recipes.types import RecipeType
+
+    recipe = Recipe(
+        id="ae2:quartz_glass",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[
+            RecipeIO(item_id="tag:ae2:all_quartz_dust", amount=5.0),
+            RecipeIO(item_id="tag:c:glass_blocks/cheap", amount=4.0),
+        ],
+        outputs=[RecipeIO(item_id="ae2:quartz_glass", amount=4.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="ae2",
+    )
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("alltheores:quartz_dust", RecipeIngredientRole.INPUT).all()
+    assert len(results) == 1
+    assert results[0].id == "ae2:quartz_glass"
+
+
 def test_recipe_manager_focus_matches_tag_inputs() -> None:
     _require_recipe_source()
     registry = recipe_manager.get_ingredient_registry("26.2")

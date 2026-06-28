@@ -29,6 +29,7 @@ import { useRecipeSearch } from './hooks/useRecipeSearch';
 import { useVersionMaintenance } from './hooks/useVersionMaintenance';
 import {
     ingredientsCompatible,
+    itemIdToDisplayName,
     type IngredientIndex,
     type IngredientRef,
 } from './utils/ingredientMatch';
@@ -291,6 +292,9 @@ const isSlotCompatible = (
         ingredientIndex,
     );
 };
+
+const resolveSlotLabel = (item: RecipeItem): string =>
+    item.item_id ? itemIdToDisplayName(item.item_id) : item.name;
 
 export default function RecipeCanvas() {
     const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
@@ -827,14 +831,14 @@ export default function RecipeCanvas() {
             machineName: mapMachineName(recipe.machine_type),
             durationTicks,
             inputs: mergeRecipeItems(recipe.inputs).map((item) => ({
-                name: item.name,
+                name: resolveSlotLabel(item),
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
                 metadata: item.metadata,
             })),
             outputs: mergeRecipeItems(recipe.outputs).map((item) => ({
-                name: item.name,
+                name: resolveSlotLabel(item),
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
@@ -1487,6 +1491,25 @@ export default function RecipeCanvas() {
         }
     }, [contextMenu]);
 
+    const renderQuantityCell = (
+        node: RecipeNode,
+        slotType: SlotType,
+        item: RecipeItem,
+        index: number,
+    ) => {
+        const isEmpty = !getSlotItemName(node, slotType, index);
+        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
+        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
+
+        return (
+            <div key={`${slotKey(node.id, slotType, index)}-qty`} className="recipe-node-quantity-cell">
+                {showQuantity ? (
+                    <SlotQuantityBadge amount={item.amount} slotType={slotType} />
+                ) : null}
+            </div>
+        );
+    };
+
     const renderItemSlot = (
         node: RecipeNode,
         slotType: SlotType,
@@ -1496,8 +1519,6 @@ export default function RecipeCanvas() {
         const displayName = getSlotItemName(node, slotType, index);
         const iconId = getSlotItemIconId(node, slotType, index);
         const isEmpty = !displayName;
-        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
-        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
         const isTarget =
             productionTarget?.nodeId === node.id &&
             productionTarget.slotType === slotType &&
@@ -1506,41 +1527,29 @@ export default function RecipeCanvas() {
         return (
             <div
                 key={slotKey(node.id, slotType, index)}
-                className={`recipe-node-slot-row recipe-node-slot-row--${slotType}${
-                    isTarget ? ' recipe-node-slot-row--target' : ''
-                }`}
-            >
-                {showQuantity && slotType === 'input' && (
-                    <SlotQuantityBadge amount={item.amount} slotType="input" />
-                )}
-                <div
-                    ref={(element) => {
-                        const key = slotKey(node.id, slotType, index);
-                        if (element) {
-                            itemRefs.current.set(key, element);
-                        } else {
-                            itemRefs.current.delete(key);
-                        }
-                    }}
-                    className={`recipe-node-item recipe-node-item--${slotType}${
-                        isEmpty ? ' recipe-node-item--empty' : ''
-                    }${isTarget ? ' recipe-node-item--target' : ''}`}
-                    onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
-                    onMouseDown={(event) =>
-                        handleItemMouseDown(node.id, slotType, index, event)
+                ref={(element) => {
+                    const key = slotKey(node.id, slotType, index);
+                    if (element) {
+                        itemRefs.current.set(key, element);
+                    } else {
+                        itemRefs.current.delete(key);
                     }
-                    title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
-                >
-                    {isEmpty ? (
-                        <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
-                            {slotType === 'input' ? 'IN' : 'OUT'}
-                        </span>
-                    ) : (
-                        <ItemIconView itemName={displayName} iconId={iconId} />
-                    )}
-                </div>
-                {showQuantity && slotType === 'output' && (
-                    <SlotQuantityBadge amount={item.amount} slotType="output" />
+                }}
+                className={`recipe-node-item recipe-node-item--${slotType}${
+                    isEmpty ? ' recipe-node-item--empty' : ''
+                }${isTarget ? ' recipe-node-item--target' : ''}`}
+                onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
+                onMouseDown={(event) =>
+                    handleItemMouseDown(node.id, slotType, index, event)
+                }
+                title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
+            >
+                {isEmpty ? (
+                    <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
+                        {slotType === 'input' ? 'IN' : 'OUT'}
+                    </span>
+                ) : (
+                    <ItemIconView itemName={displayName} iconId={iconId} />
                 )}
             </div>
         );
@@ -1659,40 +1668,58 @@ export default function RecipeCanvas() {
                     {nodes.map((node) => (
                         <div
                             key={node.id}
-                            className={`recipe-node ${
+                            className={`recipe-node-wrapper ${
                                 contextMenu?.type === 'node' && contextMenu.nodeId === node.id
-                                    ? 'recipe-node--active'
+                                    ? 'recipe-node-wrapper--active'
                                     : ''
                             }`}
                             style={{ left: node.x, top: node.y }}
                             onContextMenu={(event) => handleNodeContextMenu(node.id, event)}
                         >
-                            <div className="recipe-node-column recipe-node-column--inputs">
+                            <div className="recipe-node-quantities recipe-node-quantities--inputs">
                                 {node.inputs.map((input, index) =>
-                                    renderItemSlot(node, 'input', input, index),
+                                    renderQuantityCell(node, 'input', input, index),
                                 )}
                             </div>
-                            <div className="recipe-node-column recipe-node-column--machine">
-                                <div
-                                    className={`recipe-node-machine recipe-node-machine--${node.kind}`}
-                                    onMouseDown={(event) =>
-                                        handleMachineMouseDown(node.id, event)
-                                    }
-                                >
-                                    <span>{node.machineName}</span>
-                                    {node.kind === 'recipe' && node.durationTicks !== undefined && (
-                                        <span
-                                            className="recipe-node-duration"
-                                            title={`${node.durationTicks} тиков`}
-                                        >
-                                            {formatDurationLabel(node.durationTicks)}
-                                        </span>
+                            <div
+                                className={`recipe-node ${
+                                    contextMenu?.type === 'node' && contextMenu.nodeId === node.id
+                                        ? 'recipe-node--active'
+                                        : ''
+                                }`}
+                            >
+                                <div className="recipe-node-column recipe-node-column--inputs">
+                                    {node.inputs.map((input, index) =>
+                                        renderItemSlot(node, 'input', input, index),
+                                    )}
+                                </div>
+                                <div className="recipe-node-column recipe-node-column--machine">
+                                    <div
+                                        className={`recipe-node-machine recipe-node-machine--${node.kind}`}
+                                        onMouseDown={(event) =>
+                                            handleMachineMouseDown(node.id, event)
+                                        }
+                                    >
+                                        <span>{node.machineName}</span>
+                                        {node.kind === 'recipe' && node.durationTicks !== undefined && (
+                                            <span
+                                                className="recipe-node-duration"
+                                                title={`${node.durationTicks} тиков`}
+                                            >
+                                                {formatDurationLabel(node.durationTicks)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="recipe-node-column recipe-node-column--outputs">
+                                    {node.outputs.map((output, index) =>
+                                        renderItemSlot(node, 'output', output, index),
                                     )}
                                 </div>
                             </div>
-                            <div className="recipe-node-column recipe-node-column--outputs">
+                            <div className="recipe-node-quantities recipe-node-quantities--outputs">
                                 {node.outputs.map((output, index) =>
-                                    renderItemSlot(node, 'output', output, index),
+                                    renderQuantityCell(node, 'output', output, index),
                                 )}
                             </div>
                         </div>

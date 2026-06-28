@@ -9,7 +9,6 @@ from app.parser.minecraft_version import mod_supports_game_version
 from app.parser.models import RawModMeta
 from app.recipes.adapters import item_id_to_display_name, to_recipe_summary, _display_name_for_part
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.ingredient import IngredientKind
 from app.recipes.item_ref import normalize_item_ref, parse_item_needle
 from app.recipes.models import ProviderResult, Recipe, RecipeIO
 from app.recipes.providers.kubejs_data import KubejsDataProvider
@@ -31,7 +30,7 @@ from app.recipes.registry import (
 )
 from app.recipes.types import RecipeType
 from app.schemas.recipe_file import RecipeSummary
-from app.services.item_matching import items_match
+from app.services.item_matching import items_match, looks_like_quartz_dust_ref, quartz_dust_tag_lookup_keys
 from app.services.profile_storage import profile_storage_key
 from app.services.version_service import version_service
 
@@ -87,6 +86,7 @@ def _part_index_keys(
     *,
     metadata: int | None = None,
     version: str | None = None,
+    registry: IngredientRegistry | None = None,
 ) -> frozenset[str]:
     keys: set[str] = set()
     normalized = item_id.strip().lower()
@@ -113,13 +113,46 @@ def _part_index_keys(
     return frozenset(key for key in keys if key)
 
 
-def _focus_lookup_keys(needle: str) -> tuple[str, ...]:
+def _focus_lookup_keys(
+    needle: str,
+    registry: IngredientRegistry | None = None,
+) -> tuple[str, ...]:
     normalized = needle.strip().lower()
     if not normalized:
         return ()
     keys = {normalized}
     if ":" in normalized:
         keys.add(normalized.split(":", 1)[1])
+
+    if registry is None:
+        return tuple(keys)
+
+    alias = registry.resolve_alias(normalized)
+    if alias.lower() != normalized:
+        keys.add(alias.lower())
+
+    tag_id = registry._needle_to_tag_id(normalized)
+    if tag_id is not None:
+        keys.add(tag_id.lower())
+        keys.add(tag_id.removeprefix("tag:").lower())
+
+    for containing_tag in registry.tag_ids_containing_item(normalized):
+        keys.add(containing_tag.lower())
+        keys.add(containing_tag.removeprefix("tag:").lower())
+
+    if looks_like_quartz_dust_ref(normalized):
+        keys.update(quartz_dust_tag_lookup_keys())
+
+    for ingredient in registry.search(normalized, limit=12):
+        ingredient_id = ingredient.id.lower()
+        keys.add(ingredient_id)
+        if ":" in ingredient_id:
+            keys.add(ingredient_id.split(":", 1)[1])
+        keys.add(ingredient.display_name.lower())
+        for containing_tag in registry.tag_ids_containing_item(ingredient_id):
+            keys.add(containing_tag.lower())
+            keys.add(containing_tag.removeprefix("tag:").lower())
+
     return tuple(keys)
 
 
@@ -127,6 +160,7 @@ def _build_version_recipe_bundle(
     recipes: tuple[Recipe, ...],
     *,
     version: str | None,
+    registry: IngredientRegistry | None = None,
 ) -> _VersionRecipeBundle:
     recipes_by_id = {recipe.id: recipe for recipe in recipes}
     input_ids: dict[str, set[str]] = defaultdict(set)
@@ -138,6 +172,7 @@ def _build_version_recipe_bundle(
                 part.item_id,
                 metadata=part.metadata,
                 version=version,
+                registry=registry,
             ):
                 input_ids[key].add(recipe.id)
         for part in recipe.outputs:
@@ -145,6 +180,7 @@ def _build_version_recipe_bundle(
                 part.item_id,
                 metadata=part.metadata,
                 version=version,
+                registry=registry,
             ):
                 output_ids[key].add(recipe.id)
 
@@ -190,13 +226,12 @@ class RecipeLookup:
 
         if self._bundle is not None:
             indexed = self._focus_via_index(needle, role, needle_meta, limit=limit)
-            if indexed is not None:
-                return RecipeLookup(
-                    indexed,
-                    self._ingredient_registry,
-                    self._version,
-                    bundle=self._bundle,
-                )
+            return RecipeLookup(
+                indexed,
+                self._ingredient_registry,
+                self._version,
+                bundle=self._bundle,
+            )
 
         filtered: list[Recipe] = []
         for recipe in self._recipes:
@@ -228,14 +263,14 @@ class RecipeLookup:
             else self._bundle.input_ids_by_key
         )
         candidate_ids: set[str] = set()
-        for key in _focus_lookup_keys(needle):
+        for key in _focus_lookup_keys(needle, self._ingredient_registry):
             candidate_ids |= index.get(key, frozenset())
 
         if self._ingredient_registry is not None:
             candidate_ids |= self._expand_focus_candidates_via_registry(needle, index)
 
         if not candidate_ids:
-            return None
+            return ()
 
         filtered: list[Recipe] = []
         for recipe_id in candidate_ids:
@@ -247,9 +282,6 @@ class RecipeLookup:
                 filtered.append(recipe)
                 if limit is not None and len(filtered) >= limit:
                     break
-        if not filtered:
-            return None
-
         return tuple(filtered)
 
     def _expand_focus_candidates_via_registry(
@@ -264,19 +296,20 @@ class RecipeLookup:
         tag_id = self._ingredient_registry._needle_to_tag_id(needle)
         if tag_id:
             for member in self._ingredient_registry.resolve_tag(tag_id):
-                for key in _focus_lookup_keys(member):
+                for key in _focus_lookup_keys(member, self._ingredient_registry):
                     candidate_ids |= index.get(key, frozenset())
             candidate_ids |= index.get(tag_id.lower(), frozenset())
-            short_tag = tag_id.rsplit(":", 1)[-1]
-            candidate_ids |= index.get(short_tag, frozenset())
+            candidate_ids |= index.get(tag_id.removeprefix("tag:").lower(), frozenset())
 
-        for ingredient in self._ingredient_registry.search(needle, limit=32):
-            for key in _focus_lookup_keys(ingredient.id):
+        for containing_tag in self._ingredient_registry.tag_ids_containing_item(needle):
+            candidate_ids |= index.get(containing_tag.lower(), frozenset())
+            candidate_ids |= index.get(containing_tag.removeprefix("tag:").lower(), frozenset())
+
+        registered = self._ingredient_registry.get(needle)
+        if registered is not None:
+            for key in _focus_lookup_keys(registered.id, self._ingredient_registry):
                 candidate_ids |= index.get(key, frozenset())
-            if ingredient.kind == IngredientKind.TAG:
-                tag_key = ingredient.id.lower()
-                candidate_ids |= index.get(tag_key, frozenset())
-                candidate_ids |= index.get(tag_key.rsplit(":", 1)[-1], frozenset())
+
         return candidate_ids
 
     def query(self, text: str, *, limit: int | None = None) -> RecipeLookup:
@@ -561,7 +594,14 @@ class RecipeManager:
             include_mods=include_mods,
             include_synthetic=include_synthetic,
         )
-        bundle = _build_version_recipe_bundle(recipes, version=mc_version)
+        from app.recipes.registry import get_profile_ingredient_registry
+
+        registry = get_profile_ingredient_registry(version, profile_id)
+        bundle = _build_version_recipe_bundle(
+            recipes,
+            version=mc_version,
+            registry=registry,
+        )
         self._version_bundle_cache[cache_key] = bundle
         return bundle
 

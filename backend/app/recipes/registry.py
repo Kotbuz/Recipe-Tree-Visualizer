@@ -12,7 +12,7 @@ from app.recipes.loaders.tag_loader import TagLoader, is_tag_id, normalize_tag_i
 from app.recipes.loaders.tag_snapshot_loader import load_tag_snapshot, merge_snapshot_aliases
 from app.recipes.models import Recipe
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
-from app.services.item_matching import items_match
+from app.services.item_matching import items_match, quartz_dust_tags_compatible
 
 DEFAULT_ALIASES: dict[str, str] = {
     "planks": "oak planks",
@@ -36,6 +36,7 @@ class IngredientRegistry:
         self._tag_loader = tag_loader or TagLoader()
         self._ingredients: dict[str, Ingredient] = {}
         self._tag_members: dict[str, frozenset[str]] = {}
+        self._item_tag_index: dict[str, frozenset[str]] | None = None
         self._aliases: dict[str, str] = dict(DEFAULT_ALIASES)
 
     @property
@@ -52,6 +53,7 @@ class IngredientRegistry:
             tag_maps.append(snapshot)
         if tag_maps:
             self._tag_members = self._tag_loader.merge_tag_maps(*tag_maps)
+        self._item_tag_index = None
         merge_snapshot_aliases(self._aliases, version)
 
     def merge_tags_from_jar(self, jar_path: Path | str) -> None:
@@ -59,6 +61,35 @@ class IngredientRegistry:
         if not loaded:
             return
         self._tag_members = self._tag_loader.merge_tag_maps(self._tag_members, loaded)
+        self._item_tag_index = None
+
+    def tag_ids_containing_item(self, item_id: str) -> frozenset[str]:
+        self._ensure_item_tag_index()
+        normalized = self._normalize_item_id(item_id)
+        keys = {normalized}
+        if ":" in normalized:
+            keys.add(normalized.split(":", 1)[1])
+        tags: set[str] = set()
+        for key in keys:
+            tags.update(self._item_tag_index.get(key, ()))
+        return frozenset(tags)
+
+    def _ensure_item_tag_index(self) -> None:
+        if self._item_tag_index is not None:
+            return
+        item_tags: dict[str, set[str]] = {}
+        for tag_id in self._tag_members:
+            for member_id in self.resolve_tag(tag_id):
+                if member_id.startswith("tag:"):
+                    continue
+                member_key = self._normalize_item_id(member_id)
+                item_tags.setdefault(member_key, set()).add(normalize_tag_id(tag_id))
+                if ":" in member_key:
+                    short_key = member_key.split(":", 1)[1]
+                    item_tags.setdefault(short_key, set()).add(normalize_tag_id(tag_id))
+        self._item_tag_index = {
+            key: frozenset(values) for key, values in item_tags.items()
+        }
 
     def register_from_recipes(
         self,
@@ -170,7 +201,13 @@ class IngredientRegistry:
                     break
         return results
 
-    def ingredient_matches(self, needle: str, ingredient_id: str) -> bool:
+    def ingredient_matches(
+        self,
+        needle: str,
+        ingredient_id: str,
+        *,
+        _visiting_tags: frozenset[str] | None = None,
+    ) -> bool:
         normalized_needle = needle.strip().lower()
         if not normalized_needle:
             return False
@@ -179,6 +216,31 @@ class IngredientRegistry:
 
         if self._matches_ingredient_candidates(normalized_needle, normalized_id):
             return True
+
+        needle_tag_id = self._needle_to_tag_id(normalized_needle)
+        if needle_tag_id is not None and self._is_member_of_tag(normalized_id, needle_tag_id):
+            return True
+
+        if normalized_id.startswith("tag:"):
+            if quartz_dust_tags_compatible(normalized_needle, normalized_id):
+                return True
+
+            if ":" in normalized_needle and not is_tag_id(normalized_needle):
+                if self._is_member_of_tag(normalized_needle, normalized_id):
+                    return True
+
+            visiting = _visiting_tags or frozenset()
+            if normalized_id in visiting:
+                return False
+            visiting = visiting | {normalized_id}
+            for member_id in self.resolve_tag(normalized_id):
+                if self.ingredient_matches(
+                    normalized_needle,
+                    member_id,
+                    _visiting_tags=visiting,
+                ):
+                    return True
+            return False
 
         if ":" in normalized_needle:
             if ae2_items_compatible(normalized_id, normalized_needle):
@@ -190,15 +252,6 @@ class IngredientRegistry:
                     items_match(normalized_needle, ingredient.display_name.lower())
                     or self._item_ids_equivalent(normalized_needle, ingredient.id)
                 ):
-                    return True
-
-        needle_tag_id = self._needle_to_tag_id(normalized_needle)
-        if needle_tag_id is not None and self._is_member_of_tag(normalized_id, needle_tag_id):
-            return True
-
-        if normalized_id.startswith("tag:"):
-            for member_id in self.resolve_tag(normalized_id):
-                if self.ingredient_matches(normalized_needle, member_id):
                     return True
 
         return False
@@ -240,15 +293,8 @@ class IngredientRegistry:
         return None
 
     def _is_member_of_tag(self, item_id: str, tag_id: str) -> bool:
-        members = self.resolve_tag(tag_id)
-        if not members:
-            return False
-
-        normalized_item = self._normalize_item_id(item_id)
-        for member in members:
-            if self._item_ids_equivalent(normalized_item, self._normalize_item_id(member)):
-                return True
-        return False
+        normalized_tag = normalize_tag_id(tag_id)
+        return normalized_tag in self.tag_ids_containing_item(item_id)
 
     @staticmethod
     def _item_ids_equivalent(left: str, right: str) -> bool:
