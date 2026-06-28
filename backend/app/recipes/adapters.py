@@ -18,7 +18,13 @@ if TYPE_CHECKING:
     from app.recipes.registry import IngredientRegistry
 
 
+from app.recipes.loaders.tag_snapshot_loader import common_tag_display_name
+
+
 def item_id_to_display_name(item_id: str) -> str:
+    tagged = common_tag_display_name(item_id)
+    if tagged is not None:
+        return tagged
     raw = item_id.removeprefix("tag:")
     if ":" in raw:
         raw = raw.split(":", 1)[1]

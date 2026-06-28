@@ -9,6 +9,7 @@ from app.recipes.ae2_item_match import ae2_items_compatible
 from app.recipes.ingredient import IngredientKind
 from app.recipes.item_ref import parse_item_needle
 from app.recipes.loaders.tag_loader import TagLoader, is_tag_id, normalize_tag_id
+from app.recipes.loaders.tag_snapshot_loader import load_tag_snapshot, merge_snapshot_aliases
 from app.recipes.models import Recipe
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.services.item_matching import items_match
@@ -43,9 +44,15 @@ class IngredientRegistry:
 
     def load_version(self, version: str) -> None:
         jar_path = VanillaJarProvider().resolve_jar_path(version)
-        if jar_path is None:
-            return
-        self._tag_members = self._tag_loader.load_from_jar(jar_path)
+        tag_maps: list[dict[str, frozenset[str]]] = []
+        if jar_path is not None:
+            tag_maps.append(self._tag_loader.load_from_jar(jar_path))
+        snapshot = load_tag_snapshot(version)
+        if snapshot:
+            tag_maps.append(snapshot)
+        if tag_maps:
+            self._tag_members = self._tag_loader.merge_tag_maps(*tag_maps)
+        merge_snapshot_aliases(self._aliases, version)
 
     def merge_tags_from_jar(self, jar_path: Path | str) -> None:
         loaded = self._tag_loader.load_from_jar(Path(jar_path))

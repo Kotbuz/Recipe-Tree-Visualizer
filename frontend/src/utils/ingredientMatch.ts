@@ -14,10 +14,83 @@ export type IngredientIndex = {
 const normalizeKey = (value: string) => value.trim().toLowerCase();
 
 export const itemIdToDisplayName = (itemId: string): string => {
+    const common = commonTagDisplayName(itemId);
+    if (common) {
+        return common;
+    }
     const raw = itemId.replace(/^tag:/, '');
     const path = raw.includes(':') ? raw.split(':', 2)[1]! : raw;
     return path.replace(/_/g, ' ');
 };
+
+const CATEGORY_LABELS: Record<string, string> = {
+    dusts: 'dust',
+    gems: '',
+    gears: 'gear',
+    rods: 'rod',
+    plates: 'plate',
+    ingots: 'ingot',
+    nuggets: 'nugget',
+    ores: 'ore',
+    raw_materials: 'raw',
+    storage_blocks: 'block',
+    glass_blocks: 'glass block',
+    blocks: 'block',
+    leathers: 'leather',
+    wires: 'wire',
+    coins: 'coin',
+};
+
+export const commonTagDisplayName = (itemId: string): string | null => {
+    const normalized = itemId.startsWith('tag:') ? itemId : itemId.startsWith('#') ? `tag:${itemId.slice(1)}` : null;
+    if (!normalized?.startsWith('tag:c:')) {
+        return null;
+    }
+
+    const path = normalized.slice('tag:c:'.length);
+    const segments = path.split('/').filter(Boolean).map((part) => part.replace(/_/g, ' '));
+    if (!segments.length) {
+        return null;
+    }
+    if (segments.length === 1) {
+        return titleCase(segments[0]!);
+    }
+
+    const category = path.split('/', 1)[0]!;
+    const material = segments[segments.length - 1]!;
+    const materialTitle = titleCase(material);
+
+    if (category === 'glass_blocks' && material === 'cheap') {
+        return 'Cheap Glass Block';
+    }
+    if (category === 'glass_blocks') {
+        return `${materialTitle} Glass Block`;
+    }
+
+    const suffix = CATEGORY_LABELS[category];
+    if (suffix !== undefined) {
+        if (suffix && materialTitle.toLowerCase().endsWith(` ${suffix}`)) {
+            return materialTitle;
+        }
+        if (suffix) {
+            return `${materialTitle} ${titleCase(suffix)}`;
+        }
+        return materialTitle;
+    }
+
+    if (segments.length === 2) {
+        return `${materialTitle} (${titleCase(segments[0]!)})`;
+    }
+
+    return segments.map((segment) => titleCase(segment)).join(' / ');
+};
+
+const titleCase = (value: string): string =>
+    value
+        .split(' ')
+        .filter(Boolean)
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+        .join(' ');
 
 const normalizeTagId = (raw: string): string => {
     const cleaned = raw.trim().replace(/^#/, '');
