@@ -50,6 +50,10 @@ type ModsPanelProps = {
     integritySyncing?: boolean;
     integrityError?: string | null;
     integrityReport?: ProfileIntegrityReport | null;
+    integritySourcePath?: string;
+    onIntegritySourcePathChange?: (path: string) => void;
+    onBrowseIntegrityFolder?: () => void;
+    browsingIntegrityFolder?: boolean;
     showIntegrityTools?: boolean;
     defaultDurationTicks: number;
     onDefaultDurationTicksChange: (value: number) => void;
@@ -162,6 +166,10 @@ export default function ModsPanel({
     integritySyncing = false,
     integrityError = null,
     integrityReport = null,
+    integritySourcePath = '',
+    onIntegritySourcePathChange,
+    onBrowseIntegrityFolder,
+    browsingIntegrityFolder = false,
     showIntegrityTools = false,
     defaultDurationTicks,
     onDefaultDurationTicksChange,
@@ -187,6 +195,13 @@ export default function ModsPanel({
         Boolean(onReloadMods) ||
         (showRecipeMaintenance && Boolean(onClearRecipeExport));
     const integrityBusy = integrityChecking || integritySyncing;
+    const canSyncIntegrity =
+        Boolean(integrityReport?.can_sync) ||
+        Boolean(
+            integrityReport?.needs_source_path &&
+                onSyncIntegrity &&
+                integritySourcePath.trim(),
+        );
 
     const canDeleteActive =
         Boolean(onProfileDelete) && activeProfileId !== 'default' && !versionsEmpty;
@@ -644,7 +659,59 @@ export default function ModsPanel({
                                                     </li>
                                                 ))}
                                             </ul>
-                                            {integrityReport.can_sync && onSyncIntegrity ? (
+                                            {integrityReport.needs_source_path ||
+                                            !integrityReport.source_available ? (
+                                                <div className="mods-panel-integrity-source">
+                                                    {integrityReport.source_path ? (
+                                                        <p className="mods-panel-hint">
+                                                            Сохранённый путь:{' '}
+                                                            <span className="mods-panel-path">
+                                                                {integrityReport.source_path}
+                                                            </span>
+                                                        </p>
+                                                    ) : null}
+                                                    <label className="mods-panel-field">
+                                                        <span className="mods-panel-field-label">
+                                                            Папка инстанса
+                                                        </span>
+                                                        <input
+                                                            type="text"
+                                                            className="mods-panel-path-input"
+                                                            placeholder="C:\...\instances\Мой модпак"
+                                                            value={integritySourcePath}
+                                                            disabled={integrityBusy}
+                                                            onChange={(event) =>
+                                                                onIntegritySourcePathChange?.(
+                                                                    event.target.value,
+                                                                )
+                                                            }
+                                                        />
+                                                    </label>
+                                                    {onBrowseIntegrityFolder ? (
+                                                        <button
+                                                            type="button"
+                                                            className="mods-panel-btn"
+                                                            disabled={
+                                                                integrityBusy ||
+                                                                browsingIntegrityFolder
+                                                            }
+                                                            onClick={onBrowseIntegrityFolder}
+                                                        >
+                                                            {browsingIntegrityFolder
+                                                                ? 'Выбор…'
+                                                                : 'Обзор…'}
+                                                        </button>
+                                                    ) : null}
+                                                </div>
+                                            ) : integrityReport.source_path ? (
+                                                <p className="mods-panel-hint">
+                                                    Источник:{' '}
+                                                    <span className="mods-panel-path">
+                                                        {integrityReport.source_path}
+                                                    </span>
+                                                </p>
+                                            ) : null}
+                                            {canSyncIntegrity && onSyncIntegrity ? (
                                                 <button
                                                     type="button"
                                                     className="mods-panel-btn mods-panel-btn--primary mods-panel-btn--block"
@@ -659,12 +726,6 @@ export default function ModsPanel({
                                                         ? 'Подтягивание…'
                                                         : 'Подтянуть недостающее'}
                                                 </button>
-                                            ) : null}
-                                            {!integrityReport.source_available ? (
-                                                <p className="mods-panel-hint">
-                                                    Источник недоступен — повторите импорт из папки
-                                                    инстанса или .zip.
-                                                </p>
                                             ) : null}
                                         </div>
                                     ) : null}

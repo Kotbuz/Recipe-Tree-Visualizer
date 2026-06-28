@@ -31,6 +31,7 @@ from app.services.kubejs_import import (
     copy_kubejs_from_zip_members,
     detect_kubejs_root,
 )
+from app.services.host_paths import resolve_host_filesystem_path
 from app.services.profile_integrity import (
     IntegrityReport,
     ProfileSyncSourceUnavailableError,
@@ -206,13 +207,35 @@ class ProfileService:
             )
         logger.info("Deleted profile {} for version {}", profile_id, version)
 
-    def check_integrity(self, version: str, profile_id: str) -> IntegrityReport:
+    def check_integrity(
+        self,
+        version: str,
+        profile_id: str,
+        *,
+        source_path_override: str | None = None,
+    ) -> IntegrityReport:
         self.get_profile(version, profile_id)
-        return check_profile_integrity(version, profile_id, mc_version=version)
+        return check_profile_integrity(
+            version,
+            profile_id,
+            mc_version=version,
+            source_path_override=source_path_override,
+        )
 
-    def sync_from_source(self, version: str, profile_id: str) -> tuple[ProfileSyncStats, IntegrityReport]:
+    def sync_from_source(
+        self,
+        version: str,
+        profile_id: str,
+        *,
+        source_path_override: str | None = None,
+    ) -> tuple[ProfileSyncStats, IntegrityReport]:
         self.get_profile(version, profile_id)
-        stats = sync_profile_from_source(version, profile_id, mc_version=version)
+        stats = sync_profile_from_source(
+            version,
+            profile_id,
+            mc_version=version,
+            source_path_override=source_path_override,
+        )
         from app.services.mod_service import mod_service
 
         mod_service.force_reload_version(
@@ -220,7 +243,12 @@ class ProfileService:
             profile_id=profile_id,
             enrich_recipes=False,
         )
-        report = check_profile_integrity(version, profile_id, mc_version=version)
+        report = check_profile_integrity(
+            version,
+            profile_id,
+            mc_version=version,
+            source_path_override=source_path_override,
+        )
         return stats, report
 
     def import_modpack_zip(
@@ -301,7 +329,8 @@ class ProfileService:
         activate: bool = True,
     ) -> tuple[ProfileSummary, ModpackImportStats]:
         version_service.ensure_profiles_layout(version)
-        resolved = source_path.expanduser().resolve()
+        raw_path = str(source_path).strip()
+        resolved = resolve_host_filesystem_path(raw_path)
         if not resolved.is_dir():
             raise InvalidInstancePathError(f"Папка не найдена: {source_path}")
 
@@ -329,7 +358,7 @@ class ProfileService:
             source="instance_path",
             loader=detected.loader if detected else None,
             forge_version=detected.forge_version if detected else None,
-            source_path=str(resolved),
+            source_path=raw_path,
         )
 
         stats = self._import_from_directory(resolved, profile_dir, mc_version=version)

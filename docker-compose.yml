@@ -50,6 +50,8 @@ services:
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:rw
       - ./backend/logs:/app/backend/logs
+      # После INSTANCES_HOST_PATH в .env раскомментируйте:
+      # - ${INSTANCES_HOST_PATH}:/host/instances:ro
     ports:
       - "8000:8000"
     depends_on:

@@ -331,6 +331,8 @@ export default function RecipeCanvas() {
         syncing: integritySyncing,
         error: integrityError,
         report: integrityReport,
+        sourcePath: integritySourcePath,
+        setSourcePath: setIntegritySourcePath,
         checkIntegrity,
         syncFromSource,
         clearReport: clearIntegrityReport,
@@ -1479,6 +1481,17 @@ export default function RecipeCanvas() {
         ],
     );
 
+    const handleBrowseIntegrityFolder = useCallback(async () => {
+        try {
+            const path = await pickFolder();
+            if (path) {
+                setIntegritySourcePath(path);
+            }
+        } catch {
+            // ошибка в modpackInspectError
+        }
+    }, [pickFolder, setIntegritySourcePath]);
+
     const handleBrowseInstanceFolder = useCallback(async () => {
         try {
             const path = await pickFolder();
@@ -2065,6 +2078,10 @@ export default function RecipeCanvas() {
                 integritySyncing={integritySyncing}
                 integrityError={integrityError}
                 integrityReport={integrityReport}
+                integritySourcePath={integritySourcePath}
+                onIntegritySourcePathChange={setIntegritySourcePath}
+                onBrowseIntegrityFolder={() => void handleBrowseIntegrityFolder()}
+                browsingIntegrityFolder={modpackInspecting}
                 defaultDurationTicks={defaultDurationTicks}
                 onDefaultDurationTicksChange={setDefaultDurationTicks}
                 flowRateUnit={flowRateUnit}

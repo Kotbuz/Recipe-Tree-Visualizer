@@ -15,6 +15,7 @@ export type ProfileIntegrityReport = {
     source: string;
     source_path?: string | null;
     source_available: boolean;
+    needs_source_path: boolean;
     healthy: boolean;
     can_sync: boolean;
     issues: IntegrityIssue[];
@@ -32,89 +33,119 @@ export type ProfileSyncResult = {
     integrity: ProfileIntegrityReport;
 };
 
+function resolveSourcePath(pathOverride: string | undefined, storedPath: string): string {
+    const candidate = (pathOverride ?? storedPath).trim();
+    return candidate;
+}
+
 export function useProfileIntegrity(version: string, profileId?: string) {
     const [checking, setChecking] = useState(false);
     const [syncing, setSyncing] = useState(false);
     const [error, setError] = useState<string | null>(null);
     const [report, setReport] = useState<ProfileIntegrityReport | null>(null);
+    const [sourcePath, setSourcePath] = useState('');
 
-    const checkIntegrity = useCallback(async (): Promise<ProfileIntegrityReport | null> => {
-        if (!version || !profileId || profileId === 'default') {
-            setReport(null);
-            return null;
-        }
-
-        setChecking(true);
-        setError(null);
-        try {
-            const response = await fetch(
-                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/integrity`,
-            );
-            if (!response.ok) {
-                let detail = `HTTP ${response.status}`;
-                try {
-                    const body = (await response.json()) as { detail?: string };
-                    if (body.detail) {
-                        detail = body.detail;
-                    }
-                } catch {
-                    // ignore
-                }
-                throw new Error(detail);
+    const checkIntegrity = useCallback(
+        async (pathOverride?: string): Promise<ProfileIntegrityReport | null> => {
+            if (!version || !profileId || profileId === 'default') {
+                setReport(null);
+                return null;
             }
-            const data = (await response.json()) as ProfileIntegrityReport;
-            setReport(data);
-            return data;
-        } catch (err) {
-            const message =
-                err instanceof Error ? err.message : 'Не удалось проверить целостность профиля';
-            setError(message);
-            throw err;
-        } finally {
-            setChecking(false);
-        }
-    }, [version, profileId]);
 
-    const syncFromSource = useCallback(async (): Promise<ProfileSyncResult | null> => {
-        if (!version || !profileId || profileId === 'default') {
-            return null;
-        }
+            const activePath = resolveSourcePath(pathOverride, sourcePath);
+            const query = activePath
+                ? `?source_path=${encodeURIComponent(activePath)}`
+                : '';
 
-        setSyncing(true);
-        setError(null);
-        try {
-            const response = await fetch(
-                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/sync`,
-                { method: 'POST' },
-            );
-            if (!response.ok) {
-                let detail = `HTTP ${response.status}`;
-                try {
-                    const body = (await response.json()) as { detail?: string };
-                    if (body.detail) {
-                        detail = body.detail;
+            setChecking(true);
+            setError(null);
+            try {
+                const response = await fetch(
+                    `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/integrity${query}`,
+                );
+                if (!response.ok) {
+                    let detail = `HTTP ${response.status}`;
+                    try {
+                        const body = (await response.json()) as { detail?: string };
+                        if (body.detail) {
+                            detail = body.detail;
+                        }
+                    } catch {
+                        // ignore
                     }
-                } catch {
-                    // ignore
+                    throw new Error(detail);
                 }
-                throw new Error(detail);
+                const data = (await response.json()) as ProfileIntegrityReport;
+                if (data.source_path && !activePath) {
+                    setSourcePath(data.source_path);
+                }
+                setReport(data);
+                return data;
+            } catch (err) {
+                const message =
+                    err instanceof Error ? err.message : 'Не удалось проверить целостность профиля';
+                setError(message);
+                throw err;
+            } finally {
+                setChecking(false);
             }
-            const data = (await response.json()) as ProfileSyncResult;
-            setReport(data.integrity);
-            return data;
-        } catch (err) {
-            const message =
-                err instanceof Error ? err.message : 'Не удалось подтянуть файлы из источника';
-            setError(message);
-            throw err;
-        } finally {
-            setSyncing(false);
-        }
-    }, [version, profileId]);
+        },
+        [version, profileId, sourcePath],
+    );
+
+    const syncFromSource = useCallback(
+        async (pathOverride?: string): Promise<ProfileSyncResult | null> => {
+            if (!version || !profileId || profileId === 'default') {
+                return null;
+            }
+
+            const activePath = resolveSourcePath(pathOverride, sourcePath);
+
+            setSyncing(true);
+            setError(null);
+            try {
+                const response = await fetch(
+                    `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/sync`,
+                    {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(activePath ? { path: activePath } : {}),
+                    },
+                );
+                if (!response.ok) {
+                    let detail = `HTTP ${response.status}`;
+                    try {
+                        const body = (await response.json()) as { detail?: string };
+                        if (body.detail) {
+                            detail = body.detail;
+                        }
+                    } catch {
+                        // ignore
+                    }
+                    throw new Error(detail);
+                }
+                const data = (await response.json()) as ProfileSyncResult;
+                if (data.integrity.source_path) {
+                    setSourcePath(data.integrity.source_path);
+                }
+                setReport(data.integrity);
+                return data;
+            } catch (err) {
+                const message =
+                    err instanceof Error ? err.message : 'Не удалось подтянуть файлы из источника';
+                setError(message);
+                throw err;
+            } finally {
+                setSyncing(false);
+            }
+        },
+        [version, profileId, sourcePath],
+    );
 
     const clearReport = useCallback(() => {
         setReport(null);
         setError(null);
+        setSourcePath('');
     }, []);
 
     return {
@@ -122,6 +153,8 @@ export function useProfileIntegrity(version: string, profileId?: string) {
         syncing,
         error,
         report,
+        sourcePath,
+        setSourcePath,
         checkIntegrity,
         syncFromSource,
         clearReport,

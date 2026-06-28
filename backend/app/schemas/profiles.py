@@ -61,12 +61,17 @@ class IntegrityIssueResponse(BaseModel):
     message: str
 
 
+class ProfileSyncRequest(BaseModel):
+    path: str | None = Field(default=None, min_length=1)
+
+
 class ProfileIntegrityResponse(BaseModel):
     version: str
     profile_id: str
     source: ProfileSource
     source_path: str | None = None
     source_available: bool
+    needs_source_path: bool = False
     healthy: bool
     can_sync: bool
     issues: list[IntegrityIssueResponse]

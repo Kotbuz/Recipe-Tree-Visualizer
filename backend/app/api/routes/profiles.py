@@ -13,6 +13,7 @@ from app.schemas.profiles import (
     ProfileIntegrityResponse,
     ProfileListResponse,
     ProfileResponse,
+    ProfileSyncRequest,
     ProfileSyncResponse,
 )
 from app.services.profile_service import (
@@ -154,6 +155,7 @@ def _integrity_response(version: str, report) -> ProfileIntegrityResponse:
         source=report.source,  # type: ignore[arg-type]
         source_path=report.source_path,
         source_available=report.source_available,
+        needs_source_path=report.needs_source_path,
         healthy=report.healthy,
         can_sync=report.can_sync,
         issues=[
@@ -171,20 +173,37 @@ def _integrity_response(version: str, report) -> ProfileIntegrityResponse:
 
 
 @router.get("/{profile_id}/integrity", response_model=ProfileIntegrityResponse)
-def check_profile_integrity_route(version: str, profile_id: str) -> ProfileIntegrityResponse:
+def check_profile_integrity_route(
+    version: str,
+    profile_id: str,
+    source_path: str | None = Query(default=None, min_length=1),
+) -> ProfileIntegrityResponse:
     _require_version(version)
     try:
-        report = profile_service.check_integrity(version, profile_id)
+        report = profile_service.check_integrity(
+            version,
+            profile_id,
+            source_path_override=source_path,
+        )
     except ProfileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     return _integrity_response(version, report)
 
 
 @router.post("/{profile_id}/sync", response_model=ProfileSyncResponse)
-def sync_profile_from_source_route(version: str, profile_id: str) -> ProfileSyncResponse:
+def sync_profile_from_source_route(
+    version: str,
+    profile_id: str,
+    body: ProfileSyncRequest | None = None,
+) -> ProfileSyncResponse:
     _require_version(version)
+    override = body.path.strip() if body and body.path else None
     try:
-        stats, report = profile_service.sync_from_source(version, profile_id)
+        stats, report = profile_service.sync_from_source(
+            version,
+            profile_id,
+            source_path_override=override,
+        )
     except ProfileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
     except ProfileSyncSourceUnavailableError as exc:

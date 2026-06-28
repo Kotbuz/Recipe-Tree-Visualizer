@@ -13,7 +13,12 @@ from app.services.kubejs_import import (
     list_importable_kubejs_relative_paths,
     should_import_kubejs_relative_path,
 )
-from app.services.profile_storage import read_profile_meta
+from app.services.host_paths import (
+    format_stored_path_for_display,
+    host_path_unavailable_hint,
+    resolve_host_filesystem_path,
+)
+from app.services.profile_storage import count_mod_jars, read_profile_meta, update_profile_source_path
 from app.services.version_service import version_service
 
 
@@ -33,6 +38,7 @@ class IntegrityReport:
     source: str
     source_path: str | None
     source_available: bool
+    needs_source_path: bool
     healthy: bool
     can_sync: bool
     issues: tuple[IntegrityIssue, ...]
@@ -52,62 +58,159 @@ class ProfileSyncSourceUnavailableError(Exception):
     pass
 
 
-def check_profile_integrity(version: str, profile_id: str, *, mc_version: str) -> IntegrityReport:
+def check_profile_integrity(
+    version: str,
+    profile_id: str,
+    *,
+    mc_version: str,
+    source_path_override: str | None = None,
+) -> IntegrityReport:
     profile_dir = version_service.profile_dir(version, profile_id)
     meta = read_profile_meta(profile_dir)
     source = str(meta.get("source", "default"))
-    source_path_raw = meta.get("source_path")
-    source_archive_raw = meta.get("source_archive")
-
-    source_path = (
-        Path(str(source_path_raw)).expanduser().resolve()
-        if isinstance(source_path_raw, str) and source_path_raw.strip()
-        else None
-    )
-    source_archive = (
-        Path(str(source_archive_raw)).expanduser().resolve()
-        if isinstance(source_archive_raw, str) and source_archive_raw.strip()
-        else None
-    )
+    stored_path_raw = _meta_path_raw(meta.get("source_path"))
+    stored_archive_raw = _meta_path_raw(meta.get("source_archive"))
+    override_raw = source_path_override.strip() if source_path_override else None
+    active_path_raw = override_raw or stored_path_raw
 
     issues: list[IntegrityIssue] = []
+    issues.extend(_check_profile_local_structure(profile_dir))
+
     source_available = False
 
-    if source == "instance_path" and source_path is not None and source_path.is_dir():
-        source_available = True
-        roots = _detect_content_roots(source_path, mc_version=mc_version, is_zip=False)
-        issues.extend(_compare_directory_sources(profile_dir, source_path, roots))
-        issues.extend(_compare_kubejs_directory(profile_dir, source_path))
-    elif source == "modpack_zip" and source_archive is not None and source_archive.is_file():
-        source_available = True
-        with zipfile.ZipFile(source_archive) as archive:
-            names = archive.namelist()
-            roots = _detect_content_roots(names, mc_version=mc_version, is_zip=True)
-            issues.extend(_compare_zip_sources(profile_dir, archive, names, roots))
-            issues.extend(_compare_kubejs_zip(profile_dir, archive, names))
-    else:
-        issues.append(
-            IntegrityIssue(
-                category="source",
-                status="unavailable",
-                profile_count=0,
-                source_count=0,
-                missing_count=0,
-                message=_source_unavailable_message(source, source_path, source_archive),
+    if override_raw or source == "instance_path":
+        if active_path_raw is None:
+            if source == "instance_path":
+                issues.append(
+                    IntegrityIssue(
+                        category="source",
+                        status="unavailable",
+                        profile_count=0,
+                        source_count=0,
+                        missing_count=0,
+                        message="Путь к инстансу не сохранён — укажите папку при проверке или повторите импорт.",
+                    )
+                )
+        else:
+            source_path = resolve_host_filesystem_path(active_path_raw)
+            if source_path.is_dir():
+                source_available = True
+                roots = _detect_content_roots(source_path, mc_version=mc_version, is_zip=False)
+                issues.extend(_compare_directory_sources(profile_dir, source_path, roots))
+                issues.extend(_compare_kubejs_directory(profile_dir, source_path))
+            elif override_raw:
+                issues.append(
+                    IntegrityIssue(
+                        category="source",
+                        status="missing",
+                        profile_count=0,
+                        source_count=0,
+                        missing_count=0,
+                        message=f"Папка инстанса не найдена: {format_stored_path_for_display(override_raw)}",
+                    )
+                )
+            elif stored_path_raw:
+                display = format_stored_path_for_display(stored_path_raw)
+                hint = host_path_unavailable_hint(stored_path_raw)
+                message = f"Сохранённый путь инстанса недоступен: {display}"
+                if hint:
+                    message = f"{message}. {hint}"
+                issues.append(
+                    IntegrityIssue(
+                        category="source",
+                        status="unavailable",
+                        profile_count=0,
+                        source_count=0,
+                        missing_count=0,
+                        message=message,
+                    )
+                )
+    elif source == "modpack_zip" and stored_archive_raw:
+        source_archive = resolve_host_filesystem_path(stored_archive_raw)
+        if source_archive.is_file():
+            source_available = True
+            with zipfile.ZipFile(source_archive) as archive:
+                names = archive.namelist()
+                roots = _detect_content_roots(names, mc_version=mc_version, is_zip=True)
+                issues.extend(_compare_zip_sources(profile_dir, archive, names, roots))
+                issues.extend(_compare_kubejs_zip(profile_dir, archive, names))
+        else:
+            display = format_stored_path_for_display(stored_archive_raw)
+            hint = host_path_unavailable_hint(stored_archive_raw)
+            message = f"Сохранённый архив модпака не найден: {display}"
+            if hint:
+                message = f"{message}. {hint}"
+            issues.append(
+                IntegrityIssue(
+                    category="source",
+                    status="unavailable",
+                    profile_count=0,
+                    source_count=0,
+                    missing_count=0,
+                    message=message,
+                )
             )
-        )
 
-    healthy = all(issue.status == "ok" for issue in issues)
-    can_sync = source_available and any(issue.missing_count > 0 for issue in issues)
+    compare_missing = any(
+        issue.missing_count > 0 and issue.category not in {"source"}
+        for issue in issues
+    )
+    needs_source_path = source == "instance_path" and not source_available
+    healthy = all(
+        issue.status == "ok" for issue in issues if issue.category not in {"source"}
+    )
+    can_sync = compare_missing and source_available
+
     return IntegrityReport(
         profile_id=profile_id,
         source=source,
-        source_path=str(source_path) if source_path is not None else None,
+        source_path=format_stored_path_for_display(active_path_raw)
+        if active_path_raw is not None
+        else None,
         source_available=source_available,
+        needs_source_path=needs_source_path,
         healthy=healthy,
         can_sync=can_sync,
         issues=tuple(issues),
     )
+
+
+def _meta_path_raw(value: object) -> str | None:
+    if isinstance(value, str) and value.strip():
+        return value.strip()
+    return None
+
+
+def _check_profile_local_structure(profile_dir: Path) -> list[IntegrityIssue]:
+    issues: list[IntegrityIssue] = []
+
+    mod_count = count_mod_jars(profile_dir / "mods")
+    if mod_count == 0:
+        issues.append(
+            IntegrityIssue(
+                category="mods",
+                status="missing",
+                profile_count=0,
+                source_count=0,
+                missing_count=0,
+                message="В профиле нет модов (.jar)",
+            )
+        )
+
+    kubejs_count = len(list_importable_kubejs_relative_paths(profile_dir / "kubejs"))
+    if kubejs_count == 0:
+        issues.append(
+            IntegrityIssue(
+                category="kubejs",
+                status="missing",
+                profile_count=0,
+                source_count=0,
+                missing_count=0,
+                message="KubeJS в профиле отсутствует",
+            )
+        )
+
+    return issues
 
 
 def sync_profile_from_source(
@@ -115,30 +218,47 @@ def sync_profile_from_source(
     profile_id: str,
     *,
     mc_version: str,
+    source_path_override: str | None = None,
+    update_stored_path: bool = True,
 ) -> ProfileSyncStats:
-    report = check_profile_integrity(version, profile_id, mc_version=mc_version)
+    report = check_profile_integrity(
+        version,
+        profile_id,
+        mc_version=mc_version,
+        source_path_override=source_path_override,
+    )
     if not report.source_available:
-        raise ProfileSyncSourceUnavailableError(report.issues[0].message if report.issues else "Источник недоступен")
+        raise ProfileSyncSourceUnavailableError(
+            report.issues[0].message if report.issues else "Источник недоступен"
+        )
     if not report.can_sync:
         return ProfileSyncStats()
 
     profile_dir = version_service.profile_dir(version, profile_id)
     meta = read_profile_meta(profile_dir)
     source = str(meta.get("source", "default"))
-    source_path = Path(str(meta["source_path"])).expanduser().resolve()
-    source_archive = (
-        Path(str(meta["source_archive"])).expanduser().resolve()
-        if isinstance(meta.get("source_archive"), str)
-        else None
-    )
+    override_raw = source_path_override.strip() if source_path_override else None
+    stored_path_raw = _meta_path_raw(meta.get("source_path"))
+    active_path_raw = override_raw or stored_path_raw
 
     if source == "instance_path":
+        if active_path_raw is None:
+            raise ProfileSyncSourceUnavailableError("Путь к инстансу не задан")
+        source_path = resolve_host_filesystem_path(active_path_raw)
+        if not source_path.is_dir():
+            raise ProfileSyncSourceUnavailableError(f"Папка не найдена: {active_path_raw}")
+        if update_stored_path and override_raw:
+            update_profile_source_path(profile_dir, override_raw)
         roots = _detect_content_roots(source_path, mc_version=mc_version, is_zip=False)
         stats = _sync_from_directory(profile_dir, source_path, roots)
         kubejs_stats = _sync_kubejs_directory(profile_dir, source_path)
         return _merge_sync_stats(stats, kubejs_stats)
 
-    if source == "modpack_zip" and source_archive is not None:
+    stored_archive_raw = _meta_path_raw(meta.get("source_archive"))
+    if source == "modpack_zip" and stored_archive_raw:
+        source_archive = resolve_host_filesystem_path(stored_archive_raw)
+        if not source_archive.is_file():
+            raise ProfileSyncSourceUnavailableError(f"Архив не найден: {stored_archive_raw}")
         with zipfile.ZipFile(source_archive) as archive:
             names = archive.namelist()
             roots = _detect_content_roots(names, mc_version=mc_version, is_zip=True)
@@ -147,24 +267,6 @@ def sync_profile_from_source(
             return _merge_sync_stats(stats, kubejs_stats)
 
     raise ProfileSyncSourceUnavailableError("Источник синхронизации недоступен")
-
-
-def _source_unavailable_message(
-    source: str,
-    source_path: Path | None,
-    source_archive: Path | None,
-) -> str:
-    if source == "instance_path":
-        if source_path is None:
-            return "Путь к инстансу не сохранён — повторите импорт из папки Prism."
-        return f"Папка инстанса не найдена: {source_path}"
-    if source == "modpack_zip":
-        if source_archive is None:
-            return "Путь к архиву модпака не сохранён — повторите импорт .zip."
-        return f"Архив модпака не найден: {source_archive}"
-    if source == "default":
-        return "Профиль default не привязан к модпаку — проверка не требуется."
-    return "Для этого профиля нет сохранённого источника — повторите импорт модпака."
 
 
 def _compare_directory_sources(

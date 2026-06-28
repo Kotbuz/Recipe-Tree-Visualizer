@@ -331,6 +331,19 @@
     opacity: 0.5;
 }
 
+.mods-panel-integrity-source {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-top: 0.35rem;
+}
+
+.mods-panel-path {
+    word-break: break-all;
+    font-family: ui-monospace, monospace;
+    font-size: 0.68rem;
+}
+
 .mods-panel-path-row {
     display: grid;
     grid-template-columns: 1fr auto;

@@ -6,7 +6,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from app.main import create_app
-from app.services.profile_storage import write_profile_meta
+from app.services.profile_storage import read_profile_meta, write_profile_meta
 from app.services.version_service import version_service
 
 
@@ -69,6 +69,51 @@ def test_integrity_detects_missing_kubejs_and_sync_restores(
     assert (kubejs_dir / "server_scripts" / "crafting.js").is_file()
     assert (kubejs_dir / "server_scripts" / "custom_machinery" / "recycle.js").is_file()
     assert (profile_dir / "mods" / "mod-b.jar").is_file()
+
+
+def test_integrity_accepts_source_path_override(
+    client: TestClient,
+    isolated_minecraft_versions: Path,
+    tmp_path: Path,
+) -> None:
+    version = "1.7.10"
+    instance = tmp_path / "Techopolis"
+    _write_instance_with_kubejs(instance)
+
+    response = client.post(
+        f"/versions/{version}/profiles/import-path",
+        json={"path": str(instance), "name": "Techopolis Override"},
+    )
+    assert response.status_code == 200, response.text
+    profile_id = response.json()["profile"]["profile_id"]
+    profile_dir = version_service.profile_dir(version, profile_id)
+    meta = read_profile_meta(profile_dir)
+    assert meta.get("source_path") == str(instance)
+
+    import shutil
+
+    shutil.rmtree(profile_dir / "kubejs")
+
+    moved = tmp_path / "TechopolisMoved"
+    shutil.move(str(instance), str(moved))
+
+    integrity = client.get(
+        f"/versions/{version}/profiles/{profile_id}/integrity",
+        params={"source_path": str(moved)},
+    )
+    assert integrity.status_code == 200, integrity.text
+    payload = integrity.json()
+    assert payload["source_available"] is True
+    assert payload["needs_source_path"] is False
+    assert payload["can_sync"] is True
+
+    sync = client.post(
+        f"/versions/{version}/profiles/{profile_id}/sync",
+        json={"path": str(moved)},
+    )
+    assert sync.status_code == 200, sync.text
+    assert sync.json()["kubejs_server_scripts_synced"] >= 2
+    assert sync.json()["integrity"]["healthy"] is True
 
 
 def test_integrity_reports_unavailable_source_for_manual_profile(

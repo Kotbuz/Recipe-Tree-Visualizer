@@ -108,6 +108,17 @@ def update_profile_forge_version(profile_dir: Path, forge_version: str) -> None:
     )
 
 
+def update_profile_source_path(profile_dir: Path, source_path: str) -> None:
+    profile_dir.mkdir(parents=True, exist_ok=True)
+    meta = read_profile_meta(profile_dir)
+    meta["source_path"] = source_path.strip()
+    meta["source"] = "instance_path"
+    (profile_dir / PROFILE_META_FILENAME).write_text(
+        json.dumps(meta, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
 def read_profile_forge_version(profile_dir: Path) -> str | None:
     meta = read_profile_meta(profile_dir)
     value = meta.get("forge_version")
@@ -134,7 +145,11 @@ def resolve_profile_forge_build(
     meta = read_profile_meta(profile_dir)
     source_path = meta.get("source_path")
     if isinstance(source_path, str) and source_path.strip():
-        detected = detect_modpack_version_from_directory(Path(source_path))
+        from app.services.host_paths import resolve_host_filesystem_path
+
+        detected = detect_modpack_version_from_directory(
+            resolve_host_filesystem_path(source_path)
+        )
         if detected is not None and detected.forge_version:
             update_profile_forge_version(profile_dir, detected.forge_version)
             return detected.forge_version
