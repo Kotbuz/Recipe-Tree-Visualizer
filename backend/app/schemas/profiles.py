@@ -50,3 +50,35 @@ class ImportModpackResponse(BaseModel):
     kubejs_server_scripts_imported: int = 0
     kubejs_data_files_imported: int = 0
     kubejs_asset_files_imported: int = 0
+
+
+class IntegrityIssueResponse(BaseModel):
+    category: str
+    status: str
+    profile_count: int
+    source_count: int
+    missing_count: int
+    message: str
+
+
+class ProfileIntegrityResponse(BaseModel):
+    version: str
+    profile_id: str
+    source: ProfileSource
+    source_path: str | None = None
+    source_available: bool
+    healthy: bool
+    can_sync: bool
+    issues: list[IntegrityIssueResponse]
+
+
+class ProfileSyncResponse(BaseModel):
+    version: str
+    profile_id: str
+    jars_synced: int = 0
+    config_files_synced: int = 0
+    script_files_synced: int = 0
+    kubejs_server_scripts_synced: int = 0
+    kubejs_data_files_synced: int = 0
+    kubejs_asset_files_synced: int = 0
+    integrity: ProfileIntegrityResponse

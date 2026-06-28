@@ -440,3 +440,49 @@
     flex-direction: column;
     gap: 0.25rem;
 }
+
+.mods-panel-integrity {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    padding: 0.4rem;
+    border: 1px solid #cbd5e1;
+    background: #fff;
+}
+
+.mods-panel-integrity--ok {
+    border-color: #86efac;
+    background: #f0fdf4;
+}
+
+.mods-panel-integrity--warn {
+    border-color: #fcd34d;
+    background: #fffbeb;
+}
+
+.mods-panel-integrity-summary {
+    margin: 0;
+    color: #334155;
+    font-size: 0.72rem;
+    line-height: 1.35;
+}
+
+.mods-panel-integrity-list {
+    margin: 0;
+    padding-left: 1rem;
+    color: #475569;
+    font-size: 0.68rem;
+    line-height: 1.35;
+}
+
+.mods-panel-integrity-item--missing {
+    color: #b45309;
+}
+
+.mods-panel-integrity-item--unavailable {
+    color: #b91c1c;
+}
+
+.mods-panel-integrity-item--ok {
+    color: #166534;
+}

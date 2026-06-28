@@ -61,6 +61,20 @@ def should_import_kubejs_relative_path(relative: PurePosixPath) -> str | None:
     return None
 
 
+def list_importable_kubejs_relative_paths(kubejs_dir: Path) -> frozenset[PurePosixPath]:
+    if not kubejs_dir.is_dir():
+        return frozenset()
+
+    paths: set[PurePosixPath] = set()
+    for file_path in kubejs_dir.rglob("*"):
+        if not file_path.is_file():
+            continue
+        relative = PurePosixPath(*file_path.relative_to(kubejs_dir).parts)
+        if should_import_kubejs_relative_path(relative) is not None:
+            paths.add(relative)
+    return frozenset(paths)
+
+
 def copy_kubejs_from_directory(source_kubejs: Path, destination_kubejs: Path) -> KubejsImportStats:
     stats = KubejsImportStats()
     if not source_kubejs.is_dir():

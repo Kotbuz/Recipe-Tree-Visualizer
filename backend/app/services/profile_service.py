@@ -31,6 +31,13 @@ from app.services.kubejs_import import (
     copy_kubejs_from_zip_members,
     detect_kubejs_root,
 )
+from app.services.profile_integrity import (
+    IntegrityReport,
+    ProfileSyncSourceUnavailableError,
+    ProfileSyncStats,
+    check_profile_integrity,
+    sync_profile_from_source,
+)
 from app.services.modpack_version_detector import (
     detect_modpack_version_from_directory,
     detect_modpack_version_from_zip,
@@ -198,6 +205,23 @@ class ProfileService:
                 DEFAULT_PROFILE_ID,
             )
         logger.info("Deleted profile {} for version {}", profile_id, version)
+
+    def check_integrity(self, version: str, profile_id: str) -> IntegrityReport:
+        self.get_profile(version, profile_id)
+        return check_profile_integrity(version, profile_id, mc_version=version)
+
+    def sync_from_source(self, version: str, profile_id: str) -> tuple[ProfileSyncStats, IntegrityReport]:
+        self.get_profile(version, profile_id)
+        stats = sync_profile_from_source(version, profile_id, mc_version=version)
+        from app.services.mod_service import mod_service
+
+        mod_service.force_reload_version(
+            version,
+            profile_id=profile_id,
+            enrich_recipes=False,
+        )
+        report = check_profile_integrity(version, profile_id, mc_version=version)
+        return stats, report
 
     def import_modpack_zip(
         self,

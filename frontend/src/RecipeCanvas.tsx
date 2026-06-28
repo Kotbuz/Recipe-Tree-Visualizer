@@ -27,6 +27,7 @@ import { useProfiles } from './hooks/useProfiles';
 import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import { useVersionMaintenance } from './hooks/useVersionMaintenance';
+import { useProfileIntegrity } from './hooks/useProfileIntegrity';
 import {
     ingredientsCompatible,
     itemIdToDisplayName,
@@ -325,6 +326,20 @@ export default function RecipeCanvas() {
         reloadMods,
         clearRecipeExport,
     } = useVersionMaintenance(version, activeProfileId);
+    const {
+        checking: integrityChecking,
+        syncing: integritySyncing,
+        error: integrityError,
+        report: integrityReport,
+        checkIntegrity,
+        syncFromSource,
+        clearReport: clearIntegrityReport,
+    } = useProfileIntegrity(version, activeProfileId);
+
+    useEffect(() => {
+        clearIntegrityReport();
+    }, [activeProfileId, version, clearIntegrityReport]);
+
     const handleReloadMods = useCallback(async () => {
         try {
             const result = await reloadMods();
@@ -337,6 +352,25 @@ export default function RecipeCanvas() {
             // ошибка уже в maintenanceError
         }
     }, [reloadMods, refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const handleCheckIntegrity = useCallback(async () => {
+        try {
+            await checkIntegrity();
+        } catch {
+            // ошибка в integrityError
+        }
+    }, [checkIntegrity]);
+
+    const handleSyncIntegrity = useCallback(async () => {
+        try {
+            await syncFromSource();
+            await refreshMods();
+            await reloadCatalog();
+            await handleReloadMods();
+        } catch {
+            // ошибка в integrityError
+        }
+    }, [syncFromSource, refreshMods, reloadCatalog, handleReloadMods]);
 
     const handleClearRecipeExport = useCallback(async () => {
         const confirmed = window.confirm(
@@ -2024,6 +2058,13 @@ export default function RecipeCanvas() {
                 clearingRecipeExport={maintenanceClearing}
                 maintenanceError={maintenanceError}
                 showRecipeMaintenance={isJvmExportVersion}
+                showIntegrityTools={activeProfileId !== 'default'}
+                onCheckIntegrity={() => void handleCheckIntegrity()}
+                onSyncIntegrity={() => void handleSyncIntegrity()}
+                integrityChecking={integrityChecking}
+                integritySyncing={integritySyncing}
+                integrityError={integrityError}
+                integrityReport={integrityReport}
                 defaultDurationTicks={defaultDurationTicks}
                 onDefaultDurationTicksChange={setDefaultDurationTicks}
                 flowRateUnit={flowRateUnit}

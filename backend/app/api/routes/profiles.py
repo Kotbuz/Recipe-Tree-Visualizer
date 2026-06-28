@@ -9,8 +9,11 @@ from app.schemas.profiles import (
     CreateProfileRequest,
     ImportModpackResponse,
     ImportPathRequest,
+    IntegrityIssueResponse,
+    ProfileIntegrityResponse,
     ProfileListResponse,
     ProfileResponse,
+    ProfileSyncResponse,
 )
 from app.services.profile_service import (
     InvalidInstancePathError,
@@ -20,6 +23,7 @@ from app.services.profile_service import (
     ProfileNotFoundError,
     profile_service,
 )
+from app.services.profile_integrity import ProfileSyncSourceUnavailableError
 from app.services.profile_storage import validate_profile_id
 from app.services.version_service import version_service
 
@@ -140,6 +144,62 @@ def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResp
         kubejs_server_scripts_imported=stats.kubejs_server_scripts_imported,
         kubejs_data_files_imported=stats.kubejs_data_files_imported,
         kubejs_asset_files_imported=stats.kubejs_asset_files_imported,
+    )
+
+
+def _integrity_response(version: str, report) -> ProfileIntegrityResponse:
+    return ProfileIntegrityResponse(
+        version=version,
+        profile_id=report.profile_id,
+        source=report.source,  # type: ignore[arg-type]
+        source_path=report.source_path,
+        source_available=report.source_available,
+        healthy=report.healthy,
+        can_sync=report.can_sync,
+        issues=[
+            IntegrityIssueResponse(
+                category=issue.category,
+                status=issue.status,
+                profile_count=issue.profile_count,
+                source_count=issue.source_count,
+                missing_count=issue.missing_count,
+                message=issue.message,
+            )
+            for issue in report.issues
+        ],
+    )
+
+
+@router.get("/{profile_id}/integrity", response_model=ProfileIntegrityResponse)
+def check_profile_integrity_route(version: str, profile_id: str) -> ProfileIntegrityResponse:
+    _require_version(version)
+    try:
+        report = profile_service.check_integrity(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return _integrity_response(version, report)
+
+
+@router.post("/{profile_id}/sync", response_model=ProfileSyncResponse)
+def sync_profile_from_source_route(version: str, profile_id: str) -> ProfileSyncResponse:
+    _require_version(version)
+    try:
+        stats, report = profile_service.sync_from_source(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ProfileSyncSourceUnavailableError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return ProfileSyncResponse(
+        version=version,
+        profile_id=profile_id,
+        jars_synced=stats.jars_synced,
+        config_files_synced=stats.config_files_synced,
+        script_files_synced=stats.script_files_synced,
+        kubejs_server_scripts_synced=stats.kubejs_server_scripts_synced,
+        kubejs_data_files_synced=stats.kubejs_data_files_synced,
+        kubejs_asset_files_synced=stats.kubejs_asset_files_synced,
+        integrity=_integrity_response(version, report),
     )
 
 

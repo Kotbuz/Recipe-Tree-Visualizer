@@ -4,6 +4,7 @@ import type { FlowRateUnit } from '../types/production';
 import { FLOW_RATE_UNIT_LABELS } from '../utils/flowRate';
 import type { ModSummary } from '../hooks/useMods';
 import type { ProfileSummary } from '../hooks/useProfiles';
+import type { ProfileIntegrityReport } from '../hooks/useProfileIntegrity';
 import '../styles/ModsPanel.css';
 
 type ModsPanelProps = {
@@ -43,6 +44,13 @@ type ModsPanelProps = {
     clearingRecipeExport?: boolean;
     maintenanceError?: string | null;
     showRecipeMaintenance?: boolean;
+    onCheckIntegrity?: () => void;
+    onSyncIntegrity?: () => void;
+    integrityChecking?: boolean;
+    integritySyncing?: boolean;
+    integrityError?: string | null;
+    integrityReport?: ProfileIntegrityReport | null;
+    showIntegrityTools?: boolean;
     defaultDurationTicks: number;
     onDefaultDurationTicksChange: (value: number) => void;
     flowRateUnit: FlowRateUnit;
@@ -148,6 +156,13 @@ export default function ModsPanel({
     clearingRecipeExport = false,
     maintenanceError = null,
     showRecipeMaintenance = false,
+    onCheckIntegrity,
+    onSyncIntegrity,
+    integrityChecking = false,
+    integritySyncing = false,
+    integrityError = null,
+    integrityReport = null,
+    showIntegrityTools = false,
     defaultDurationTicks,
     onDefaultDurationTicksChange,
     flowRateUnit,
@@ -167,9 +182,11 @@ export default function ModsPanel({
     const importDisabled = profileImporting || versionsEmpty;
     const activeProfile = profiles.find((p) => p.profile_id === activeProfileId);
     const hasTools =
+        showIntegrityTools ||
         (missingDependencyCount > 0 && Boolean(onDownloadDependencies)) ||
         Boolean(onReloadMods) ||
         (showRecipeMaintenance && Boolean(onClearRecipeExport));
+    const integrityBusy = integrityChecking || integritySyncing;
 
     const canDeleteActive =
         Boolean(onProfileDelete) && activeProfileId !== 'default' && !versionsEmpty;
@@ -361,12 +378,15 @@ export default function ModsPanel({
                 <p className="mods-panel-hint">Установите версию Minecraft, затем импортируйте модпак.</p>
             ) : null}
 
-            {(profilesError || modsError || maintenanceError || calculationError) && (
+            {(profilesError || modsError || maintenanceError || integrityError || calculationError) && (
                 <div className="mods-panel-errors">
                     {profilesError ? <div className="mods-panel-error">{profilesError}</div> : null}
                     {modsError ? <div className="mods-panel-error">{modsError}</div> : null}
                     {maintenanceError ? (
                         <div className="mods-panel-error">{maintenanceError}</div>
+                    ) : null}
+                    {integrityError ? (
+                        <div className="mods-panel-error">{integrityError}</div>
                     ) : null}
                     {calculationError ? (
                         <div className="mods-panel-error" role="alert">
@@ -573,11 +593,83 @@ export default function ModsPanel({
                 {hasTools ? (
                     <PanelSection
                         title="Сервис"
-                        summary={missingDependencyCount > 0 ? `деп. ${missingDependencyCount}` : undefined}
+                        summary={
+                            integrityReport && !integrityReport.healthy
+                                ? 'есть пробелы'
+                                : missingDependencyCount > 0
+                                  ? `деп. ${missingDependencyCount}`
+                                  : undefined
+                        }
                         open={toolsOpen}
                         onToggle={() => setToolsOpen((v) => !v)}
                     >
                         <div className="mods-panel-tools">
+                            {showIntegrityTools && onCheckIntegrity ? (
+                                <>
+                                    <button
+                                        type="button"
+                                        className="mods-panel-btn mods-panel-btn--block"
+                                        disabled={
+                                            versionsEmpty ||
+                                            integrityBusy ||
+                                            reloadingMods ||
+                                            clearingRecipeExport
+                                        }
+                                        onClick={onCheckIntegrity}
+                                    >
+                                        {integrityChecking
+                                            ? 'Проверка…'
+                                            : 'Проверить целостность'}
+                                    </button>
+                                    {integrityReport ? (
+                                        <div
+                                            className={`mods-panel-integrity${
+                                                integrityReport.healthy
+                                                    ? ' mods-panel-integrity--ok'
+                                                    : ' mods-panel-integrity--warn'
+                                            }`}
+                                        >
+                                            <p className="mods-panel-integrity-summary">
+                                                {integrityReport.healthy
+                                                    ? 'Все нужные файлы на месте.'
+                                                    : 'Не всё из модпака подгружено в профиль.'}
+                                            </p>
+                                            <ul className="mods-panel-integrity-list">
+                                                {integrityReport.issues.map((issue) => (
+                                                    <li
+                                                        key={issue.category}
+                                                        className={`mods-panel-integrity-item mods-panel-integrity-item--${issue.status}`}
+                                                    >
+                                                        {issue.message}
+                                                    </li>
+                                                ))}
+                                            </ul>
+                                            {integrityReport.can_sync && onSyncIntegrity ? (
+                                                <button
+                                                    type="button"
+                                                    className="mods-panel-btn mods-panel-btn--primary mods-panel-btn--block"
+                                                    disabled={
+                                                        integrityBusy ||
+                                                        reloadingMods ||
+                                                        clearingRecipeExport
+                                                    }
+                                                    onClick={onSyncIntegrity}
+                                                >
+                                                    {integritySyncing
+                                                        ? 'Подтягивание…'
+                                                        : 'Подтянуть недостающее'}
+                                                </button>
+                                            ) : null}
+                                            {!integrityReport.source_available ? (
+                                                <p className="mods-panel-hint">
+                                                    Источник недоступен — повторите импорт из папки
+                                                    инстанса или .zip.
+                                                </p>
+                                            ) : null}
+                                        </div>
+                                    ) : null}
+                                </>
+                            ) : null}
                             {missingDependencyCount > 0 && onDownloadDependencies ? (
                                 <button
                                     type="button"
