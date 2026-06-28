@@ -13,6 +13,12 @@ from app.recipes.ingredient import IngredientKind
 from app.recipes.item_ref import normalize_item_ref, parse_item_needle
 from app.recipes.models import ProviderResult, Recipe, RecipeIO
 from app.recipes.providers.kubejs_data import KubejsDataProvider
+from app.recipes.providers.kubejs_scripts import (
+    KubejsScriptProvider,
+    apply_script_changes_to_recipes,
+    clear_kubejs_script_cache,
+    load_kubejs_script_changes,
+)
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
@@ -42,6 +48,7 @@ _default_vanilla_provider = VanillaJarProvider()
 _default_mod_provider = ModJarProvider()
 _default_synthetic_provider = SyntheticProvider()
 _default_kubejs_provider = KubejsDataProvider()
+_default_kubejs_script_provider = KubejsScriptProvider()
 
 
 @lru_cache(maxsize=32)
@@ -459,11 +466,13 @@ class RecipeManager:
         mod_provider: ModJarProvider | None = None,
         synthetic_provider: SyntheticProvider | None = None,
         kubejs_provider: KubejsDataProvider | None = None,
+        kubejs_script_provider: KubejsScriptProvider | None = None,
     ) -> None:
         self._vanilla_provider = vanilla_provider or _default_vanilla_provider
         self._mod_provider = mod_provider or _default_mod_provider
         self._synthetic_provider = synthetic_provider or _default_synthetic_provider
         self._kubejs_provider = kubejs_provider or _default_kubejs_provider
+        self._kubejs_script_provider = kubejs_script_provider or _default_kubejs_script_provider
         self._mod_loads: dict[str, _ModLoad] = {}
         self._version_recipe_cache: dict[tuple[str, bool, bool], tuple[Recipe, ...]] = {}
         self._version_bundle_cache: dict[tuple[str, bool, bool], _VersionRecipeBundle] = {}
@@ -625,6 +634,9 @@ class RecipeManager:
         for recipe in self._load_kubejs_recipes(mc_version, resolved_profile):
             merged[recipe.id] = recipe
 
+        script_result = self._load_kubejs_script_changes(mc_version, resolved_profile)
+        apply_script_changes_to_recipes(merged, script_result)
+
         recipes = tuple(merged.values())
         self._version_recipe_cache[cache_key] = recipes
         return recipes
@@ -754,12 +766,18 @@ class RecipeManager:
             return _load_kubejs_version_recipes(mc_version, profile_id)
         return tuple(self._kubejs_provider.load(mc_version, profile_id).recipes)
 
+    def _load_kubejs_script_changes(self, mc_version: str, profile_id: str):
+        if self._kubejs_script_provider is _default_kubejs_script_provider:
+            return load_kubejs_script_changes(mc_version, profile_id)
+        return self._kubejs_script_provider.load(mc_version, profile_id)
+
     def _clear_caches(self) -> None:
         self._version_recipe_cache.clear()
         self._version_bundle_cache.clear()
         _load_vanilla_version_recipes.cache_clear()
         _load_synthetic_version_recipes.cache_clear()
         _load_kubejs_version_recipes.cache_clear()
+        clear_kubejs_script_cache()
         get_version_ingredient_registry.cache_clear()
         get_profile_ingredient_registry.cache_clear()
         from app.recipes.loaders.item_catalog_loader import _parse_ae2_lang, load_item_catalog
