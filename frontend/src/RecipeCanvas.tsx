@@ -171,7 +171,11 @@ const formatDurationLabel = (ticks: number) => {
     return seconds >= 10 ? `${ticks}t` : `${seconds.toFixed(1)}s`;
 };
 
-const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
+const isTerminalNode = (node: RecipeNode) =>
+    node.kind === 'chest' ||
+    node.kind === 'outpost' ||
+    node.kind === 'factory_in' ||
+    node.kind === 'factory_out';
 
 const getChestPassthroughItem = (node: RecipeNode) =>
     node.inputs[0]?.name || node.outputs[0]?.name || '';
@@ -315,19 +319,68 @@ const isSlotCompatible = (
 const resolveSlotLabel = (item: RecipeItem): string =>
     item.item_id ? itemIdToDisplayName(item.item_id) : item.name;
 
+/** Ключ предмета для дедупликации внешних слотов фабрики. */
+const itemKey = (item: RecipeItem) =>
+    `${(item.item_id ?? '').toLowerCase()}|${item.metadata ?? ''}|${item.name.toLowerCase()}`;
+
+/** Предметы портов заданного вида во вложенном холсте (только с заданным предметом). */
+const collectPortItems = (
+    subNodes: RecipeNode[],
+    portKind: 'factory_in' | 'factory_out',
+): RecipeItem[] =>
+    subNodes
+        .filter((node) => node.kind === portKind)
+        .map((node) => (portKind === 'factory_in' ? node.outputs[0] : node.inputs[0]))
+        .filter((item): item is RecipeItem => Boolean(item && item.name));
+
+/** Добавляет недостающие предметы, сохраняя порядок и индексы существующих слотов. */
+const appendMissingItems = (existing: RecipeItem[], additions: RecipeItem[]): RecipeItem[] => {
+    const result = [...existing];
+    const seen = new Set(existing.filter((item) => item.name).map(itemKey));
+    for (const item of additions) {
+        const key = itemKey(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(item);
+    }
+    return result;
+};
+
 /**
- * Сворачивает рабочий холст фабрики обратно в её ноду.
- * В фазе 1 — только сохраняет subCanvas; проброс портов на внешние слоты
- * добавляется в фазе 2 (reconcileFactoryPorts).
+ * Пробрасывает предметы портов Вход/Выход на внешние стороны ноды-фабрики.
+ * Добавление без удаления/переупорядочивания — внешние связи (ссылаются на
+ * itemIndex) не ломаются.
+ */
+const reconcileFactoryPorts = (node: RecipeNode): RecipeNode => {
+    if (!node.subCanvas) {
+        return node;
+    }
+    return {
+        ...node,
+        inputs: appendMissingItems(
+            node.inputs,
+            collectPortItems(node.subCanvas.nodes, 'factory_in'),
+        ),
+        outputs: appendMissingItems(
+            node.outputs,
+            collectPortItems(node.subCanvas.nodes, 'factory_out'),
+        ),
+    };
+};
+
+/**
+ * Сворачивает рабочий холст фабрики обратно в её ноду: сохраняет subCanvas и
+ * пробрасывает предметы портов на внешние слоты.
  */
 const applyFactorySubCanvas = (
     node: RecipeNode,
     subNodes: RecipeNode[],
     subConnections: RecipeConnection[],
-): RecipeNode => ({
-    ...node,
-    subCanvas: { nodes: subNodes, connections: subConnections },
-});
+): RecipeNode =>
+    reconcileFactoryPorts({
+        ...node,
+        subCanvas: { nodes: subNodes, connections: subConnections },
+    });
 
 export default function RecipeCanvas() {
     const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
@@ -503,6 +556,14 @@ export default function RecipeCanvas() {
     const [navStack, setNavStack] = useState<CanvasFrame[]>([]);
     const [labelEditNodeId, setLabelEditNodeId] = useState<string | null>(null);
     const [labelEditValue, setLabelEditValue] = useState('');
+    const [portPicker, setPortPicker] = useState<{
+        portKind: 'factory_in' | 'factory_out';
+        x: number;
+        y: number;
+        screenX: number;
+        screenY: number;
+        candidates: RecipeItem[];
+    } | null>(null);
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
     const [, setLayoutTick] = useState(0);
 
@@ -673,7 +734,11 @@ export default function RecipeCanvas() {
         (nodeId: string, slotType: SlotType, itemIndex: number, itemName: string) => {
             setNodes((current) =>
                 current.map((node) => {
-                    if (node.id !== nodeId || node.kind !== 'outpost') return node;
+                    const isFillable =
+                        node.kind === 'outpost' ||
+                        node.kind === 'factory_in' ||
+                        node.kind === 'factory_out';
+                    if (node.id !== nodeId || !isFillable) return node;
 
                     const items = slotType === 'input' ? node.inputs : node.outputs;
                     const item = items[itemIndex];
@@ -1062,6 +1127,39 @@ export default function RecipeCanvas() {
         return node;
     };
 
+    /**
+     * Создаёт порт-ноду вложенного холста.
+     * factory_in — источник (отдаёт ресурс внутрь через output);
+     * factory_out — приёмник (собирает результат через input).
+     */
+    const createPortNode = (
+        portKind: 'factory_in' | 'factory_out',
+        x: number,
+        y: number,
+        item?: RecipeItem,
+    ) => {
+        const slot: RecipeItem = item
+            ? {
+                  name: item.name,
+                  amount: item.amount ?? 1,
+                  item_id: item.item_id,
+                  icon_id: item.icon_id,
+                  metadata: item.metadata,
+              }
+            : { name: '', amount: 1 };
+        const node: RecipeNode = {
+            id: `${portKind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: portKind,
+            x,
+            y,
+            machineName: PORT_LABELS[portKind],
+            inputs: portKind === 'factory_out' ? [slot] : [],
+            outputs: portKind === 'factory_in' ? [slot] : [],
+        };
+        setNodes((current) => [...current, node]);
+        return node;
+    };
+
     const connectItemDragToTerminal = (
         menu: ItemRecipeContextMenu,
         terminalNode: RecipeNode,
@@ -1156,6 +1254,55 @@ export default function RecipeCanvas() {
             prefilledSlot,
         );
         connectItemDragToTerminal(contextMenu, terminalNode);
+        closeMenu();
+    };
+
+    /** Внешние предметы родительской фабрики, ещё не представленные портом данного вида. */
+    const factoryPortCandidates = (
+        portKind: 'factory_in' | 'factory_out',
+    ): RecipeItem[] => {
+        const parentFrame = navStack[navStack.length - 1];
+        if (!parentFrame) {
+            return [];
+        }
+        const parentFactory = parentFrame.nodes.find(
+            (entry) => entry.id === parentFrame.outpostId,
+        );
+        if (!parentFactory) {
+            return [];
+        }
+        const externalItems = (
+            portKind === 'factory_in' ? parentFactory.inputs : parentFactory.outputs
+        ).filter((item) => item.name);
+
+        const existingKeys = new Set(
+            collectPortItems(nodes, portKind).map(itemKey),
+        );
+        return externalItems.filter((item) => !existingKeys.has(itemKey(item)));
+    };
+
+    const handlePortNodeClick = (portKind: 'factory_in' | 'factory_out') => {
+        if (!contextMenu || (contextMenu.type !== 'recipe' && contextMenu.type !== 'item-recipe')) {
+            return;
+        }
+        const coords = placeNodeAtScreen(contextMenu.screenX, contextMenu.screenY);
+        if (!coords) return;
+
+        const candidates = factoryPortCandidates(portKind);
+        if (candidates.length === 0) {
+            createPortNode(portKind, coords.x, coords.y);
+            closeMenu();
+            return;
+        }
+
+        setPortPicker({
+            portKind,
+            x: coords.x,
+            y: coords.y,
+            screenX: contextMenu.screenX,
+            screenY: contextMenu.screenY,
+            candidates,
+        });
         closeMenu();
     };
 
@@ -1991,6 +2138,24 @@ export default function RecipeCanvas() {
                                         >
                                             Фабрика
                                         </button>
+                                        {navStack.length > 0 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="recipe-context-terminal recipe-context-terminal--port"
+                                                    onClick={() => handlePortNodeClick('factory_in')}
+                                                >
+                                                    Вход в фабрику
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="recipe-context-terminal recipe-context-terminal--port"
+                                                    onClick={() => handlePortNodeClick('factory_out')}
+                                                >
+                                                    Выход из фабрики
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                     <div className="recipe-context-main">
                                         <div className="recipe-context-main-title">Рецепты</div>
@@ -2117,6 +2282,59 @@ export default function RecipeCanvas() {
                                     onClick={() => openTargetEditor(contextMenu)}
                                 >
                                     Задать целевой выход…
+                                </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {portPicker &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal recipe-context-modal--transparent"
+                            onClick={() => setPortPicker(null)}
+                        >
+                            <div
+                                className="recipe-node-context-panel"
+                                style={{ left: portPicker.screenX, top: portPicker.screenY }}
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-context-sidebar-title">
+                                    {portPicker.portKind === 'factory_in'
+                                        ? 'Внести ресурс'
+                                        : 'Вывести ресурс'}
+                                </div>
+                                {portPicker.candidates.map((item) => (
+                                    <button
+                                        key={itemKey(item)}
+                                        type="button"
+                                        className="recipe-node-context-item"
+                                        onClick={() => {
+                                            createPortNode(
+                                                portPicker.portKind,
+                                                portPicker.x,
+                                                portPicker.y,
+                                                item,
+                                            );
+                                            setPortPicker(null);
+                                        }}
+                                    >
+                                        {item.name}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    className="recipe-node-context-item"
+                                    onClick={() => {
+                                        createPortNode(
+                                            portPicker.portKind,
+                                            portPicker.x,
+                                            portPicker.y,
+                                        );
+                                        setPortPicker(null);
+                                    }}
+                                >
+                                    Пустой порт
                                 </button>
                             </div>
                         </div>,
