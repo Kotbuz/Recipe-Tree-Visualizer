@@ -10,7 +10,8 @@ WORKDIR /opt/rtv-recipe-exporter-neo
 
 RUN mkdir -p baked-mods dist
 
-# Build on host first; image still starts without jar (bake will fail with clear log).
+# Build mod jar on host first (see README). dist/ must exist (at least .gitkeep);
+# without recipe-exporter-neo-1.21.1.jar the image starts but in-game export will fail.
 COPY docker/run-neo-export.sh docker/neoforge_launcher.py docker/export-server.py docker/entrypoint.sh ./
 COPY dist/ dist/
 RUN sed -i 's/\r$//' run-neo-export.sh entrypoint.sh export-server.py \

@@ -11,18 +11,24 @@
 
 ## Сборка мода
 
+Нужен **JDK 21**. Если в `versions/1.21.1` нет `gradlew`, один раз сгенерируйте wrapper:
+
 ```powershell
 cd recipe-exporter-neo/versions/1.21.1
+gradle wrapper
 .\gradlew.bat build
 ```
 
 JAR: `recipe-exporter-neo/dist/recipe-exporter-neo-1.21.1.jar`
 
+Без JAR `docker compose build` всё равно пройдёт (в репозитории есть `dist/.gitkeep`), но
+экспорт рецептов из игры не заработает, пока не соберёте мод.
+
 ## Docker
 
 ```powershell
-docker compose --profile neo-recipes build recipe-exporter-neo
-docker compose --profile neo-recipes up -d
+docker compose build recipe-exporter-neo
+docker compose up -d
 ```
 
 В `.env` backend:
