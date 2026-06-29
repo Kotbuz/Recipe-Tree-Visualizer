@@ -2,9 +2,9 @@ import json
 import zipfile
 from pathlib import Path
 
+import pytest
 from app.recipes.loaders.tag_loader import TagLoader, normalize_tag_id
 from app.recipes.registry import IngredientRegistry
-import pytest
 
 
 def test_normalize_tag_id() -> None:
@@ -83,8 +83,12 @@ def test_ingredient_registry_matches_stone_tags() -> None:
         pytest.skip("26.2.jar is not present")
 
     registry = get_version_ingredient_registry("26.2")
-    assert registry.ingredient_matches("tag:minecraft:stone_crafting_materials", "minecraft:cobblestone")
-    assert registry.ingredient_matches("minecraft:cobblestone", "tag:minecraft:stone_crafting_materials")
+    assert registry.ingredient_matches(
+        "tag:minecraft:stone_crafting_materials", "minecraft:cobblestone"
+    )
+    assert registry.ingredient_matches(
+        "minecraft:cobblestone", "tag:minecraft:stone_crafting_materials"
+    )
     assert registry.ingredient_matches("tag:minecraft:stone_crafting_materials", "cobblestone")
     assert registry.ingredient_matches("stone tool materials", "minecraft:cobblestone")
 

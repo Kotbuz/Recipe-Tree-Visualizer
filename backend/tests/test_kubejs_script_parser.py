@@ -1,11 +1,8 @@
 from __future__ import annotations
 
-import json
-import shutil
 from pathlib import Path
 
 import pytest
-
 from app.recipes.manager import recipe_manager
 from app.recipes.models import Recipe, RecipeIO
 from app.recipes.providers.kubejs_script_parser import (
@@ -129,7 +126,8 @@ def test_kubejs_script_provider_builds_recipes(isolated_minecraft_versions: Path
     assert shaped.recipe_type == RecipeType.CRAFTING_SHAPED
     assert shaped.outputs[0].item_id == "framedblocks:framed_cube"
     assert any(skip.recipe_id.startswith("techopolis:ae2") for skip in result.skipped) or any(
-        recipe.id == "techopolis:ae2/crystallized_canola_seed_inscriber" for recipe in result.recipes
+        recipe.id == "techopolis:ae2/crystallized_canola_seed_inscriber"
+        for recipe in result.recipes
     )
 
 

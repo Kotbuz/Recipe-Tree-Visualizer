@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import contextlib
 import sys
 
 
@@ -19,10 +20,8 @@ def _pick_folder_tkinter(*, title: str) -> str | None:
 
     root = tk.Tk()
     root.withdraw()
-    try:
+    with contextlib.suppress(tk.TclError):
         root.attributes("-topmost", True)
-    except tk.TclError:
-        pass
     selected = filedialog.askdirectory(title=title, mustexist=True)
     root.destroy()
     if not selected:

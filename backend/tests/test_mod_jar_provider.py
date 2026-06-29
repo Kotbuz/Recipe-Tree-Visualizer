@@ -1,11 +1,10 @@
-import pytest
 from pathlib import Path
 
+import pytest
 from app.parser.jar_reader import JarReader
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.services.mod_service import mod_service
-import pytest
 
 NATURES_COMPASS_JAR = Path(__file__).parent / "fixtures" / "NaturesCompass-26.2-3.3.0-neoforge.jar"
 STORAGE_DRAWERS_JAR = (
@@ -22,7 +21,9 @@ def test_mod_jar_provider_loads_natures_compass() -> None:
     assert len(result.recipes) == 2
     assert result.skipped == []
 
-    shaped = next(recipe for recipe in result.recipes if recipe.id == "naturescompass:natures_compass")
+    shaped = next(
+        recipe for recipe in result.recipes if recipe.id == "naturescompass:natures_compass"
+    )
     assert shaped.mod_id == "naturescompass"
     assert shaped.source == "mod:naturescompass"
     assert {part.item_id: part.amount for part in shaped.inputs} == {
@@ -57,8 +58,7 @@ def test_mod_service_registers_recipes_in_manager() -> None:
     mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")
 
     assert any(
-        recipe.id == "naturescompass:natures_compass"
-        for recipe in recipe_manager.get_mod_recipes()
+        recipe.id == "naturescompass:natures_compass" for recipe in recipe_manager.get_mod_recipes()
     )
 
     summaries = recipe_manager.search_summaries(

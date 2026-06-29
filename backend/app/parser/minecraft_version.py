@@ -3,9 +3,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-_BRACKET_RANGE = re.compile(
-    r"^\s*([\[\(])\s*([^,\]\)]*)\s*,\s*([^,\]\)]*)\s*([\]\)])\s*$"
-)
+_BRACKET_RANGE = re.compile(r"^\s*([\[\(])\s*([^,\]\)]*)\s*,\s*([^,\]\)]*)\s*([\]\)])\s*$")
 _FABRIC_CONSTRAINT = re.compile(
     r"^\s*(>=|<=|>|<|=)?\s*(\d+(?:\.\d+)*)\s*(?:\s+(>=|<=|>|<)\s*(\d+(?:\.\d+)*))?\s*$"
 )

@@ -8,14 +8,28 @@ from pathlib import Path, PurePosixPath
 from loguru import logger
 
 from app.schemas.profiles import ProfileSource, ProfileSummary
+from app.services.host_paths import resolve_host_filesystem_path
+from app.services.kubejs_import import (
+    KubejsImportStats,
+    copy_kubejs_from_directory,
+    copy_kubejs_from_zip_members,
+    detect_kubejs_root,
+)
+from app.services.modpack_version_detector import (
+    detect_modpack_version_from_directory,
+    detect_modpack_version_from_zip,
+)
+from app.services.profile_integrity import (
+    IntegrityReport,
+    ProfileSyncStats,
+    check_profile_integrity,
+    sync_profile_from_source,
+)
 from app.services.profile_storage import (
     DEFAULT_PROFILE_ID,
     count_mod_jars,
     ensure_profile_subdirs,
-    migrate_legacy_version_layout,
-    normalize_profile_id,
     prune_orphan_profile_dirs,
-    read_active_profile_id,
     read_profile_meta,
     remove_profile_dir,
     slug_profile_id,
@@ -25,24 +39,6 @@ from app.services.profile_storage import (
     write_profile_meta,
 )
 from app.services.version_service import version_service
-from app.services.kubejs_import import (
-    KubejsImportStats,
-    copy_kubejs_from_directory,
-    copy_kubejs_from_zip_members,
-    detect_kubejs_root,
-)
-from app.services.host_paths import resolve_host_filesystem_path
-from app.services.profile_integrity import (
-    IntegrityReport,
-    ProfileSyncSourceUnavailableError,
-    ProfileSyncStats,
-    check_profile_integrity,
-    sync_profile_from_source,
-)
-from app.services.modpack_version_detector import (
-    detect_modpack_version_from_directory,
-    detect_modpack_version_from_zip,
-)
 
 
 class ProfileNotFoundError(Exception):
@@ -78,8 +74,7 @@ class ModpackVersionMismatchError(Exception):
         self.modpack_name = modpack_name
         label = f"«{modpack_name}»" if modpack_name else "Модпак"
         super().__init__(
-            f"{label} предназначен для Minecraft {detected_version}, "
-            f"а не для {requested_version}"
+            f"{label} предназначен для Minecraft {detected_version}, а не для {requested_version}"
         )
 
 
@@ -183,10 +178,10 @@ class ProfileService:
             raise ProfileNotFoundError(version, profile_id)
 
         active_id = version_service.get_active_profile_id(version)
-        from app.services.profile_storage import profile_storage_key
-        from app.services.mod_service import mod_service
-        from app.recipes.manager import recipe_manager
         from app.indexer.mod_registry import registry
+        from app.recipes.manager import recipe_manager
+        from app.services.mod_service import mod_service
+        from app.services.profile_storage import profile_storage_key
 
         storage_key = profile_storage_key(version, profile_id)
         logger.info("Deleting profile {} for version {}", profile_id, version)
@@ -401,9 +396,7 @@ class ProfileService:
             active=profile_id == active_id,
             loader=str(meta["loader"]) if isinstance(meta.get("loader"), str) else None,
             forge_version=(
-                str(meta["forge_version"])
-                if isinstance(meta.get("forge_version"), str)
-                else None
+                str(meta["forge_version"]) if isinstance(meta.get("forge_version"), str) else None
             ),
         )
 
@@ -600,8 +593,7 @@ class ProfileService:
             return sum(
                 1
                 for name in names
-                if (name == prefix or name.startswith(f"{prefix}/"))
-                and not name.endswith("/")
+                if (name == prefix or name.startswith(f"{prefix}/")) and not name.endswith("/")
             )
         root = source / prefix  # type: ignore[operator]
         if not root.is_dir():

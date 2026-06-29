@@ -18,7 +18,7 @@ class DiscoveredRecipeFile:
     filename: str
 
 
-from app.core.recipe_layout import recipe_layout_for_version
+from app.core.recipe_layout import recipe_layout_for_version  # noqa: E402  # circular import guard
 
 
 def jar_recipe_patterns_for_version(version: str) -> tuple[re.Pattern[str], ...]:

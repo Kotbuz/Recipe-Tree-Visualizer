@@ -86,7 +86,9 @@ class RecipeExportStatus:
         }
 
 
-from app.parser.jar_meta import guess_mod_id_from_jar_filename as _guess_mod_id_from_jar_filename
+from app.parser.jar_meta import (  # noqa: E402  # circular import guard
+    guess_mod_id_from_jar_filename as _guess_mod_id_from_jar_filename,
+)
 
 
 def _guess_mod_id(jar_name: str) -> str:
@@ -99,12 +101,7 @@ def _jar_provides_dependency(jar_name: str, dependency: str) -> bool:
     if dep_lower in jar_normalized:
         return True
     if "|" in dependency:
-        prefix = (
-            dependency.split("|", 1)[0]
-            .lower()
-            .replace("_", "")
-            .replace("-", "")
-        )
+        prefix = dependency.split("|", 1)[0].lower().replace("_", "").replace("-", "")
         if prefix and prefix in jar_normalized:
             return True
     for alias in _DEPENDENCY_SATISFIED_BY.get(dep_lower, ()):
@@ -236,7 +233,11 @@ def _latest_crash_report_text(version: str, forge_build: str | None = None) -> s
     for crash_dir in _forge_crash_report_candidates(version, forge_build=forge_build):
         if not crash_dir.is_dir():
             continue
-        reports.extend(sorted(crash_dir.glob("crash-*.txt"), key=lambda path: path.stat().st_mtime, reverse=True))
+        reports.extend(
+            sorted(
+                crash_dir.glob("crash-*.txt"), key=lambda path: path.stat().st_mtime, reverse=True
+            )
+        )
     if not reports:
         return ""
     return reports[0].read_text(encoding="utf-8", errors="replace")
@@ -295,7 +296,8 @@ def _extract_forge_loader_errors(
     loaded_forge = _extract_loaded_forge_version(text)
     if required_forge and loaded_forge and loaded_forge != required_forge:
         add(
-            f"Модпак требует Forge {required_forge} или новее, а экспортёр запущен на {loaded_forge}. "
+            f"Модпак требует Forge {required_forge} или новее, "
+            f"а экспортёр запущен на {loaded_forge}. "
             "Перезапустите экспорт после установки нужной версии Forge."
         )
     elif required_forge and not loaded_forge:
@@ -308,7 +310,8 @@ def _extract_forge_loader_errors(
         add(
             f"Forge не запустился: отсутствует мод «{mod_id}». "
             "CurseForge zip содержит только overrides (часть jar), лаунчер ставит все моды "
-            "из manifest. Импортируйте папку инстанса после установки модпака или добавьте jar вручную."
+            "из manifest. Импортируйте папку инстанса после установки модпака "
+            "или добавьте jar вручную."
         )
 
     for match in _LOADER_EXCEPTION.finditer(text):
@@ -342,7 +345,8 @@ def _extract_forge_loader_errors(
     if "appeng.util.Platform" in text and "NoSuchFieldError" in text:
         add(
             "AE2 rv3-beta-6 несовместим с Gradle dev-сервером (Forge 10.13.4.1614); "
-            "нужен universal Forge 10.13.4.1448. Перезапустите экспорт — бэкенд установит его автоматически."
+            "нужен universal Forge 10.13.4.1448. "
+            "Перезапустите экспорт — бэкенд установит его автоматически."
         )
 
     if (
@@ -351,8 +355,10 @@ def _extract_forge_loader_errors(
         or "net.minecraft.client.resources" in text
     ):
         add(
-            "Клиентский мод (Resource Loader, Custom Main Menu и т.п.) несовместим с headless JVM-экспортом. "
-            "Такие jar автоматически исключаются при экспорте — нажмите «Перезагрузить моды и рецепты»."
+            "Клиентский мод (Resource Loader, Custom Main Menu и т.п.) "
+            "несовместим с headless JVM-экспортом. "
+            "Такие jar автоматически исключаются при экспорте — "
+            "нажмите «Перезагрузить моды и рецепты»."
         )
 
     return messages[:8]

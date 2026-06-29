@@ -2,7 +2,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from app.recipes.loaders.recipe_paths import recipe_layout_for_version
 from app.services.jvm_recipe_export_service import JvmRecipeExportError, JvmRecipeExportService
 from app.services.mod_service import mod_service

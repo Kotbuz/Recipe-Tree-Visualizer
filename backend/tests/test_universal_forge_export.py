@@ -1,14 +1,13 @@
+import io
+import json
+import zipfile
 from pathlib import Path
 from unittest.mock import MagicMock, patch
-import io
-import zipfile
 
-import json
 import pytest
-
 from app.services.jvm_recipe_export_service import (
-    JvmRecipeExportService,
     _LEGACY_FORGE_VERSION,
+    JvmRecipeExportService,
 )
 
 
@@ -126,20 +125,14 @@ def test_universal_forge_export_invokes_production_forge(
 
 def test_should_skip_forge_export_mod() -> None:
     service = JvmRecipeExportService()
-    assert service._should_skip_forge_export_mod(
-        "ForgeMicroblock-1.7.10-1.2.0.347-universal.jar"
-    )
+    assert service._should_skip_forge_export_mod("ForgeMicroblock-1.7.10-1.2.0.347-universal.jar")
     assert not service._should_skip_forge_export_mod(
         "ForgeMultipart-1.7.10-1.2.0.347-universal.jar"
     )
     assert service._should_skip_forge_export_mod("commons-compress-1.8.1.jar")
     assert not service._should_skip_forge_export_mod("IC2Classic-1.7.10-1.2.6.jar")
-    assert service._is_client_only_forge_export_mod(
-        "ResourceLoader-MC1.7.10-1.3.jar"
-    )
-    assert service._is_client_only_forge_export_mod(
-        "CustomMainMenu-MC1.7.10-1.9.2.jar"
-    )
+    assert service._is_client_only_forge_export_mod("ResourceLoader-MC1.7.10-1.3.jar")
+    assert service._is_client_only_forge_export_mod("CustomMainMenu-MC1.7.10-1.9.2.jar")
 
 
 def test_universal_forge_export_skips_deploader_problem_mods(
@@ -183,7 +176,5 @@ def test_universal_forge_export_skips_deploader_problem_mods(
         )
 
     assert (forge_dir / "mods" / "ForgeMultipart-1.7.10-1.2.0.347-universal.jar").is_file()
-    assert not (
-        forge_dir / "mods" / "ForgeMicroblock-1.7.10-1.2.0.347-universal.jar"
-    ).exists()
+    assert not (forge_dir / "mods" / "ForgeMicroblock-1.7.10-1.2.0.347-universal.jar").exists()
     assert (forge_dir / "mods" / "IC2Classic-1.7.10-1.2.6.jar").is_file()

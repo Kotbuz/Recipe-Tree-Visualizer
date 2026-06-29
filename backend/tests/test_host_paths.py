@@ -4,7 +4,6 @@ import os
 from pathlib import Path, PureWindowsPath
 
 import pytest
-
 from app.services.host_paths import (
     format_stored_path_for_display,
     map_windows_path_to_container,

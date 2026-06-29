@@ -34,9 +34,7 @@ class ProductionCalculator:
         )
 
         if not stages:
-            raise GraphValidationError(
-                f"No recipe in graph produces {request.target_item_id}"
-            )
+            raise GraphValidationError(f"No recipe in graph produces {request.target_item_id}")
 
         total_raw_items = self._collect_raw_items(engine, stages)
         logger.info(

@@ -19,10 +19,10 @@ def _write_minimal_client_jar(path: Path) -> None:
         archive.writestr(
             "data/minecraft/recipe/stick.json",
             (
-                '{"type":"minecraft:crafting_shaped","pattern":["A","A"],'
-                '"key":{"A":{"item":"minecraft:oak_planks"}},'
-                '"result":{"item":"minecraft:stick","count":4}}'
-            ).encode(),
+                b'{"type":"minecraft:crafting_shaped","pattern":["A","A"],'
+                b'"key":{"A":{"item":"minecraft:oak_planks"}},'
+                b'"result":{"item":"minecraft:stick","count":4}}'
+            ),
         )
         archive.writestr("padding.txt", b"0" * 2048)
 

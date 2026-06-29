@@ -58,7 +58,8 @@ class ModDependencyService:
 
         if recipe_layout_for_version(version) != "jvm":
             raise ModDependencyDownloadError(
-                f"Automatic dependency download is only supported for JVM layout versions (got {version})"
+                "Automatic dependency download is only supported "
+                f"for JVM layout versions (got {version})"
             )
 
         missing = _collect_missing_dependencies(version, profile_id=profile_id)
@@ -184,13 +185,15 @@ class ModDependencyService:
     def _download_file(self, url: str, destination: Path) -> None:
         timeout = httpx.Timeout(self._settings.mod_dependency_download_timeout_seconds)
         headers = {"User-Agent": self._settings.curseforge_user_agent}
-        with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-            with client.stream("GET", url, headers=headers) as response:
-                response.raise_for_status()
-                destination.parent.mkdir(parents=True, exist_ok=True)
-                with destination.open("wb") as handle:
-                    for chunk in response.iter_bytes():
-                        handle.write(chunk)
+        with (
+            httpx.Client(timeout=timeout, follow_redirects=True) as client,
+            client.stream("GET", url, headers=headers) as response,
+        ):
+            response.raise_for_status()
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            with destination.open("wb") as handle:
+                for chunk in response.iter_bytes():
+                    handle.write(chunk)
 
     def _build_resolver(self) -> ModDependencyResolver:
         timeout = self._settings.mod_dependency_download_timeout_seconds

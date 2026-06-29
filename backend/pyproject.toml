@@ -33,6 +33,25 @@ src = ["app", "tests"]
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B", "SIM"]
 
+# FastAPI использует вызовы Query/Depends/Path/Body как значения по умолчанию —
+# это идиоматично и безопасно, поэтому исключаем их из проверки B008.
+[tool.ruff.lint.per-file-ignores]
+# Тесты содержат дословные многострочные KubeJS-фикстуры (реальные строки из модов),
+# которые нельзя переносить без искажения тестовых данных.
+"tests/test_kubejs_custom_machinery_parser.py" = ["E501"]
+"tests/test_kubejs_script_parser.py" = ["E501"]
+
+[tool.ruff.lint.flake8-bugbear]
+extend-immutable-calls = [
+    "fastapi.Query",
+    "fastapi.Depends",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Form",
+    "fastapi.File",
+    "fastapi.Header",
+]
+
 [tool.mypy]
 python_version = "3.13"
 strict = true

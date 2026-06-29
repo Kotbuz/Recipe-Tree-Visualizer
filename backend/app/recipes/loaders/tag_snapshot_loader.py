@@ -4,7 +4,7 @@ import json
 from functools import lru_cache
 from pathlib import Path
 
-from app.recipes.loaders.tag_loader import TagLoader, normalize_tag_id
+from app.recipes.loaders.tag_loader import normalize_tag_id
 
 _MOD_MATERIAL_PREFIXES: frozenset[str] = frozenset(
     {
