@@ -68,7 +68,7 @@
 
 .recipe-canvas-breadcrumbs {
     position: absolute;
-    top: 0.75rem;
+    top: calc(var(--topbar-inset, 0.5rem) + var(--topbar-height, 2.25rem) + 0.4rem);
     left: 0.75rem;
     z-index: 5;
     display: flex;
