@@ -13,10 +13,11 @@ export type RecipeSearchParams = {
     usesItem?: string;
     focusItem?: string;
     focusRole?: RecipeFocusRole;
+    focusMetadata?: number;
     includeMods?: boolean;
 };
 
-export function useRecipeSearch(version: string, params: RecipeSearchParams) {
+export function useRecipeSearch(version: string, profileId: string | undefined, params: RecipeSearchParams) {
     const [recipes, setRecipes] = useState<RecipeSummary[]>([]);
     const [loading, setLoading] = useState(false);
 
@@ -43,9 +44,15 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         const controller = new AbortController();
         setLoading(true);
 
+        const debounceMs =
+            focusItem && focusRole && !trimmedQuery ? 0 : RECIPE_SEARCH_DEBOUNCE_MS;
+
         const timeoutId = window.setTimeout(() => {
             const url = new URL('/recipes', window.location.origin);
             url.searchParams.set('version', version);
+            if (profileId) {
+                url.searchParams.set('profile_id', profileId);
+            }
             url.searchParams.set('limit', String(RECIPE_SEARCH_LIMIT));
             url.searchParams.set('include_mods', String(includeMods));
 
@@ -55,6 +62,9 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
             if (focusItem && focusRole) {
                 url.searchParams.set('focus_item', focusItem);
                 url.searchParams.set('focus_role', focusRole);
+                if (params.focusMetadata != null) {
+                    url.searchParams.set('focus_metadata', String(params.focusMetadata));
+                }
             } else {
                 if (producesItem) {
                     url.searchParams.set('produces_item', producesItem);
@@ -80,7 +90,7 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
                         setLoading(false);
                     }
                 });
-        }, RECIPE_SEARCH_DEBOUNCE_MS);
+        }, debounceMs);
 
         return () => {
             window.clearTimeout(timeoutId);
@@ -88,10 +98,12 @@ export function useRecipeSearch(version: string, params: RecipeSearchParams) {
         };
     }, [
         version,
+        profileId,
         params.enabled,
         params.query,
         params.focusItem,
         params.focusRole,
+        params.focusMetadata,
         params.producesItem,
         params.usesItem,
         params.includeMods,

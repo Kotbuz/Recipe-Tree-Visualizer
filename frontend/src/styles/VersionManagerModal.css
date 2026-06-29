@@ -1,0 +1,144 @@
+.version-manager-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 50;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    background: var(--ui-overlay);
+}
+
+.version-manager-modal {
+    width: min(720px, 96vw);
+    max-height: min(80vh, 760px);
+    display: flex;
+    flex-direction: column;
+    gap: 0.85rem;
+    padding: 1rem 1.1rem 1.1rem;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-bg);
+    box-shadow: var(--ui-shadow);
+}
+
+.version-manager-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--ui-border-subtle);
+}
+
+.version-manager-title {
+    margin: 0;
+    font-size: 1.2rem;
+    color: var(--ui-text-body);
+}
+
+.version-manager-close {
+    width: 2rem;
+    height: 2rem;
+    border: 1px solid var(--ui-border);
+    background: var(--ui-bg);
+    color: var(--ui-text-muted);
+    font-size: 1.25rem;
+    line-height: 1;
+    cursor: pointer;
+}
+
+.version-manager-hint {
+    margin: 0;
+    color: var(--ui-text-muted);
+    font-size: 0.9rem;
+    line-height: 1.45;
+}
+
+.version-manager-search {
+    width: 100%;
+    padding: 0.6rem 0.7rem;
+    border: 1px solid var(--ui-border);
+    font-size: 0.92rem;
+    background: var(--ui-bg);
+}
+
+.version-manager-error {
+    padding: 0.55rem 0.65rem;
+    border: 1px solid #fca5a5;
+    background: #fef2f2;
+    color: #b91c1c;
+    font-size: 0.85rem;
+}
+
+.version-manager-status {
+    color: var(--ui-text-muted);
+    font-size: 0.9rem;
+}
+
+.version-manager-list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    border: 1px solid var(--ui-border-subtle);
+}
+
+.version-manager-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    padding: 0.7rem 0.8rem;
+    border-bottom: 1px solid var(--ui-border-subtle);
+    background: var(--ui-bg-muted);
+}
+
+.version-manager-item:last-child {
+    border-bottom: none;
+}
+
+.version-manager-item-main {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+}
+
+.version-manager-item-version {
+    font-weight: 700;
+    color: var(--ui-text-body);
+}
+
+.version-manager-item-badge {
+    padding: 0.1rem 0.45rem;
+    border: 1px solid var(--ui-border-subtle);
+    background: #e5e7eb;
+    color: #4b5563;
+    font-size: 0.78rem;
+    font-weight: 600;
+}
+
+.version-manager-item-badge--installed {
+    border-color: #86efac;
+    background: #dcfce7;
+    color: #166534;
+}
+
+.version-manager-install {
+    padding: 0.45rem 0.75rem;
+    border: 1px solid var(--ui-primary-border);
+    background: var(--ui-primary);
+    color: #ffffff;
+    font-weight: 600;
+    font-size: 0.85rem;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.version-manager-install:disabled {
+    opacity: 0.55;
+    cursor: not-allowed;
+}

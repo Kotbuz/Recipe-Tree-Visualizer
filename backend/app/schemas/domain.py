@@ -12,6 +12,7 @@ class RecipeIO(BaseModel):
     item_id: str
     amount: float = Field(gt=0)
     chance: float | None = Field(default=None, ge=0, le=1)
+    metadata: int | None = None
 
 
 class Item(BaseModel):
@@ -45,6 +46,10 @@ class ModSummary(BaseModel):
     mod_id: str
     name: str
     loader: str = "unknown"
+    minecraft_version: str | None = None
+    minecraft_version_range: str | None = None
+    jar_filename: str | None = None
+    compatible: bool | None = None
     item_count: int = 0
     recipe_count: int = 0
     machine_count: int = 0

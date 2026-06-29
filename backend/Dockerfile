@@ -13,16 +13,16 @@ RUN uv sync --frozen --no-dev
 
 COPY backend/app ./app
 COPY backend/data ./data
-RUN mkdir -p logs data/mods
+RUN mkdir -p logs
 
 ENV PYTHONUNBUFFERED=1
 ENV LOG_DIR=logs
-ENV MODS_STORAGE_DIR=data/mods
 ENV MINECRAFT_VERSIONS_DIR=/app/MinecraftVersions
+ENV MINECRAFT_DEFAULT_VERSION=26.2
 
 EXPOSE 8000
 
-HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+HEALTHCHECK --interval=10s --timeout=5s --start-period=90s --retries=6 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 CMD ["uv", "run", "uvicorn", "app.main:app", "--host", "0.0.0.0", "--port", "8000"]

@@ -25,10 +25,20 @@ class VanillaIconService:
     def __init__(self) -> None:
         self._settings = get_settings()
 
-    def collect_required_icon_ids(self, version: str) -> list[str]:
-        return collect_recipe_icon_ids(version)
+    def collect_required_icon_ids(
+        self,
+        version: str,
+        *,
+        profile_id: str | None = None,
+    ) -> list[str]:
+        return collect_recipe_icon_ids(version, profile_id=profile_id)
 
-    def ensure_icons(self, version: str) -> VanillaIconRenderResult:
+    def ensure_icons(
+        self,
+        version: str,
+        *,
+        profile_id: str | None = None,
+    ) -> VanillaIconRenderResult:
         jar_path = version_service.resolve_jar_path(version)
         if jar_path is None:
             logger.warning("Vanilla jar not found for version {}", version)
@@ -42,9 +52,9 @@ class VanillaIconService:
                 errors=[f"Jar not found for version {version}"],
             )
 
-        required_ids = self.collect_required_icon_ids(version)
-        version_service.ensure_rendered_icons_dir(version)
-        existing_ids = version_service.list_rendered_icon_ids(version)
+        required_ids = self.collect_required_icon_ids(version, profile_id=profile_id)
+        version_service.ensure_rendered_icons_dir(version, profile_id=profile_id)
+        existing_ids = version_service.list_rendered_icon_ids(version, profile_id=profile_id)
         missing_ids = [icon_id for icon_id in required_ids if icon_id not in existing_ids]
 
         if not missing_ids:
@@ -64,7 +74,8 @@ class VanillaIconService:
             )
 
         renderer_jar = version_service.renderer_jar_path(version)
-        output_dir = version_service.renderer_output_dir(version)
+        output_dir = version_service.renderer_output_dir(version, profile_id=profile_id)
+        mod_jars = version_service.renderer_mod_jar_paths(version, profile_id=profile_id)
         if renderer_jar is None:
             return VanillaIconRenderResult(
                 version=version,
@@ -84,7 +95,13 @@ class VanillaIconService:
         for offset in range(0, len(missing_ids), batch_size):
             batch = missing_ids[offset : offset + batch_size]
             try:
-                payload = self._render_batch(renderer_jar, output_dir, batch, version)
+                payload = self._render_batch(
+                    renderer_jar,
+                    output_dir,
+                    batch,
+                    version,
+                    mod_jar_paths=mod_jars,
+                )
             except httpx.HTTPError as exc:
                 message = f"Renderer request failed: {exc}"
                 logger.error(message)
@@ -120,16 +137,20 @@ class VanillaIconService:
         output_dir: str,
         icon_ids: list[str],
         version: str,
+        *,
+        mod_jar_paths: list[str] | None = None,
     ) -> dict[str, object]:
-        body = {
+        body: dict[str, object] = {
             "jar_path": jar_path,
             "output_dir": output_dir,
             "filter": icon_ids,
             "width": self._settings.renderer_icon_size,
             "height": self._settings.renderer_icon_size,
             "no_animation": True,
-            "minecraft_version": self._settings.minecraft_render_version,
+            "minecraft_version": self._minecraft_render_version(version),
         }
+        if mod_jar_paths:
+            body["mod_jar_paths"] = mod_jar_paths
         url = f"{self._settings.renderer_url.rstrip('/')}/render"
         timeout = httpx.Timeout(self._settings.renderer_timeout_seconds)
         with httpx.Client(timeout=timeout) as client:
@@ -139,6 +160,13 @@ class VanillaIconService:
             if not isinstance(payload, dict):
                 raise httpx.HTTPError("Renderer returned non-object JSON")
             return payload
+
+    @staticmethod
+    def _minecraft_render_version(version: str) -> str:
+        parts = version.split(".")
+        if len(parts) >= 2 and parts[0].isdigit() and int(parts[0]) <= 1:
+            return version
+        return get_settings().minecraft_render_version
 
 
 vanilla_icon_service = VanillaIconService()

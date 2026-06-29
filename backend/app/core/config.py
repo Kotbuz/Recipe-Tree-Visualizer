@@ -15,7 +15,10 @@ class Settings(BaseSettings):
     api_port: int = 8000
     log_level: str = "INFO"
     log_dir: str = "logs"
-    mods_storage_dir: str = "data/mods"
+    mods_auto_load_on_startup: bool = True
+    mod_upload_max_bytes: int = 256 * 1024 * 1024
+    minecraft_default_version: str = "26.2"
+    version_catalog_cache_ttl_seconds: int = 86_400
     minecraft_versions_dir: str = "../MinecraftVersions"
     renderer_url: str = "http://localhost:3001"
     renderer_minecraft_root: str = "/data/minecraft"
@@ -24,6 +27,15 @@ class Settings(BaseSettings):
     renderer_batch_size: int = 25
     renderer_timeout_seconds: float = 600.0
     vanilla_icon_render_on_startup: bool = True
+    recipe_exporter_url: str = ""
+    recipe_exporter_mode: str = "auto"
+    recipe_exporter_timeout_seconds: float = 1800.0
+    curseforge_api_key: str = ""
+    curseforge_user_agent: str = (
+        "Recipe-Tree-Visualizer/1.0 (https://github.com/Kotbuz/Recipe-Tree-Visualizer)"
+    )
+    mod_dependency_download_timeout_seconds: float = 120.0
+    enable_local_folder_picker: bool = True
     cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
 
     @property

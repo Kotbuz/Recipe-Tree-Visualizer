@@ -2,6 +2,28 @@
     box-sizing: border-box;
 }
 
+:root {
+    --ui-radius: 0;
+    --ui-border: #94a3b8;
+    --ui-border-light: #cbd5e1;
+    --ui-border-subtle: #e2e8f0;
+    --ui-shadow: 2px 2px 0 #cbd5e1;
+    --ui-shadow-sm: 1px 1px 0 #cbd5e1;
+    --ui-bg: #ffffff;
+    --ui-bg-muted: #f8fafc;
+    --ui-bg-page: #eef2ff;
+    --ui-bg-toolbar: #ffffff;
+    --ui-text: #0f172a;
+    --ui-text-body: #111827;
+    --ui-text-muted: #64748b;
+    --ui-primary: #4338ca;
+    --ui-primary-border: #4338ca;
+    --ui-primary-hover: #3730a3;
+    --ui-overlay: rgba(15, 23, 42, 0.45);
+    --ui-font: Inter, system-ui, sans-serif;
+    --ui-focus-ring: 0 0 0 2px #a5b4fc;
+}
+
 html,
 body,
 #root {
@@ -12,7 +34,15 @@ body,
 }
 
 body {
-    font-family: Inter, system-ui, sans-serif;
-    background: #f5f7fb;
-    color: #111827;
+    font-family: var(--ui-font);
+    background: var(--ui-bg-page);
+    color: var(--ui-text-body);
+}
+
+button,
+input,
+select,
+textarea {
+    border-radius: var(--ui-radius);
+    font-family: inherit;
 }

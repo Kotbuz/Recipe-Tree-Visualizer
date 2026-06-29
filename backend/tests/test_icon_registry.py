@@ -8,6 +8,14 @@ def _require_vanilla_jar(version: str = "26.2") -> None:
         pytest.skip(f"No vanilla jar found for version {version}")
 
 
+def test_icon_id_for_mod_item_uses_namespace_prefix() -> None:
+    from app.recipes.registry import IngredientRegistry
+
+    registry = IngredientRegistry()
+    ingredient = registry.register("alltheores:quartz_dust")
+    assert ingredient.icon_id == "alltheores_quartz_dust"
+
+
 def test_icon_id_for_item_uses_registry() -> None:
     _require_vanilla_jar()
     assert icon_id_for_ingredient("minecraft:oak_planks", "26.2") == "oak_planks"

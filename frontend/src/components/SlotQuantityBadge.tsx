@@ -15,7 +15,7 @@ export default function SlotQuantityBadge({ amount, slotType }: SlotQuantityBadg
             className={`slot-quantity-badge slot-quantity-badge--${slotType}`}
             aria-label={`Количество: ${amount}`}
         >
-            ×{formatAmount(amount)}
+            {formatAmount(amount)}
         </span>
     );
 }

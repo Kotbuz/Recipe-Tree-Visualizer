@@ -1,15 +1,21 @@
 import fs from 'node:fs/promises';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import AdmZip from 'adm-zip';
 import { prepareAssets, renderBlock, renderItem } from 'block-model-renderer';
 import express from 'express';
 
 const PORT = Number(process.env.PORT ?? 3001);
+const PROJECT_ROOT = path.resolve(fileURLToPath(new URL('.', import.meta.url)), '..');
+const LOCAL_MINECRAFT_ROOT = path.resolve(PROJECT_ROOT, 'MinecraftVersions');
 const ALLOWED_ROOTS = (process.env.ALLOWED_ROOTS ?? '/data/mods,/data/rendered,/data/minecraft')
     .split(',')
     .map((entry) => path.resolve(entry.trim()))
     .filter(Boolean);
+if (!ALLOWED_ROOTS.some((root) => root === LOCAL_MINECRAFT_ROOT)) {
+    ALLOWED_ROOTS.push(LOCAL_MINECRAFT_ROOT);
+}
 const RENDER_TIMEOUT_MS = Number(process.env.RENDER_TIMEOUT_MS ?? 600_000);
 const DEFAULT_MINECRAFT_VERSION = process.env.MINECRAFT_VERSION ?? '1.21.4';
 
@@ -138,6 +144,7 @@ async function renderSingleIcon(assets, iconName, outputPath, width, height, min
 
 async function renderIcons({
     jarPath,
+    modJarPaths,
     outputDir,
     filter,
     width,
@@ -145,12 +152,14 @@ async function renderIcons({
     noAnimation,
     minecraftVersion,
 }) {
-    const handler = jarPath ? createJarAssets(jarPath) : null;
-    if (!handler) {
-        throw new Error('jar_path is required');
+    const handlers = [createJarAssets(jarPath)];
+    for (const extraJar of modJarPaths ?? []) {
+        if (typeof extraJar === 'string' && extraJar.trim()) {
+            handlers.push(createJarAssets(extraJar));
+        }
     }
 
-    const assets = await prepareAssets([handler]);
+    const assets = await prepareAssets(handlers);
     const names = normalizeFilter(filter);
     if (!names) {
         throw new Error('filter must contain at least one icon name');
@@ -224,6 +233,7 @@ app.post('/render', async (request, response) => {
         const renderResult = await withTimeout(
             renderIcons({
                 jarPath,
+                modJarPaths: request.body?.mod_jar_paths,
                 outputDir,
                 filter: request.body?.filter,
                 width: request.body?.width,

@@ -3,6 +3,7 @@ export interface RecipeItem {
     amount: number;
     item_id?: string;
     icon_id?: string;
+    metadata?: number;
 }
 
 export interface RecipeSummary {

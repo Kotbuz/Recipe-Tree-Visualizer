@@ -13,6 +13,24 @@ def test_normalize_tag_id() -> None:
     assert normalize_tag_id("#minecraft:planks") == "tag:minecraft:planks"
 
 
+def test_tag_loader_parses_nested_tag_paths(tmp_path: Path) -> None:
+    jar_path = tmp_path / "nested-tags.jar"
+    tag_json = json.dumps({"values": ["minecraft:redstone"]}).encode("utf-8")
+    cheap_glass_json = json.dumps({"values": ["minecraft:glass"]}).encode("utf-8")
+
+    with zipfile.ZipFile(jar_path, "w") as archive:
+        archive.writestr("data/c/tags/item/dusts/redstone.json", tag_json)
+        archive.writestr("data/c/tags/item/glass_blocks/cheap.json", cheap_glass_json)
+
+    loader = TagLoader()
+    tags = loader.load_from_jar(jar_path)
+
+    assert "tag:c:dusts/redstone" in tags
+    assert "minecraft:redstone" in tags["tag:c:dusts/redstone"]
+    assert "tag:c:glass_blocks/cheap" in tags
+    assert "minecraft:glass" in tags["tag:c:glass_blocks/cheap"]
+
+
 def test_tag_loader_parses_values(tmp_path: Path) -> None:
     jar_path = tmp_path / "tags.jar"
     tag_json = json.dumps(

@@ -1,6 +1,6 @@
 from fastapi import APIRouter
 
-from app.api.routes import graph, health, items, mods, recipes, versions
+from app.api.routes import graph, health, items, modpack, mods, profiles, recipes, versions
 
 api_router = APIRouter()
 api_router.include_router(health.router)
@@ -9,3 +9,5 @@ api_router.include_router(items.router)
 api_router.include_router(graph.router)
 api_router.include_router(recipes.router)
 api_router.include_router(versions.router)
+api_router.include_router(modpack.router)
+api_router.include_router(profiles.router)

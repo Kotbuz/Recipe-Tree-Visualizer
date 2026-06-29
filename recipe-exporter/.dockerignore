@@ -1,0 +1,6 @@
+versions/**/.gradle
+versions/**/build
+versions/**/run
+versions/**/.idea
+**/__pycache__
+**/*.pyc

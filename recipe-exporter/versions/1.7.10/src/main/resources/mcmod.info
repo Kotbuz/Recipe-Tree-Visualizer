@@ -1,0 +1,11 @@
+[
+  {
+    "modid": "rtvrecipeexporter",
+    "name": "RTV Recipe Exporter",
+    "description": "Exports CraftingManager and furnace recipes to JSON for Recipe Tree Visualizer.",
+    "version": "${modVersion}",
+    "mcversion": "1.7.10",
+    "url": "",
+    "authorList": ["RTV"]
+  }
+]

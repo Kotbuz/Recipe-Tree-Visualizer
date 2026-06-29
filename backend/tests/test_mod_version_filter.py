@@ -1,0 +1,139 @@
+from pathlib import Path
+
+import pytest
+
+from app.parser.jar_reader import JarReader
+from app.parser.minecraft_version import mod_supports_game_version, version_in_constraint
+from app.recipes.manager import recipe_manager
+from app.services.mod_service import mod_service
+
+NATURES_COMPASS_JAR = Path(__file__).parent / "fixtures" / "NaturesCompass-26.2-3.3.0-neoforge.jar"
+CREATE_JAR = Path(__file__).parent.parent / "data" / "mods" / "create-1.18.2-0.5.0.e.jar"
+STORAGE_DRAWERS_JAR = (
+    Path(__file__).parent / "fixtures" / "StorageDrawers-fabric-1.21.11-20.0.0.jar"
+)
+
+pytestmark = pytest.mark.usefixtures("isolated_minecraft_versions")
+
+
+def test_version_in_constraint_bracket_and_fabric() -> None:
+    assert version_in_constraint("[26.2]", "26.2")
+    assert not version_in_constraint("[26.2]", "1.18.2")
+    assert version_in_constraint("[1.18.2,1.19)", "1.18.2")
+    assert not version_in_constraint("[1.18.2,1.19)", "1.19")
+    assert version_in_constraint(">=1.21.11 <1.21.12", "1.21.11")
+    assert not version_in_constraint(">=1.21.11 <1.21.12", "1.21.12")
+    assert version_in_constraint("[1.21,1.21.1)", "1.21.1")
+    assert version_in_constraint("[1.21, 1.21.1)", "1.21.1")
+    assert version_in_constraint("[1.21,) , (,1.21.1]", "1.21.1")
+
+
+def test_mod_supports_neoforge_modpack_jars() -> None:
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range="[1.21,1.21.1)",
+        jar_path="Chargers-1.21.1-7.0.0.3.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="Applied-Mekanistics-1.6.3.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="kubejs-neoforge-2101.7.2-build.368.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="inventorysorter-1.21.1-24.0.24.jar",
+        game_version="1.21.1",
+    )
+    assert mod_supports_game_version(
+        minecraft_version=None,
+        minecraft_version_range=None,
+        jar_path="moreoverlays-1.24.2-mc1.21.1-neoforge.jar",
+        game_version="1.21.1",
+    )
+
+
+def test_mod_supports_game_version_from_metadata() -> None:
+    natures = JarReader().read(str(NATURES_COMPASS_JAR)).meta
+    assert mod_supports_game_version(
+        minecraft_version=natures.minecraft_version,
+        minecraft_version_range=natures.minecraft_version_range,
+        jar_path=NATURES_COMPASS_JAR.name,
+        game_version="26.2",
+    )
+    assert not mod_supports_game_version(
+        minecraft_version=natures.minecraft_version,
+        minecraft_version_range=natures.minecraft_version_range,
+        jar_path=NATURES_COMPASS_JAR.name,
+        game_version="1.18.2",
+    )
+
+
+def test_recipe_manager_filters_mods_by_storage_version() -> None:
+    if not CREATE_JAR.is_file():
+        return
+
+    create_raw = JarReader().read(str(CREATE_JAR))
+    natures_raw = JarReader().read(str(NATURES_COMPASS_JAR))
+    recipe_manager.load_mod_jar(str(CREATE_JAR), meta=create_raw.meta, storage_version="1.18.2")
+    recipe_manager.load_mod_jar(
+        str(NATURES_COMPASS_JAR),
+        meta=natures_raw.meta,
+        storage_version="26.2",
+    )
+
+    mod_ids_26 = {
+        recipe.mod_id
+        for recipe in recipe_manager.get_version_recipes("26.2", include_mods=True)
+        if recipe.source.startswith("mod:")
+    }
+    mod_ids_18 = {
+        recipe.mod_id
+        for recipe in recipe_manager.get_version_recipes("1.18.2", include_mods=True)
+        if recipe.source.startswith("mod:")
+    }
+
+    assert "naturescompass" in mod_ids_26
+    assert "create" not in mod_ids_26
+    assert "create" in mod_ids_18
+    assert "naturescompass" not in mod_ids_18
+
+
+def test_mod_service_marks_compatibility_for_selected_version() -> None:
+    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")
+
+    compatible = mod_service.list_mods(game_version="26.2")
+
+    assert len(compatible) == 1
+    assert compatible[0].compatible is True
+    assert mod_service.list_mods(game_version="1.18.2") == []
+
+
+def test_storage_drawers_only_for_matching_storage_version() -> None:
+    recipe_manager.load_mod_jar(
+        str(STORAGE_DRAWERS_JAR),
+        meta=JarReader().read(str(STORAGE_DRAWERS_JAR)).meta,
+        storage_version="1.21.11",
+    )
+
+    drawers_recipes = {
+        recipe.id
+        for recipe in recipe_manager.get_version_recipes("1.21.11", include_mods=True)
+        if recipe.mod_id == "storagedrawers"
+    }
+    missing_on_26 = {
+        recipe.id
+        for recipe in recipe_manager.get_version_recipes("26.2", include_mods=True)
+        if recipe.mod_id == "storagedrawers"
+    }
+
+    assert drawers_recipes
+    assert not missing_on_26

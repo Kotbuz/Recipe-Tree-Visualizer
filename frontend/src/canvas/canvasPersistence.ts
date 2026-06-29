@@ -1,6 +1,7 @@
 import {
     CANVAS_FILE_VERSION,
     DEFAULT_DURATION_TICKS,
+    LEGACY_CANVAS_FILE_VERSION,
     type CanvasDocument,
     type CanvasNodeRecord,
 } from './canvasSchema';
@@ -13,12 +14,16 @@ export function createCanvasDocument(params: {
     connections: RecipeConnection[];
     viewport?: CanvasTransform;
     name?: string;
+    minecraftVersion?: string;
+    profileId?: string;
     defaultDurationTicks?: number;
     flowRateUnit?: FlowRateUnit;
     productionTarget?: ProductionTarget | null;
 }): CanvasDocument {
     return {
         version: CANVAS_FILE_VERSION,
+        minecraftVersion: params.minecraftVersion,
+        profileId: params.profileId,
         meta: {
             name: params.name,
             updatedAt: new Date().toISOString(),
@@ -69,7 +74,10 @@ export function parseCanvasDocument(raw: string): CanvasDocument {
         return migrateV1Document(data as Parameters<typeof migrateV1Document>[0]);
     }
 
-    if (data.version !== CANVAS_FILE_VERSION) {
+    if (
+        data.version !== CANVAS_FILE_VERSION &&
+        data.version !== LEGACY_CANVAS_FILE_VERSION
+    ) {
         throw new Error(`Неподдерживаемая версия файла: ${data.version}`);
     }
 

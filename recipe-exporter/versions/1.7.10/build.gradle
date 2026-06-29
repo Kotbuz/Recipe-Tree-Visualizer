@@ -1,0 +1,93 @@
+plugins {
+    id 'java-library'
+    id 'com.gtnewhorizons.retrofuturagradle' version '1.4.9'
+}
+
+group = 'com.rtv'
+version = '1.0.0'
+
+java {
+    toolchain {
+        languageVersion = JavaLanguageVersion.of(8)
+    }
+}
+
+def exportOutputDir = project.findProperty('outputDir')
+def exportModsDir = project.findProperty('modsDir')
+
+minecraft {
+    mcVersion = '1.7.10'
+    username = 'RTVExporter'
+
+    if exportOutputDir != null) {
+        def oreDictFile = new File(new File(exportOutputDir.toString()).parentFile, 'ore_dict.json')
+        def itemCatalogFile = new File(new File(exportOutputDir.toString()).parentFile, 'item_catalog.json')
+        def exportDirArg = exportOutputDir.toString().replace('\\', '/')
+        def oreDictArg = oreDictFile.absolutePath.replace('\\', '/')
+        def itemCatalogArg = itemCatalogFile.absolutePath.replace('\\', '/')
+        extraRunJvmArguments.add('-Drtv.recipe.export=true')
+        extraRunJvmArguments.add("-Drtv.recipe.export.dir=${exportDirArg}")
+        extraRunJvmArguments.add("-Drtv.ore.dict.export.file=${oreDictArg}")
+        extraRunJvmArguments.add("-Drtv.item.catalog.export.file=${itemCatalogArg}")
+    }
+}
+
+tasks.named('processResources') {
+    inputs.property('version', project.version)
+    filesMatching('mcmod.info') {
+        expand 'modVersion': project.version
+    }
+}
+
+tasks.register('syncExternalMods', Copy) {
+    onlyIf { exportModsDir != null }
+    doFirst {
+        def modsDir = layout.projectDirectory.dir('run/mods').asFile
+        modsDir.mkdirs()
+        modsDir.eachFile { file ->
+            if (file.name != '.gitkeep') {
+                file.deleteDir() || file.delete()
+            }
+        }
+    }
+    from exportModsDir
+    into layout.projectDirectory.dir('run/mods')
+    include '*.jar'
+    exclude 'rtv-recipe-exporter*.jar'
+}
+
+tasks.register('ensureRunEula') {
+    doLast {
+        def eula = layout.projectDirectory.file('run/eula.txt').asFile
+        eula.parentFile.mkdirs()
+        if (!eula.exists() || !eula.getText('UTF-8').contains('eula=true')) {
+            eula.setText('eula=true\n', 'UTF-8')
+        }
+    }
+}
+
+tasks.named('runServer') {
+    dependsOn tasks.named('syncExternalMods')
+    dependsOn tasks.named('ensureRunEula')
+}
+
+tasks.register('runExport') {
+    group = 'rtv'
+    description = 'Export crafting/smelting recipes via headless Forge server'
+    dependsOn tasks.named('runServer')
+}
+
+tasks.register('copyExportJar', Copy) {
+    dependsOn tasks.named('jar')
+    from layout.buildDirectory.dir('libs')
+    include { details ->
+        def name = details.file.name
+        name.endsWith(".jar") && !name.contains("-dev") && !name.contains("-sources")
+    }
+    into layout.projectDirectory.dir('../../dist')
+    rename { "recipe-exporter-1.7.10.jar" }
+}
+
+tasks.named('build') {
+    finalizedBy tasks.named('copyExportJar')
+}

@@ -1,0 +1,78 @@
+.export-status-banner {
+    position: relative;
+    z-index: 25;
+    margin: 0.75rem 1rem 0;
+    padding: 0.75rem 1rem;
+    border: 1px solid #c9a227;
+    background: #fff8e6;
+    color: #4a3b00;
+    font-size: 0.9rem;
+    line-height: 1.45;
+    pointer-events: auto;
+    max-height: min(40vh, 320px);
+    overflow-y: auto;
+    box-shadow: var(--ui-shadow-sm);
+}
+
+.export-status-banner__title {
+    font-weight: 600;
+    margin-bottom: 0.5rem;
+}
+
+.export-status-banner__list,
+.export-status-banner__deps ul {
+    margin: 0.35rem 0 0.5rem 1.1rem;
+    padding: 0;
+}
+
+.export-status-banner__hint {
+    margin: 0.5rem 0 0;
+    font-size: 0.85rem;
+    opacity: 0.9;
+}
+
+.export-status-banner code {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 0.85em;
+}
+
+.export-status-banner__action {
+    margin-top: 0.5rem;
+    padding: 0.45rem 0.75rem;
+    border: 1px solid #9a7b12;
+    background: var(--ui-bg);
+    color: #4a3b00;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.export-status-banner__action:disabled {
+    opacity: 0.65;
+    cursor: wait;
+}
+
+.export-status-banner__error {
+    margin: 0.5rem 0 0;
+    color: #8a1f1f;
+}
+
+.export-status-banner__result {
+    margin-top: 0.5rem;
+    font-size: 0.85rem;
+}
+
+.export-status-banner__result-row {
+    margin: 0.2rem 0;
+}
+
+.export-status-banner__result-row a {
+    color: #1d4ed8;
+    font-weight: 600;
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    pointer-events: auto;
+}
+
+.export-status-banner__result-row a:hover {
+    color: #1e40af;
+}

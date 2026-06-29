@@ -10,13 +10,27 @@ import {
     type NodeKind,
 } from './types/recipe';
 import ModsPanel from './components/ModsPanel';
+import ExportStatusBanner from './components/ExportStatusBanner';
+import VersionManagerModal from './components/VersionManagerModal';
+import ModpackImportDialog from './components/ModpackImportDialog';
+import { useModpackInspect, type ModpackInspectResult } from './hooks/useModpackInspect';
+import { prepareForgeInstall } from './hooks/useForgePrepare';
+import { useVersionCatalog } from './hooks/useVersionCatalog';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
 import SlotQuantityBadge from './components/SlotQuantityBadge';
+import { mergeRecipeItems } from './utils/mergeRecipeItems';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
+import { useModDependencyDownload } from './hooks/useModDependencyDownload';
+import { useMods } from './hooks/useMods';
+import { useProfiles } from './hooks/useProfiles';
+import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
+import { useVersionMaintenance } from './hooks/useVersionMaintenance';
+import { useProfileIntegrity } from './hooks/useProfileIntegrity';
 import {
     ingredientsCompatible,
+    itemIdToDisplayName,
     type IngredientIndex,
     type IngredientRef,
 } from './utils/ingredientMatch';
@@ -58,6 +72,7 @@ interface ItemDragState {
     sourceItemIndex: number;
     itemName: string;
     itemId?: string;
+    itemMetadata?: number;
     startX: number;
     startY: number;
     startClientX: number;
@@ -83,6 +98,7 @@ type ItemRecipeContextMenu = {
     type: 'item-recipe';
     itemName: string;
     itemId?: string;
+    itemMetadata?: number;
     sourceNodeId: string;
     sourceSlotType: SlotType;
     sourceItemIndex: number;
@@ -161,6 +177,16 @@ const getSlotItemId = (node: RecipeNode, slotType: SlotType, index: number) => {
     return items[index]?.item_id;
 };
 
+const getSlotItemMetadata = (node: RecipeNode, slotType: SlotType, index: number) => {
+    if (node.kind === 'chest') {
+        const items = node.inputs[0] ?? node.outputs[0];
+        return items?.metadata;
+    }
+
+    const items = slotType === 'input' ? node.inputs : node.outputs;
+    return items[index]?.metadata;
+};
+
 const getSlotItemIconId = (node: RecipeNode, slotType: SlotType, index: number) => {
     if (node.kind === 'chest') {
         const items = node.inputs[0] ?? node.outputs[0];
@@ -201,6 +227,7 @@ const getSlotIngredientRef = (
 ): IngredientRef => ({
     name: getSlotItemName(node, slotType, index),
     itemId: getSlotItemId(node, slotType, index),
+    metadata: getSlotItemMetadata(node, slotType, index),
 });
 
 const findCompatibleSlotOnNode = (
@@ -242,7 +269,7 @@ const findMatchingSlotIndex = (
     return items.findIndex((item) =>
         ingredientsCompatible(
             dragged,
-            { name: item.name, itemId: item.item_id },
+            { name: item.name, itemId: item.item_id, metadata: item.metadata },
             ingredientIndex,
         ),
     );
@@ -267,8 +294,157 @@ const isSlotCompatible = (
     );
 };
 
+const resolveSlotLabel = (item: RecipeItem): string =>
+    item.item_id ? itemIdToDisplayName(item.item_id) : item.name;
+
 export default function RecipeCanvas() {
-    const { version, versions, setVersion, ingredientIndex } = useMinecraftVersion();
+    const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
+        useMinecraftVersion();
+    const {
+        profiles,
+        activeProfileId,
+        activateProfile,
+        deleteProfile,
+        importModpackZip,
+        importFromPath,
+        importing: profileImporting,
+        deletingProfileId,
+        error: profilesError,
+        refresh: refreshProfiles,
+    } = useProfiles(version);
+
+    useEffect(() => {
+        setProfileId(activeProfileId);
+    }, [activeProfileId, setProfileId]);
+
+    const { mods, loading: modsLoading, uploading: modsUploading, removingJar, error: modsError, refresh: refreshMods, remove: removeMod } = useMods(version, activeProfileId);
+    const { status: exportStatus, loading: exportStatusLoading, refresh: refreshExportStatus } = useRecipeExportStatus(version, activeProfileId);
+    const {
+        reloading: maintenanceReloading,
+        clearing: maintenanceClearing,
+        error: maintenanceError,
+        reloadMods,
+        clearRecipeExport,
+    } = useVersionMaintenance(version, activeProfileId);
+    const {
+        checking: integrityChecking,
+        syncing: integritySyncing,
+        error: integrityError,
+        report: integrityReport,
+        sourcePath: integritySourcePath,
+        setSourcePath: setIntegritySourcePath,
+        checkIntegrity,
+        syncFromSource,
+        clearReport: clearIntegrityReport,
+    } = useProfileIntegrity(version, activeProfileId);
+
+    useEffect(() => {
+        clearIntegrityReport();
+    }, [activeProfileId, version, clearIntegrityReport]);
+
+    const handleReloadMods = useCallback(async () => {
+        try {
+            const result = await reloadMods();
+            await refreshMods();
+            if (result.export_status) {
+                await refreshExportStatus();
+            }
+            await reloadCatalog();
+        } catch {
+            // ошибка уже в maintenanceError
+        }
+    }, [reloadMods, refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const handleCheckIntegrity = useCallback(async () => {
+        try {
+            await checkIntegrity();
+        } catch {
+            // ошибка в integrityError
+        }
+    }, [checkIntegrity]);
+
+    const handleSyncIntegrity = useCallback(async () => {
+        try {
+            await syncFromSource();
+            await refreshMods();
+            await reloadCatalog();
+            await handleReloadMods();
+        } catch {
+            // ошибка в integrityError
+        }
+    }, [syncFromSource, refreshMods, reloadCatalog, handleReloadMods]);
+
+    const handleClearRecipeExport = useCallback(async () => {
+        const confirmed = window.confirm(
+            'Удалить все JSON-файлы рецептов и ore_dict.json для этой версии?\n\n' +
+                'После очистки потребуется повторный JVM-экспорт (вручную или через «Скачать зависимости»).',
+        );
+        if (!confirmed) {
+            return;
+        }
+
+        try {
+            await clearRecipeExport();
+            await refreshExportStatus();
+            await refreshMods();
+            await reloadCatalog();
+        } catch {
+            // ошибка уже в maintenanceError
+        }
+    }, [clearRecipeExport, refreshExportStatus, refreshMods, reloadCatalog]);
+
+    const handleModRemove = useCallback(
+        async (jarFilename: string) => {
+            try {
+                await removeMod(jarFilename);
+                await refreshExportStatus();
+            } catch {
+                // ошибка уже в modsError
+            }
+        },
+        [removeMod, refreshExportStatus],
+    );
+
+    const handleDepsDownloadComplete = useCallback(async () => {
+        await refreshMods();
+        await refreshExportStatus();
+        await reloadCatalog();
+    }, [refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const {
+        download: downloadMissingDeps,
+        downloading: depsDownloading,
+        error: depsError,
+        lastResult: depsResult,
+    } = useModDependencyDownload(version, activeProfileId, handleDepsDownloadComplete);
+    const [versionManagerOpen, setVersionManagerOpen] = useState(false);
+    const [modsPanelExpanded, setModsPanelExpanded] = useState(false);
+    const [modsToggleSlot, setModsToggleSlot] = useState<HTMLDivElement | null>(null);
+    const [pendingModpackImport, setPendingModpackImport] = useState<
+        | {
+              kind: 'zip';
+              file: File;
+              label: string;
+              inspect: ModpackInspectResult;
+          }
+        | {
+              kind: 'path';
+              path: string;
+              label: string;
+              inspect: ModpackInspectResult;
+          }
+        | null
+    >(null);
+    const [importFlowBusy, setImportFlowBusy] = useState(false);
+    const [importFlowError, setImportFlowError] = useState<string | null>(null);
+    const [importFlowSuccess, setImportFlowSuccess] = useState<string | null>(null);
+    const [installingMinecraft, setInstallingMinecraft] = useState(false);
+    const [forgePrepareProgress, setForgePrepareProgress] = useState<number | null>(null);
+    const [forgePrepareMessage, setForgePrepareMessage] = useState<string | null>(null);
+    const [preparingForge, setPreparingForge] = useState(false);
+    const { inspectZip, inspectPath, pickFolder, inspecting: modpackInspecting, error: modpackInspectError } =
+        useModpackInspect();
+    const { installVersion, installingVersion } = useVersionCatalog();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
     const [nodes, setNodes] = useState<RecipeNode[]>([]);
@@ -312,6 +488,7 @@ export default function RecipeCanvas() {
                 query: recipeSearchQuery,
                 focusItem,
                 focusRole,
+                focusMetadata: contextMenu.itemMetadata,
                 includeMods: true,
             };
         }
@@ -324,6 +501,7 @@ export default function RecipeCanvas() {
 
     const { recipes: searchedRecipes, loading: recipesLoading } = useRecipeSearch(
         version,
+        activeProfileId,
         recipeSearchParams,
     );
 
@@ -420,6 +598,7 @@ export default function RecipeCanvas() {
                     target_rate_per_minute: productionTarget.ratePerMinute,
                     graph,
                     version,
+                    profile_id: activeProfileId,
                 });
                 setConnectionFlowRates(buildConnectionFlowRates(nodes, connections, plan));
                 setCalculationError(null);
@@ -434,7 +613,7 @@ export default function RecipeCanvas() {
         }, 400);
 
         return () => window.clearTimeout(timer);
-    }, [connections, nodes, productionTarget, version]);
+    }, [activeProfileId, connections, nodes, productionTarget, version]);
 
     const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
         setNodes((current) =>
@@ -689,17 +868,19 @@ export default function RecipeCanvas() {
             y,
             machineName: mapMachineName(recipe.machine_type),
             durationTicks,
-            inputs: recipe.inputs.map((item) => ({
-                name: item.name,
+            inputs: mergeRecipeItems(recipe.inputs).map((item) => ({
+                name: resolveSlotLabel(item),
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
+                metadata: item.metadata,
             })),
-            outputs: recipe.outputs.map((item) => ({
-                name: item.name,
+            outputs: mergeRecipeItems(recipe.outputs).map((item) => ({
+                name: resolveSlotLabel(item),
                 amount: item.amount,
                 item_id: item.item_id,
                 icon_id: item.icon_id,
+                metadata: item.metadata,
             })),
         };
         setNodes((current) => [...current, node]);
@@ -779,6 +960,7 @@ export default function RecipeCanvas() {
         const dragged: IngredientRef = {
             name: contextMenu.itemName,
             itemId: contextMenu.itemId,
+            metadata: contextMenu.itemMetadata,
         };
         const compatibleSlot = findCompatibleSlotOnNode(
             newNode,
@@ -864,6 +1046,7 @@ export default function RecipeCanvas() {
         if (!itemName) return;
 
         const itemId = getSlotItemId(node, slotType, itemIndex);
+        const itemMetadata = getSlotItemMetadata(node, slotType, itemIndex);
 
         event.preventDefault();
         event.stopPropagation();
@@ -877,6 +1060,7 @@ export default function RecipeCanvas() {
             sourceItemIndex: itemIndex,
             itemName,
             itemId,
+            itemMetadata,
             startX: anchor.x,
             startY: anchor.y,
             startClientX: event.clientX,
@@ -948,7 +1132,7 @@ export default function RecipeCanvas() {
 
             const compatibleSlot = findCompatibleSlotAt(
                 dropPoint,
-                { name: drag.itemName, itemId: drag.itemId },
+                { name: drag.itemName, itemId: drag.itemId, metadata: drag.itemMetadata },
                 drag.sourceSlotType,
                 drag.sourceNodeId,
             );
@@ -968,6 +1152,7 @@ export default function RecipeCanvas() {
                 type: 'item-recipe',
                 itemName: drag.itemName,
                 itemId: drag.itemId,
+                itemMetadata: drag.itemMetadata,
                 sourceNodeId: drag.sourceNodeId,
                 sourceSlotType: drag.sourceSlotType,
                 sourceItemIndex: drag.sourceItemIndex,
@@ -1056,16 +1241,33 @@ export default function RecipeCanvas() {
             connections,
             viewport: transform,
             name: 'recipe-tree',
+            minecraftVersion: version,
+            profileId: activeProfileId,
             defaultDurationTicks,
             flowRateUnit,
             productionTarget,
         });
         downloadCanvasDocument(document);
-    }, [connections, defaultDurationTicks, flowRateUnit, nodes, productionTarget, transform]);
+    }, [
+        activeProfileId,
+        connections,
+        defaultDurationTicks,
+        flowRateUnit,
+        nodes,
+        productionTarget,
+        transform,
+        version,
+    ]);
 
     const handleLoadCanvas = useCallback(async () => {
         try {
             const document = await pickCanvasDocumentFile();
+            if (document.minecraftVersion && document.minecraftVersion !== version) {
+                setVersion(document.minecraftVersion);
+            }
+            if (document.profileId && document.profileId !== activeProfileId) {
+                await activateProfile(document.profileId);
+            }
             setNodes(document.nodes);
             setConnections(document.connections);
             setDefaultDurationTicks(document.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS);
@@ -1081,7 +1283,227 @@ export default function RecipeCanvas() {
         } catch {
             // пользователь отменил выбор или файл некорректен
         }
-    }, [setViewportTransform]);
+    }, [activeProfileId, activateProfile, setVersion, setViewportTransform, version]);
+
+    const handleProfileChange = useCallback(
+        async (profileId: string) => {
+            if (!profileId || profileId === activeProfileId) {
+                return;
+            }
+            try {
+                await activateProfile(profileId);
+                await refreshMods();
+                await refreshExportStatus();
+                await reloadCatalog();
+            } catch {
+                // ошибка в profilesError
+            }
+        },
+        [activeProfileId, activateProfile, refreshMods, refreshExportStatus, reloadCatalog],
+    );
+
+    const handleProfileDelete = useCallback(
+        async (profileId: string) => {
+            const profile = profiles.find((entry) => entry.profile_id === profileId);
+            const label = profile?.name ?? profileId;
+            if (
+                !window.confirm(
+                    `Удалить профиль «${label}»?\n\nБудут удалены mods/, config/, scripts/ и кэш рецептов этого профиля.`,
+                )
+            ) {
+                return;
+            }
+            try {
+                await deleteProfile(profileId);
+                await refreshMods();
+                await refreshExportStatus();
+                await reloadCatalog();
+            } catch {
+                // ошибка в profilesError
+            }
+        },
+        [
+            deleteProfile,
+            profiles,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+        ],
+    );
+
+    const runModpackImport = useCallback(
+        async (
+            inspect: ModpackInspectResult,
+            source:
+                | { kind: 'zip'; file: File }
+                | { kind: 'path'; path: string },
+        ) => {
+            const targetVersion = inspect.minecraft_version;
+            setImportFlowBusy(true);
+            setImportFlowError(null);
+            setImportFlowSuccess(null);
+            setForgePrepareProgress(null);
+            setForgePrepareMessage(null);
+            setPreparingForge(false);
+            setInstallingMinecraft(false);
+            try {
+                setVersion(targetVersion);
+
+                if (!inspect.version_installed) {
+                    if (!inspect.catalog_available) {
+                        throw new Error(
+                            `Версия ${targetVersion} недоступна в каталоге Mojang. Установите её через менеджер версий.`,
+                        );
+                    }
+                    setInstallingMinecraft(true);
+                    await installVersion(targetVersion);
+                    await refreshInstalledVersions();
+                    setInstallingMinecraft(false);
+                }
+                if (
+                    inspect.loader === 'forge' &&
+                    inspect.forge_version &&
+                    inspect.forge_installed === false
+                ) {
+                    setPreparingForge(true);
+                    await prepareForgeInstall(
+                        targetVersion,
+                        inspect.forge_version,
+                        (status) => {
+                            setForgePrepareProgress(status.progress);
+                            setForgePrepareMessage(status.message);
+                        },
+                    );
+                    setPreparingForge(false);
+                }
+                let importResult;
+                if (source.kind === 'zip') {
+                    importResult = await importModpackZip(source.file, { targetVersion });
+                } else {
+                    importResult = await importFromPath(source.path, { targetVersion });
+                }
+
+                await refreshProfiles(targetVersion);
+                await reloadCatalog();
+                await refreshMods();
+                await refreshExportStatus();
+
+                const profileName = importResult?.profile?.name ?? 'модпак';
+                const jarCount = importResult?.jars_imported ?? 0;
+                setImportFlowSuccess(
+                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».`,
+                );
+            } catch (flowError) {
+                const message =
+                    flowError instanceof Error ? flowError.message : 'Ошибка импорта модпака';
+                setImportFlowError(message);
+                throw flowError;
+            } finally {
+                setImportFlowBusy(false);
+                setInstallingMinecraft(false);
+                setPreparingForge(false);
+                setForgePrepareProgress(null);
+                setForgePrepareMessage(null);
+            }
+        },
+        [
+            importFromPath,
+            importModpackZip,
+            installVersion,
+            refreshExportStatus,
+            refreshInstalledVersions,
+            refreshMods,
+            refreshProfiles,
+            reloadCatalog,
+            setVersion,
+        ],
+    );
+
+    const handleModpackUpload = useCallback(
+        async (file: File) => {
+            try {
+                const inspect = await inspectZip(file);
+                if (inspect.minecraft_version === version && inspect.version_installed) {
+                    await importModpackZip(file, { targetVersion: inspect.minecraft_version });
+                    await refreshMods();
+                    await refreshExportStatus();
+                    await reloadCatalog();
+                    return;
+                }
+                setImportFlowError(null);
+                setPendingModpackImport({
+                    kind: 'zip',
+                    file,
+                    label: file.name,
+                    inspect,
+                });
+            } catch {
+                // ошибка в useModpackInspect.error
+            }
+        },
+        [
+            importModpackZip,
+            inspectZip,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            version,
+        ],
+    );
+
+    const handleInstancePathImport = useCallback(
+        async (path: string) => {
+            try {
+                const inspect = await inspectPath(path);
+                if (inspect.minecraft_version === version && inspect.version_installed) {
+                    await importFromPath(path, { targetVersion: inspect.minecraft_version });
+                    await refreshMods();
+                    await refreshExportStatus();
+                    await reloadCatalog();
+                    return;
+                }
+                setImportFlowError(null);
+                setPendingModpackImport({
+                    kind: 'path',
+                    path,
+                    label: path,
+                    inspect,
+                });
+            } catch {
+                // ошибка в useModpackInspect.error
+            }
+        },
+        [
+            importFromPath,
+            inspectPath,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            version,
+        ],
+    );
+
+    const handleBrowseIntegrityFolder = useCallback(async () => {
+        try {
+            const path = await pickFolder();
+            if (path) {
+                setIntegritySourcePath(path);
+            }
+        } catch {
+            // ошибка в modpackInspectError
+        }
+    }, [pickFolder, setIntegritySourcePath]);
+
+    const handleBrowseInstanceFolder = useCallback(async () => {
+        try {
+            const path = await pickFolder();
+            if (path) {
+                await handleInstancePathImport(path);
+            }
+        } catch {
+            // ошибка в modpackInspectError
+        }
+    }, [handleInstancePathImport, pickFolder]);
 
     const getConnectionAnchors = useCallback(
         (from: NodeSlot, to: NodeSlot) => {
@@ -1118,6 +1540,25 @@ export default function RecipeCanvas() {
         }
     }, [contextMenu]);
 
+    const renderQuantityCell = (
+        node: RecipeNode,
+        slotType: SlotType,
+        item: RecipeItem,
+        index: number,
+    ) => {
+        const isEmpty = !getSlotItemName(node, slotType, index);
+        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
+        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
+
+        return (
+            <div key={`${slotKey(node.id, slotType, index)}-qty`} className="recipe-node-quantity-cell">
+                {showQuantity ? (
+                    <SlotQuantityBadge amount={item.amount} slotType={slotType} />
+                ) : null}
+            </div>
+        );
+    };
+
     const renderItemSlot = (
         node: RecipeNode,
         slotType: SlotType,
@@ -1127,8 +1568,6 @@ export default function RecipeCanvas() {
         const displayName = getSlotItemName(node, slotType, index);
         const iconId = getSlotItemIconId(node, slotType, index);
         const isEmpty = !displayName;
-        const slotConnected = isSlotConnected(node.id, slotType, index, connections);
-        const showQuantity = !isEmpty && !slotConnected && item.amount > 0;
         const isTarget =
             productionTarget?.nodeId === node.id &&
             productionTarget.slotType === slotType &&
@@ -1147,27 +1586,19 @@ export default function RecipeCanvas() {
                 }}
                 className={`recipe-node-item recipe-node-item--${slotType}${
                     isEmpty ? ' recipe-node-item--empty' : ''
-                }${showQuantity ? ' recipe-node-item--with-quantity' : ''}${
-                    isTarget ? ' recipe-node-item--target' : ''
-                }`}
+                }${isTarget ? ' recipe-node-item--target' : ''}`}
                 onContextMenu={(event) => handleSlotContextMenu(node, slotType, index, event)}
                 onMouseDown={(event) =>
                     handleItemMouseDown(node.id, slotType, index, event)
                 }
                 title={isEmpty ? (slotType === 'input' ? 'Вход' : 'Выход') : displayName}
             >
-                {showQuantity && slotType === 'input' && (
-                    <SlotQuantityBadge amount={item.amount} slotType="input" />
-                )}
                 {isEmpty ? (
                     <span className="item-icon-view item-icon-view--chip recipe-node-item-placeholder">
                         {slotType === 'input' ? 'IN' : 'OUT'}
                     </span>
                 ) : (
                     <ItemIconView itemName={displayName} iconId={iconId} />
-                )}
-                {showQuantity && slotType === 'output' && (
-                    <SlotQuantityBadge amount={item.amount} slotType="output" />
                 )}
             </div>
         );
@@ -1195,13 +1626,46 @@ export default function RecipeCanvas() {
         );
     }, [coords, itemDragState]);
 
+    const isJvmExportVersion = exportStatus?.layout === 'jvm';
+    const missingDependencyCount =
+        isJvmExportVersion && exportStatus
+            ? exportStatus.missing_dependencies.reduce(
+                  (count, issue) => count + issue.requires.length,
+                  0,
+              )
+            : 0;
+
     const canvasStyle = {
         '--canvas-svg-offset': `${CANVAS_CONFIG.layers.connectionsSvgOffset}px`,
         '--canvas-svg-size': `${CANVAS_CONFIG.layers.connectionsSvgSize}px`,
     } as React.CSSProperties;
 
     return (
-        <div className="recipe-canvas-page" style={canvasStyle}>
+        <div
+            className="recipe-canvas-page"
+            data-mods-panel-expanded={modsPanelExpanded ? 'true' : undefined}
+            style={canvasStyle}
+        >
+            <ExportStatusBanner
+                status={exportStatus}
+                loading={exportStatusLoading}
+                downloadingDeps={depsDownloading}
+                depsError={depsError}
+                depsResult={depsResult}
+                onDownloadDependencies={
+                    isJvmExportVersion && missingDependencyCount > 0
+                        ? () => void downloadMissingDeps()
+                        : undefined
+                }
+            />
+            <header className="recipe-canvas-topbar">
+                <div className="recipe-canvas-toolbar">
+                    ПКМ по холсту — добавить ноду • Тяните за блок крафта — перемещение •
+                    Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
+                    панорама
+                </div>
+                <div ref={setModsToggleSlot} className="recipe-canvas-topbar-slot" />
+            </header>
             <div
                 className="recipe-canvas"
                 ref={viewportRef}
@@ -1213,14 +1677,6 @@ export default function RecipeCanvas() {
                 onMouseLeave={handlePanMouseUp}
                 style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
-                <div className="recipe-canvas-toolbar">
-                    <div>
-                        ПКМ по холсту — добавить ноду • Тяните за блок крафта — перемещение •
-                        Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
-                        панорама
-                    </div>
-                </div>
-
                 {dragPreviewPath && (
                     <svg className="recipe-connections-screen-layer" aria-hidden="true">
                         <path
@@ -1265,40 +1721,58 @@ export default function RecipeCanvas() {
                     {nodes.map((node) => (
                         <div
                             key={node.id}
-                            className={`recipe-node ${
+                            className={`recipe-node-wrapper ${
                                 contextMenu?.type === 'node' && contextMenu.nodeId === node.id
-                                    ? 'recipe-node--active'
+                                    ? 'recipe-node-wrapper--active'
                                     : ''
                             }`}
                             style={{ left: node.x, top: node.y }}
                             onContextMenu={(event) => handleNodeContextMenu(node.id, event)}
                         >
-                            <div className="recipe-node-column recipe-node-column--inputs">
+                            <div className="recipe-node-quantities recipe-node-quantities--inputs">
                                 {node.inputs.map((input, index) =>
-                                    renderItemSlot(node, 'input', input, index),
+                                    renderQuantityCell(node, 'input', input, index),
                                 )}
                             </div>
-                            <div className="recipe-node-column recipe-node-column--machine">
-                                <div
-                                    className={`recipe-node-machine recipe-node-machine--${node.kind}`}
-                                    onMouseDown={(event) =>
-                                        handleMachineMouseDown(node.id, event)
-                                    }
-                                >
-                                    <span>{node.machineName}</span>
-                                    {node.kind === 'recipe' && node.durationTicks !== undefined && (
-                                        <span
-                                            className="recipe-node-duration"
-                                            title={`${node.durationTicks} тиков`}
-                                        >
-                                            {formatDurationLabel(node.durationTicks)}
-                                        </span>
+                            <div
+                                className={`recipe-node ${
+                                    contextMenu?.type === 'node' && contextMenu.nodeId === node.id
+                                        ? 'recipe-node--active'
+                                        : ''
+                                }`}
+                            >
+                                <div className="recipe-node-column recipe-node-column--inputs">
+                                    {node.inputs.map((input, index) =>
+                                        renderItemSlot(node, 'input', input, index),
+                                    )}
+                                </div>
+                                <div className="recipe-node-column recipe-node-column--machine">
+                                    <div
+                                        className={`recipe-node-machine recipe-node-machine--${node.kind}`}
+                                        onMouseDown={(event) =>
+                                            handleMachineMouseDown(node.id, event)
+                                        }
+                                    >
+                                        <span>{node.machineName}</span>
+                                        {node.kind === 'recipe' && node.durationTicks !== undefined && (
+                                            <span
+                                                className="recipe-node-duration"
+                                                title={`${node.durationTicks} тиков`}
+                                            >
+                                                {formatDurationLabel(node.durationTicks)}
+                                            </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <div className="recipe-node-column recipe-node-column--outputs">
+                                    {node.outputs.map((output, index) =>
+                                        renderItemSlot(node, 'output', output, index),
                                     )}
                                 </div>
                             </div>
-                            <div className="recipe-node-column recipe-node-column--outputs">
+                            <div className="recipe-node-quantities recipe-node-quantities--outputs">
                                 {node.outputs.map((output, index) =>
-                                    renderItemSlot(node, 'output', output, index),
+                                    renderQuantityCell(node, 'output', output, index),
                                 )}
                             </div>
                         </div>
@@ -1563,17 +2037,115 @@ export default function RecipeCanvas() {
             </div>
 
             <ModsPanel
+                toggleContainer={modsToggleSlot}
+                onExpandedChange={setModsPanelExpanded}
                 versions={versions}
                 version={version}
                 onVersionChange={handleVersionChange}
                 onSave={handleSaveCanvas}
                 onLoad={handleLoadCanvas}
-                modCount={0}
+                profiles={profiles}
+                activeProfileId={activeProfileId}
+                onProfileChange={(profileId) => void handleProfileChange(profileId)}
+                onProfileDelete={(profileId) => void handleProfileDelete(profileId)}
+                deletingProfileId={deletingProfileId}
+                profilesLoading={false}
+                profileImporting={profileImporting || modpackInspecting || importFlowBusy}
+                profilesError={profilesError ?? modpackInspectError}
+                onModpackUpload={(file) => void handleModpackUpload(file)}
+                onInstancePathImport={(path) => void handleInstancePathImport(path)}
+                onBrowseInstanceFolder={() => void handleBrowseInstanceFolder()}
+                browsingInstanceFolder={modpackInspecting}
+                mods={mods}
+                modsLoading={modsLoading}
+                modsUploading={modsUploading}
+                modsError={modsError}
+                onModsRefresh={refreshMods}
+                onModRemove={(jarFilename) => void handleModRemove(jarFilename)}
+                removingJarFilename={removingJar}
+                onOpenVersionManager={() => setVersionManagerOpen(true)}
+                gameVersion={version}
+                versionsEmpty={versions.length === 0}
+                missingDependencyCount={missingDependencyCount}
+                onDownloadDependencies={
+                    isJvmExportVersion && missingDependencyCount > 0
+                        ? () => void downloadMissingDeps()
+                        : undefined
+                }
+                downloadingDependencies={depsDownloading}
+                onReloadMods={() => void handleReloadMods()}
+                reloadingMods={maintenanceReloading}
+                onClearRecipeExport={() => void handleClearRecipeExport()}
+                clearingRecipeExport={maintenanceClearing}
+                maintenanceError={maintenanceError}
+                showRecipeMaintenance={isJvmExportVersion}
+                showIntegrityTools={activeProfileId !== 'default'}
+                onCheckIntegrity={() => void handleCheckIntegrity()}
+                onSyncIntegrity={() => void handleSyncIntegrity()}
+                integrityChecking={integrityChecking}
+                integritySyncing={integritySyncing}
+                integrityError={integrityError}
+                integrityReport={integrityReport}
+                integritySourcePath={integritySourcePath}
+                onIntegritySourcePathChange={setIntegritySourcePath}
+                onBrowseIntegrityFolder={() => void handleBrowseIntegrityFolder()}
+                browsingIntegrityFolder={modpackInspecting}
                 defaultDurationTicks={defaultDurationTicks}
                 onDefaultDurationTicksChange={setDefaultDurationTicks}
                 flowRateUnit={flowRateUnit}
                 onFlowRateUnitChange={setFlowRateUnit}
                 calculationError={calculationError}
+            />
+
+            <VersionManagerModal
+                open={versionManagerOpen}
+                onClose={() => setVersionManagerOpen(false)}
+                onInstalled={async (installedVersion) => {
+                    const installed = await refreshInstalledVersions();
+                    if (installed.includes(installedVersion)) {
+                        setVersion(installedVersion);
+                    }
+                    await reloadCatalog();
+                    await refreshMods();
+                    setVersionManagerOpen(false);
+                }}
+            />
+
+            <ModpackImportDialog
+                open={pendingModpackImport !== null}
+                inspect={pendingModpackImport?.inspect ?? null}
+                currentVersion={version}
+                modpackLabel={pendingModpackImport?.label ?? 'Модпак'}
+                busy={importFlowBusy || profileImporting}
+                installing={installingVersion !== null || installingMinecraft}
+                preparingForge={preparingForge}
+                forgeProgress={forgePrepareProgress}
+                forgeMessage={forgePrepareMessage}
+                error={importFlowError}
+                success={importFlowSuccess}
+                onCancel={() => {
+                    if (importFlowBusy) {
+                        return;
+                    }
+                    setPendingModpackImport(null);
+                    setImportFlowError(null);
+                    setImportFlowSuccess(null);
+                }}
+                onConfirm={() => {
+                    if (importFlowSuccess) {
+                        setPendingModpackImport(null);
+                        setImportFlowSuccess(null);
+                        setImportFlowError(null);
+                        return;
+                    }
+                    if (!pendingModpackImport || importFlowBusy) {
+                        return;
+                    }
+                    const { inspect, ...source } = pendingModpackImport;
+                    void runModpackImport(inspect, source).catch(() => {
+                        // ошибка в importFlowError
+                    });
+                }}
             />
         </div>
     );

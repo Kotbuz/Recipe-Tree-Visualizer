@@ -1,5 +1,7 @@
+import pytest
 from pathlib import Path
 
+from app.parser.jar_reader import JarReader
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.services.mod_service import mod_service
@@ -9,6 +11,8 @@ NATURES_COMPASS_JAR = Path(__file__).parent / "fixtures" / "NaturesCompass-26.2-
 STORAGE_DRAWERS_JAR = (
     Path(__file__).parent / "fixtures" / "StorageDrawers-fabric-1.21.11-20.0.0.jar"
 )
+
+pytestmark = pytest.mark.usefixtures("isolated_minecraft_versions")
 
 
 def test_mod_jar_provider_loads_natures_compass() -> None:
@@ -37,7 +41,8 @@ def test_mod_jar_provider_skips_unsupported_types() -> None:
 
 
 def test_recipe_manager_merges_mod_recipes() -> None:
-    recipe_manager.load_mod_jar(str(NATURES_COMPASS_JAR))
+    raw = JarReader().read(str(NATURES_COMPASS_JAR))
+    recipe_manager.load_mod_jar(str(NATURES_COMPASS_JAR), meta=raw.meta, storage_version="26.2")
 
     merged = recipe_manager.get_version_recipes("26.2", include_mods=True)
     mod_recipe_ids = {recipe.id for recipe in recipe_manager.get_mod_recipes()}
@@ -49,7 +54,7 @@ def test_recipe_manager_merges_mod_recipes() -> None:
 
 
 def test_mod_service_registers_recipes_in_manager() -> None:
-    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)])
+    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")
 
     assert any(
         recipe.id == "naturescompass:natures_compass"
@@ -67,7 +72,7 @@ def test_mod_service_registers_recipes_in_manager() -> None:
 
 
 def test_search_without_mods_excludes_uploaded_recipes() -> None:
-    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)])
+    mod_service.upload_mods_from_paths([str(NATURES_COMPASS_JAR)], "26.2")
 
     with_mods = recipe_manager.search_summaries(
         "26.2",

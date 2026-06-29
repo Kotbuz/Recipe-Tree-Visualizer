@@ -24,19 +24,18 @@
 }
 
 .home-message {
-    background: #fff;
+    background: var(--ui-bg);
     padding: 2rem;
-    border-radius: 12px;
+    border: 1px solid var(--ui-border);
     text-align: center;
-    box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+    box-shadow: var(--ui-shadow);
 }
 
 button {
     background: #2563eb;
     color: white;
-    border: none;
+    border: 1px solid #2563eb;
     padding: 0.5rem 1rem;
-    border-radius: 8px;
     cursor: pointer;
 }
 

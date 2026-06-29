@@ -6,6 +6,7 @@ class RecipeItem(BaseModel):
     amount: int = 1
     item_id: str | None = None
     icon_id: str | None = None
+    metadata: int | None = None
 
 
 class RecipeSummary(BaseModel):

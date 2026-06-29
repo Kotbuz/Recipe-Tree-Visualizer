@@ -5,14 +5,31 @@ services:
       dockerfile: Dockerfile
     environment:
       PORT: 3001
-      ALLOWED_ROOTS: /data/mods,/data/rendered,/data/minecraft
+      ALLOWED_ROOTS: /data/minecraft
       RENDER_TIMEOUT_MS: 600000
+      MINECRAFT_VERSION: "1.21.4"
     volumes:
-      - ./backend/data/mods:/data/mods:ro
-      - ./backend/data/rendered:/data/rendered:rw
       - ./MinecraftVersions:/data/minecraft:rw
     ports:
       - "3001:3001"
+    restart: unless-stopped
+
+  recipe-exporter:
+    profiles: ["legacy-recipes"]
+    build:
+      context: ./recipe-exporter
+      dockerfile: docker/Dockerfile
+    environment:
+      PORT: 8090
+      MINECRAFT_ROOT: /data/minecraft
+      FORGE_JAVA_XMX: 4G
+      EXPORT_TIMEOUT_SECONDS: 1800
+      FORGE_RUNTIME_ROOT: /opt/forge-runtime
+    volumes:
+      - ./MinecraftVersions:/data/minecraft:rw
+      - ./recipe-exporter/forge-runtime/1.7.10:/opt/forge-runtime:ro
+    ports:
+      - "8090:8090"
     restart: unless-stopped
 
   backend:
@@ -25,14 +42,16 @@ services:
       MINECRAFT_VERSIONS_DIR: /app/MinecraftVersions
       RENDERER_URL: http://renderer:3001
       RENDERER_MINECRAFT_ROOT: /data/minecraft
-      MINECRAFT_RENDER_VERSION: "1.21.4"
+      RECIPE_EXPORTER_URL: http://recipe-exporter:8090
+      RECIPE_EXPORTER_MODE: auto
+      MINECRAFT_DEFAULT_VERSION: "26.2"
       VANILLA_ICON_RENDER_ON_STARTUP: "true"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:rw
       - ./backend/logs:/app/backend/logs
-      - ./backend/data/mods:/app/backend/data/mods
-      - ./backend/data/rendered:/app/backend/data/rendered:rw
+      # После INSTANCES_HOST_PATH в .env раскомментируйте:
+      # - ${INSTANCES_HOST_PATH}:/host/instances:ro
     ports:
       - "8000:8000"
     depends_on:
@@ -46,9 +65,7 @@ services:
       dockerfile: frontend/Dockerfile
     ports:
       - "5173:80"
-    volumes:
-      - ./MinecraftVersions/26.2/item-textures:/usr/share/nginx/minecraft/item-textures:ro
-      - ./MinecraftVersions/26.2/block-textures:/usr/share/nginx/minecraft/block-textures:ro
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     restart: unless-stopped

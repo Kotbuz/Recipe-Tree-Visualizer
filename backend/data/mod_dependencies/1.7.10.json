@@ -1,0 +1,45 @@
+{
+  "CodeChickenLib": {
+    "modrinth_slug": "codechicken-lib-legacy-forge",
+    "curseforge_slug": "codechicken-lib-1-8",
+    "curseforge_project_id": 222979,
+    "search_terms": ["CodeChickenLib", "codechickenlib"],
+    "file_name_contains": ["1.7.10", "universal"]
+  },
+  "ForgeMultipart": {
+    "curseforge_slug": "forge-multipart",
+    "curseforge_project_id": 229169,
+    "search_terms": ["ForgeMultipart", "forgemultipart"],
+    "file_name_contains": ["1.7.10", "universal"]
+  },
+  "CodeChickenCore": {
+    "curseforge_slug": "codechickencore",
+    "curseforge_project_id": 222978,
+    "search_terms": ["CodeChickenCore", "codechickencore"],
+    "file_name_contains": ["1.7.10", "universal"]
+  },
+  "Baubles": {
+    "curseforge_slug": "baubles",
+    "curseforge_project_id": 227083,
+    "search_terms": ["Baubles", "baubles"],
+    "file_name_contains": ["1.7.10"]
+  },
+  "CoFHCore": {
+    "curseforge_slug": "cofh-core",
+    "curseforge_project_id": 69162,
+    "search_terms": ["CoFHCore", "cofhcore"],
+    "file_name_contains": ["1.7.10"]
+  },
+  "ThermalFoundation": {
+    "curseforge_slug": "thermal-foundation",
+    "curseforge_project_id": 222880,
+    "search_terms": ["ThermalFoundation", "thermalfoundation"],
+    "file_name_contains": ["1.7.10"]
+  },
+  "BuildCraft|Core": {
+    "curseforge_slug": "buildcraft",
+    "curseforge_project_id": 223092,
+    "search_terms": ["BuildCraft", "buildcraft"],
+    "file_name_contains": ["1.7.10"]
+  }
+}

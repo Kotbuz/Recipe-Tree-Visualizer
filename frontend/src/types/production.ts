@@ -51,6 +51,7 @@ export interface CalculateProductionRequest {
         }>;
     };
     version: string;
+    profile_id?: string;
     include_mods?: boolean;
     include_synthetic?: boolean;
 }

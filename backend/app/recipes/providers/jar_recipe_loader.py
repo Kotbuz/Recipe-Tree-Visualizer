@@ -2,11 +2,14 @@ from __future__ import annotations
 
 import re
 
+import re
+
 from app.recipes.models import ProviderResult, SkippedRecipe
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
+from app.recipes.recipe_io_utils import normalize_recipe
 
-RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
 ADVANCEMENT_SEGMENT = "/advancement/"
+RECIPE_PATH = re.compile(r"^data/([^/]+)/recipes?/(.+\.json)$")
 
 
 def try_add_recipe(
@@ -41,4 +44,15 @@ def try_add_recipe(
         )
         return
 
-    result.recipes.append(recipe)
+    normalized = normalize_recipe(recipe)
+    if normalized is None:
+        result.skipped.append(
+            SkippedRecipe(
+                recipe_id=recipe_id,
+                raw_type=raw_type if isinstance(raw_type, str) else None,
+                reason="empty inputs or outputs after normalization",
+            )
+        )
+        return
+
+    result.recipes.append(normalized)

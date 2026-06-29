@@ -4,25 +4,47 @@ import json
 import zipfile
 from pathlib import Path, PurePosixPath
 
+import orjson
+
 from app.core.config import get_settings
+from app.recipes.loaders.ae2_recipe_loader import load_ae2_recipe_directory
+from app.recipes.loaders.export_recipe_repair import repair_exported_forge_recipe
+from app.recipes.loaders.ore_dict_loader import load_ore_dict
+from app.recipes.ingredients import create_ingredient_resolver
+from app.recipes.loaders.recipe_paths import (
+    discover_recipe_file,
+    jar_recipe_patterns_for_version,
+    recipe_layout_for_version,
+)
+from app.recipes.loaders.tag_loader import TagLoader
 from app.recipes.models import ProviderResult, SkippedRecipe
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
-from app.recipes.providers.jar_recipe_loader import ADVANCEMENT_SEGMENT, RECIPE_PATH, try_add_recipe
+from app.recipes.providers.jar_recipe_loader import try_add_recipe
 
 
 class VanillaJarProvider:
-    def __init__(self, parser: JsonRecipeParser | None = None) -> None:
-        self._parser = parser or JsonRecipeParser()
+    def __init__(
+        self,
+        parser: JsonRecipeParser | None = None,
+        tag_loader: TagLoader | None = None,
+    ) -> None:
+        self._parser = parser
+        self._tag_loader = tag_loader or TagLoader()
 
     def source_id(self) -> str:
         return "vanilla"
 
-    def load(self, version: str) -> ProviderResult:
-        recipe_dir = get_settings().minecraft_versions_path / version / "recipe"
+    def load(self, version: str, profile_id: str | None = None) -> ProviderResult:
+        from app.services.version_service import version_service
+
+        recipe_dir = version_service.recipe_dir(version, profile_id)
         if recipe_dir.exists() and recipe_dir.is_dir():
             result = self._load_from_directory(recipe_dir, version)
             if result.recipes:
                 return result
+
+        if recipe_layout_for_version(version) == "jvm":
+            return ProviderResult()
 
         jar_path = self.resolve_jar_path(version)
         if jar_path is not None:
@@ -30,11 +52,22 @@ class VanillaJarProvider:
 
         return ProviderResult()
 
+    def _build_parser(self, version: str, jar_path: Path) -> JsonRecipeParser:
+        if self._parser is not None:
+            return self._parser
+        tag_members = self._tag_loader.load_from_jar(jar_path)
+        resolver = create_ingredient_resolver(version, tag_members=tag_members)
+        return JsonRecipeParser(resolver=resolver)
+
     def _load_from_directory(self, recipe_dir: Path, version: str) -> ProviderResult:
         recipes = ProviderResult()
         source = f"vanilla:{version}"
+        parser = self._build_parser(version, self.resolve_jar_path(version) or recipe_dir)
+        ore_dict = load_ore_dict(version)
 
         for json_file in sorted(recipe_dir.glob("*.json")):
+            if json_file.name.startswith("_"):
+                continue
             try:
                 with json_file.open("r", encoding="utf-8") as handle:
                     data = json.load(handle)
@@ -51,40 +84,51 @@ class VanillaJarProvider:
             if not isinstance(data, dict):
                 continue
 
-            recipe_id = f"minecraft:{json_file.stem}"
+            data = repair_exported_forge_recipe(data, ore_dict=ore_dict)
+
+            recipe_id = data.get("id")
+            if not isinstance(recipe_id, str) or not recipe_id.strip():
+                recipe_id = f"minecraft:{json_file.stem}"
+
+            mod_id = recipe_id.split(":", 1)[0] if ":" in recipe_id else "minecraft"
             try_add_recipe(
-                self._parser,
+                parser,
                 recipes,
                 recipe_id,
                 data,
                 source=source,
-                mod_id="minecraft",
+                mod_id=mod_id,
             )
+
+        ae2_dir = recipe_dir / "ae2-recipes"
+        ae2_result = load_ae2_recipe_directory(ae2_dir, version=version)
+        recipes.recipes.extend(ae2_result.recipes)
+        recipes.skipped.extend(ae2_result.skipped)
 
         return recipes
 
     def _load_from_jar(self, jar_path: Path, version: str) -> ProviderResult:
         recipes = ProviderResult()
         source = f"vanilla:{version}"
+        parser = self._build_parser(version, jar_path)
+        patterns = jar_recipe_patterns_for_version(version)
 
         try:
             with zipfile.ZipFile(jar_path) as archive:
                 for entry in archive.namelist():
-                    if ADVANCEMENT_SEGMENT in entry:
-                        continue
-                    match = RECIPE_PATH.match(entry)
-                    if not match:
-                        continue
-                    namespace, relative_path = match.groups()
-                    if namespace != "minecraft":
+                    if not any(pattern.match(entry) for pattern in patterns):
                         continue
 
-                    recipe_name = PurePosixPath(relative_path).stem
-                    recipe_id = f"{namespace}:{recipe_name}"
+                    discovered = discover_recipe_file(entry)
+                    if discovered is None or discovered.namespace != "minecraft":
+                        continue
+
+                    recipe_name = PurePosixPath(discovered.filename).stem
+                    recipe_id = f"minecraft:{recipe_name}"
                     try:
-                        raw = archive.read(entry)
-                        data = json.loads(raw)
-                    except (OSError, json.JSONDecodeError):
+                        raw = archive.read(discovered.filename)
+                        data = orjson.loads(raw)
+                    except (OSError, orjson.JSONDecodeError):
                         recipes.skipped.append(
                             SkippedRecipe(
                                 recipe_id=recipe_id,
@@ -98,7 +142,7 @@ class VanillaJarProvider:
                         continue
 
                     try_add_recipe(
-                        self._parser,
+                        parser,
                         recipes,
                         recipe_id,
                         data,

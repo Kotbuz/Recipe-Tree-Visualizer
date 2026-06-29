@@ -1,6 +1,7 @@
 from app.recipes.adapters import item_id_to_display_name
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.manager import recipe_manager
+from app.recipes.manager import RecipeLookup, recipe_manager
+from app.recipes.models import Recipe, RecipeIO
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.recipes.types import RecipeType
@@ -60,10 +61,7 @@ def test_item_id_to_display_name() -> None:
 
 
 def _require_recipe_source(version: str = "26.2") -> None:
-    recipes = recipe_manager.get_version_recipes(version)
-    if recipes:
-        return
-    if _resolve_vanilla_jar_path(version) is not None:
+    if recipe_manager.get_version_recipes(version):
         return
     pytest.skip(f"No recipe source found for Minecraft version {version}")
 
@@ -74,6 +72,54 @@ def test_recipe_manager_loads_recipes_with_item_ids() -> None:
     assert recipes
     assert all(":" in recipe.id for recipe in recipes)
     assert all(part.item_id for recipe in recipes for part in recipe.inputs + recipe.outputs)
+
+
+def test_recipe_lookup_focus_respects_metadata() -> None:
+    brick_slab = Recipe(
+        id="minecraft:export/crafting/brick_slab",
+        recipe_type=RecipeType.CRAFTING_SHAPED,
+        category_id="crafting",
+        catalyst_id=None,
+        inputs=[RecipeIO(item_id="minecraft:brick_block", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:stone_slab", amount=6.0, metadata=4)],
+        duration_ticks=None,
+        source="vanilla",
+        mod_id="minecraft",
+        raw_type="crafting_shaped",
+    )
+    quartz_slab = Recipe(
+        id="minecraft:export/crafting/quartz_slab",
+        recipe_type=RecipeType.CRAFTING_SHAPED,
+        category_id="crafting",
+        catalyst_id=None,
+        inputs=[RecipeIO(item_id="minecraft:quartz_block", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:stone_slab", amount=6.0, metadata=7)],
+        duration_ticks=None,
+        source="vanilla",
+        mod_id="minecraft",
+        raw_type="crafting_shaped",
+    )
+
+    lookup = RecipeLookup((brick_slab, quartz_slab), None, "1.7.10")
+
+    all_slabs = lookup.focus("minecraft:stone_slab", RecipeIngredientRole.OUTPUT).all()
+    assert len(all_slabs) == 2
+
+    quartz_only = lookup.focus(
+        "minecraft:stone_slab",
+        RecipeIngredientRole.OUTPUT,
+        metadata=7,
+    ).all()
+    assert len(quartz_only) == 1
+    assert quartz_only[0].id == "minecraft:export/crafting/quartz_slab"
+
+    brick_only = lookup.focus(
+        "minecraft:stone_slab",
+        RecipeIngredientRole.OUTPUT,
+        metadata=4,
+    ).all()
+    assert len(brick_only) == 1
+    assert brick_only[0].id == "minecraft:export/crafting/brick_slab"
 
 
 def test_recipe_manager_focus_output() -> None:
@@ -95,6 +141,153 @@ def test_recipe_service_still_returns_summaries() -> None:
     results = recipe_service.search_recipes(version="26.2", query="oak planks", limit=10)
     assert results
     assert any("oak planks" in output.name.lower() for recipe in results for output in recipe.outputs)
+
+
+def test_focus_finds_recipes_by_tag_member_item() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.registry import IngredientRegistry
+
+    recipe = Recipe(
+        id="test:quartz_dust_smelt",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="tag:c:dusts/alltheores_quartz", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:glass", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="test",
+    )
+    registry = IngredientRegistry()
+    registry._tag_members = {
+        "tag:c:dusts/alltheores_quartz": frozenset({"alltheores:quartz_dust"}),
+    }
+    registry._item_tag_index = None
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("alltheores:quartz_dust", RecipeIngredientRole.INPUT).all()
+    assert len(results) == 1
+    assert results[0].id == "test:quartz_dust_smelt"
+
+
+def test_focus_output_flint_excludes_flint_and_steel() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.registry import IngredientRegistry
+
+    flint_recipe = Recipe(
+        id="minecraft:flint_from_gravel",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="minecraft:gravel", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:flint", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    flint_and_steel_recipe = Recipe(
+        id="minecraft:flint_and_steel",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[
+            RecipeIO(item_id="minecraft:iron_ingot", amount=1.0),
+            RecipeIO(item_id="minecraft:flint", amount=1.0),
+        ],
+        outputs=[RecipeIO(item_id="minecraft:flint_and_steel", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    recipes = (flint_recipe, flint_and_steel_recipe)
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle(recipes, version="1.21.1", registry=registry)
+    lookup = RecipeLookup(recipes, registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("flint", RecipeIngredientRole.OUTPUT).all()
+    assert [recipe.id for recipe in results] == ["minecraft:flint_from_gravel"]
+
+
+def test_query_finds_partial_output_name_match() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.registry import IngredientRegistry
+
+    technium_recipe = Recipe(
+        id="techopolis:basic_technium",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="techopolis:custom_machinery",
+        catalyst_id="techopolis:basic_technium_machine",
+        inputs=[
+            RecipeIO(item_id="tag:c:gears/stone", amount=4.0),
+            RecipeIO(item_id="immersiveengineering:treated_wood_horizontal", amount=4.0),
+        ],
+        outputs=[RecipeIO(item_id="techopolis:basic_technium_ingot", amount=1.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="techopolis",
+        raw_type="techopolis:basic_technium_machine",
+    )
+    recipes = (technium_recipe,)
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle(recipes, version="1.21.1", registry=registry)
+    lookup = RecipeLookup(recipes, registry, "1.21.1", bundle=bundle)
+
+    results = lookup.query("tech").all()
+    assert [recipe.id for recipe in results] == ["techopolis:basic_technium"]
+
+
+def test_focus_returns_empty_for_unknown_item_without_scanning() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.models import Recipe, RecipeIO
+    from app.recipes.registry import IngredientRegistry
+    from app.recipes.types import RecipeType
+
+    recipe = Recipe(
+        id="test:stick",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[RecipeIO(item_id="minecraft:stick", amount=1.0)],
+        outputs=[RecipeIO(item_id="minecraft:torch", amount=4.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="minecraft",
+    )
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    assert lookup.focus("unknown:item_xyz", RecipeIngredientRole.INPUT).all() == []
+
+
+def test_focus_matches_quartz_dust_via_ae2_tag() -> None:
+    from app.recipes.manager import RecipeLookup, _build_version_recipe_bundle
+    from app.recipes.models import Recipe, RecipeIO
+    from app.recipes.registry import IngredientRegistry
+    from app.recipes.types import RecipeType
+
+    recipe = Recipe(
+        id="ae2:quartz_glass",
+        recipe_type=RecipeType.CRAFTING_SHAPELESS,
+        category_id="minecraft:crafting",
+        catalyst_id="",
+        inputs=[
+            RecipeIO(item_id="tag:ae2:all_quartz_dust", amount=5.0),
+            RecipeIO(item_id="tag:c:glass_blocks/cheap", amount=4.0),
+        ],
+        outputs=[RecipeIO(item_id="ae2:quartz_glass", amount=4.0)],
+        duration_ticks=None,
+        source="test",
+        mod_id="ae2",
+    )
+    registry = IngredientRegistry()
+    bundle = _build_version_recipe_bundle((recipe,), version="1.21.1", registry=registry)
+    lookup = RecipeLookup((recipe,), registry, "1.21.1", bundle=bundle)
+
+    results = lookup.focus("alltheores:quartz_dust", RecipeIngredientRole.INPUT).all()
+    assert len(results) == 1
+    assert results[0].id == "ae2:quartz_glass"
 
 
 def test_recipe_manager_focus_matches_tag_inputs() -> None:

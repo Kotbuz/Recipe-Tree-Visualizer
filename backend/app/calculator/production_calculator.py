@@ -16,6 +16,7 @@ class ProductionCalculator:
         engine = BipartiteGraphEngine(
             request.graph,
             request.version,
+            profile_id=request.profile_id,
             include_mods=request.include_mods,
             include_synthetic=request.include_synthetic,
         )
