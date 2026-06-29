@@ -66,6 +66,49 @@
     height: 0;
 }
 
+.recipe-canvas-breadcrumbs {
+    position: absolute;
+    top: 0.75rem;
+    left: 0.75rem;
+    z-index: 5;
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+    padding: 0.4rem 0.6rem;
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    box-shadow: var(--ui-shadow);
+}
+
+.recipe-breadcrumb-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.25rem;
+}
+
+.recipe-breadcrumb {
+    border: none;
+    background: none;
+    padding: 0.1rem 0.35rem;
+    font-weight: 700;
+    color: #3730a3;
+    cursor: pointer;
+}
+
+.recipe-breadcrumb:hover {
+    background: #e0e7ff;
+}
+
+.recipe-breadcrumb--current {
+    color: var(--ui-text, #1f2937);
+    cursor: default;
+}
+
+.recipe-breadcrumb-sep {
+    color: var(--ui-border, #94a3b8);
+}
+
 .recipe-connections-layer {
     position: absolute;
     left: calc(-1 * var(--canvas-svg-offset, 10000px));

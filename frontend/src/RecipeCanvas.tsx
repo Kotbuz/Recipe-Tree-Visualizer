@@ -66,6 +66,15 @@ interface NodeDragState {
     offsetY: number;
 }
 
+/** Кадр стека навигации: состояние холста-предка, в который мы вернёмся. */
+interface CanvasFrame {
+    outpostId: string;
+    label: string;
+    nodes: RecipeNode[];
+    connections: RecipeConnection[];
+    productionTarget: ProductionTarget | null;
+}
+
 interface ItemDragState {
     sourceNodeId: string;
     sourceSlotType: SlotType;
@@ -138,8 +147,17 @@ const machineNameMap: Record<string, string> = {
 
 const TERMINAL_LABELS: Record<TerminalKind, string> = {
     chest: 'Сундук',
-    outpost: 'Аванпост',
+    outpost: 'Фабрика',
 };
+
+/** Имя порт-нод вложенного холста фабрики. */
+const PORT_LABELS: Record<'factory_in' | 'factory_out', string> = {
+    factory_in: 'Вход в фабрику',
+    factory_out: 'Выход из фабрики',
+};
+
+/** Отображаемое имя ноды: пользовательский label имеет приоритет. */
+const displayNodeName = (node: RecipeNode) => node.label ?? node.machineName;
 
 const mapMachineName = (typeName: string) =>
     machineNameMap[typeName] ??
@@ -296,6 +314,20 @@ const isSlotCompatible = (
 
 const resolveSlotLabel = (item: RecipeItem): string =>
     item.item_id ? itemIdToDisplayName(item.item_id) : item.name;
+
+/**
+ * Сворачивает рабочий холст фабрики обратно в её ноду.
+ * В фазе 1 — только сохраняет subCanvas; проброс портов на внешние слоты
+ * добавляется в фазе 2 (reconcileFactoryPorts).
+ */
+const applyFactorySubCanvas = (
+    node: RecipeNode,
+    subNodes: RecipeNode[],
+    subConnections: RecipeConnection[],
+): RecipeNode => ({
+    ...node,
+    subCanvas: { nodes: subNodes, connections: subConnections },
+});
 
 export default function RecipeCanvas() {
     const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
@@ -468,6 +500,9 @@ export default function RecipeCanvas() {
     const [targetRateUnit, setTargetRateUnit] = useState<FlowRateUnit>('per_minute');
     const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
     const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
+    const [navStack, setNavStack] = useState<CanvasFrame[]>([]);
+    const [labelEditNodeId, setLabelEditNodeId] = useState<string | null>(null);
+    const [labelEditValue, setLabelEditValue] = useState('');
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
     const [, setLayoutTick] = useState(0);
 
@@ -526,6 +561,7 @@ export default function RecipeCanvas() {
     const handleVersionChange = useCallback(
         (nextVersion: string) => {
             setVersion(nextVersion);
+            setNavStack([]);
             setNodes([]);
             setConnections([]);
             setProductionTarget(null);
@@ -679,6 +715,113 @@ export default function RecipeCanvas() {
         );
         setProductionTarget((current) => (current?.nodeId === nodeId ? null : current));
     }, []);
+
+    /** Войти в рабочий холст фабрики (kind === 'outpost'). */
+    const openFactory = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node || node.kind !== 'outpost') {
+                return;
+            }
+            setNavStack((stack) => [
+                ...stack,
+                {
+                    outpostId: nodeId,
+                    label: displayNodeName(node),
+                    nodes,
+                    connections,
+                    productionTarget,
+                },
+            ]);
+            setNodes(node.subCanvas?.nodes ?? []);
+            setConnections(node.subCanvas?.connections ?? []);
+            setProductionTarget(null);
+            setContextMenu(null);
+            setSelectedRecipe(null);
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
+        },
+        [connections, nodes, productionTarget],
+    );
+
+    /** Вернуться на холст глубины targetDepth, свернув вложенные изменения в дерево. */
+    const exitToFrame = useCallback(
+        (targetDepth: number) => {
+            if (targetDepth >= navStack.length) {
+                return;
+            }
+            let foldNodes = nodes;
+            let foldConnections = connections;
+            let foldTarget = productionTarget;
+            const newStack = [...navStack];
+            while (newStack.length > targetDepth) {
+                const frame = newStack.pop()!;
+                foldNodes = frame.nodes.map((entry) =>
+                    entry.id === frame.outpostId
+                        ? applyFactorySubCanvas(entry, foldNodes, foldConnections)
+                        : entry,
+                );
+                foldConnections = frame.connections;
+                foldTarget = frame.productionTarget;
+            }
+            setNavStack(newStack);
+            setNodes(foldNodes);
+            setConnections(foldConnections);
+            setProductionTarget(foldTarget);
+            setContextMenu(null);
+            setSelectedRecipe(null);
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
+        },
+        [connections, navStack, nodes, productionTarget],
+    );
+
+    /** Свернуть текущий активный холст и всех предков в единое корневое дерево. */
+    const collapseToRoot = useCallback(() => {
+        let foldNodes = nodes;
+        let foldConnections = connections;
+        let foldTarget = productionTarget;
+        const stack = [...navStack];
+        while (stack.length > 0) {
+            const frame = stack.pop()!;
+            foldNodes = frame.nodes.map((entry) =>
+                entry.id === frame.outpostId
+                    ? applyFactorySubCanvas(entry, foldNodes, foldConnections)
+                    : entry,
+            );
+            foldConnections = frame.connections;
+            foldTarget = frame.productionTarget;
+        }
+        return { nodes: foldNodes, connections: foldConnections, productionTarget: foldTarget };
+    }, [connections, navStack, nodes, productionTarget]);
+
+    const openLabelEditor = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node) {
+                return;
+            }
+            setLabelEditNodeId(nodeId);
+            setLabelEditValue(displayNodeName(node));
+            setContextMenu(null);
+        },
+        [nodes],
+    );
+
+    const applyLabelEdit = useCallback(() => {
+        if (!labelEditNodeId) {
+            return;
+        }
+        const trimmed = labelEditValue.trim();
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === labelEditNodeId
+                    ? { ...node, label: trimmed || undefined }
+                    : node,
+            ),
+        );
+        setLabelEditNodeId(null);
+    }, [labelEditNodeId, labelEditValue]);
 
     const openDurationEditor = useCallback(
         (nodeId: string) => {
@@ -1236,25 +1379,24 @@ export default function RecipeCanvas() {
     };
 
     const handleSaveCanvas = useCallback(() => {
+        const root = collapseToRoot();
         const document = createCanvasDocument({
-            nodes,
-            connections,
+            nodes: root.nodes,
+            connections: root.connections,
             viewport: transform,
             name: 'recipe-tree',
             minecraftVersion: version,
             profileId: activeProfileId,
             defaultDurationTicks,
             flowRateUnit,
-            productionTarget,
+            productionTarget: root.productionTarget,
         });
         downloadCanvasDocument(document);
     }, [
         activeProfileId,
-        connections,
+        collapseToRoot,
         defaultDurationTicks,
         flowRateUnit,
-        nodes,
-        productionTarget,
         transform,
         version,
     ]);
@@ -1268,6 +1410,7 @@ export default function RecipeCanvas() {
             if (document.profileId && document.profileId !== activeProfileId) {
                 await activateProfile(document.profileId);
             }
+            setNavStack([]);
             setNodes(document.nodes);
             setConnections(document.connections);
             setDefaultDurationTicks(document.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS);
@@ -1677,6 +1820,42 @@ export default function RecipeCanvas() {
                 onMouseLeave={handlePanMouseUp}
                 style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
+                {navStack.length > 0 && (
+                    <div
+                        className="recipe-canvas-breadcrumbs"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            className="recipe-breadcrumb"
+                            onClick={() => exitToFrame(0)}
+                        >
+                            Корень
+                        </button>
+                        {navStack.map((frame, index) => {
+                            const depth = index + 1;
+                            const isCurrent = depth === navStack.length;
+                            return (
+                                <span key={frame.outpostId} className="recipe-breadcrumb-group">
+                                    <span className="recipe-breadcrumb-sep">/</span>
+                                    {isCurrent ? (
+                                        <span className="recipe-breadcrumb recipe-breadcrumb--current">
+                                            {frame.label}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="recipe-breadcrumb"
+                                            onClick={() => exitToFrame(depth)}
+                                        >
+                                            {frame.label}
+                                        </button>
+                                    )}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
                 {dragPreviewPath && (
                     <svg className="recipe-connections-screen-layer" aria-hidden="true">
                         <path
@@ -1753,7 +1932,7 @@ export default function RecipeCanvas() {
                                             handleMachineMouseDown(node.id, event)
                                         }
                                     >
-                                        <span>{node.machineName}</span>
+                                        <span>{displayNodeName(node)}</span>
                                         {node.kind === 'recipe' && node.durationTicks !== undefined && (
                                             <span
                                                 className="recipe-node-duration"
@@ -1810,7 +1989,7 @@ export default function RecipeCanvas() {
                                             className="recipe-context-terminal recipe-context-terminal--outpost"
                                             onClick={() => handleTerminalNodeClick('outpost')}
                                         >
-                                            Аванпост
+                                            Фабрика
                                         </button>
                                     </div>
                                     <div className="recipe-context-main">
@@ -1864,8 +2043,31 @@ export default function RecipeCanvas() {
                                         (entry) => entry.id === contextMenu.nodeId,
                                     );
                                     const canEditDuration = node?.kind === 'recipe';
+                                    const isFactory = node?.kind === 'outpost';
                                     return (
                                         <>
+                                            {isFactory && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openFactory(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Открыть фабрику
+                                                </button>
+                                            )}
+                                            {isFactory && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openLabelEditor(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Переименовать…
+                                                </button>
+                                            )}
                                             {canEditDuration && (
                                                 <button
                                                     type="button"
@@ -1916,6 +2118,52 @@ export default function RecipeCanvas() {
                                 >
                                     Задать целевой выход…
                                 </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {labelEditNodeId &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setLabelEditNodeId(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">
+                                    Название фабрики
+                                </div>
+                                <input
+                                    className="recipe-duration-modal-input"
+                                    type="text"
+                                    autoFocus
+                                    value={labelEditValue}
+                                    onChange={(event) => setLabelEditValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            applyLabelEdit();
+                                        }
+                                    }}
+                                />
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setLabelEditNodeId(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyLabelEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
                             </div>
                         </div>,
                         document.body,
