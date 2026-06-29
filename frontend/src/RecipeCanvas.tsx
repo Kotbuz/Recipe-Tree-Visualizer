@@ -66,6 +66,15 @@ interface NodeDragState {
     offsetY: number;
 }
 
+/** Кадр стека навигации: состояние холста-предка, в который мы вернёмся. */
+interface CanvasFrame {
+    outpostId: string;
+    label: string;
+    nodes: RecipeNode[];
+    connections: RecipeConnection[];
+    productionTarget: ProductionTarget | null;
+}
+
 interface ItemDragState {
     sourceNodeId: string;
     sourceSlotType: SlotType;
@@ -138,8 +147,17 @@ const machineNameMap: Record<string, string> = {
 
 const TERMINAL_LABELS: Record<TerminalKind, string> = {
     chest: 'Сундук',
-    outpost: 'Аванпост',
+    outpost: 'Фабрика',
 };
+
+/** Имя порт-нод вложенного холста фабрики. */
+const PORT_LABELS: Record<'factory_in' | 'factory_out', string> = {
+    factory_in: 'Вход в фабрику',
+    factory_out: 'Выход из фабрики',
+};
+
+/** Отображаемое имя ноды: пользовательский label имеет приоритет. */
+const displayNodeName = (node: RecipeNode) => node.label ?? node.machineName;
 
 const mapMachineName = (typeName: string) =>
     machineNameMap[typeName] ??
@@ -153,7 +171,11 @@ const formatDurationLabel = (ticks: number) => {
     return seconds >= 10 ? `${ticks}t` : `${seconds.toFixed(1)}s`;
 };
 
-const isTerminalNode = (node: RecipeNode) => node.kind === 'chest' || node.kind === 'outpost';
+const isTerminalNode = (node: RecipeNode) =>
+    node.kind === 'chest' ||
+    node.kind === 'outpost' ||
+    node.kind === 'factory_in' ||
+    node.kind === 'factory_out';
 
 const getChestPassthroughItem = (node: RecipeNode) =>
     node.inputs[0]?.name || node.outputs[0]?.name || '';
@@ -296,6 +318,69 @@ const isSlotCompatible = (
 
 const resolveSlotLabel = (item: RecipeItem): string =>
     item.item_id ? itemIdToDisplayName(item.item_id) : item.name;
+
+/** Ключ предмета для дедупликации внешних слотов фабрики. */
+const itemKey = (item: RecipeItem) =>
+    `${(item.item_id ?? '').toLowerCase()}|${item.metadata ?? ''}|${item.name.toLowerCase()}`;
+
+/** Предметы портов заданного вида во вложенном холсте (только с заданным предметом). */
+const collectPortItems = (
+    subNodes: RecipeNode[],
+    portKind: 'factory_in' | 'factory_out',
+): RecipeItem[] =>
+    subNodes
+        .filter((node) => node.kind === portKind)
+        .map((node) => (portKind === 'factory_in' ? node.outputs[0] : node.inputs[0]))
+        .filter((item): item is RecipeItem => Boolean(item && item.name));
+
+/** Добавляет недостающие предметы, сохраняя порядок и индексы существующих слотов. */
+const appendMissingItems = (existing: RecipeItem[], additions: RecipeItem[]): RecipeItem[] => {
+    const result = [...existing];
+    const seen = new Set(existing.filter((item) => item.name).map(itemKey));
+    for (const item of additions) {
+        const key = itemKey(item);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        result.push(item);
+    }
+    return result;
+};
+
+/**
+ * Пробрасывает предметы портов Вход/Выход на внешние стороны ноды-фабрики.
+ * Добавление без удаления/переупорядочивания — внешние связи (ссылаются на
+ * itemIndex) не ломаются.
+ */
+const reconcileFactoryPorts = (node: RecipeNode): RecipeNode => {
+    if (!node.subCanvas) {
+        return node;
+    }
+    return {
+        ...node,
+        inputs: appendMissingItems(
+            node.inputs,
+            collectPortItems(node.subCanvas.nodes, 'factory_in'),
+        ),
+        outputs: appendMissingItems(
+            node.outputs,
+            collectPortItems(node.subCanvas.nodes, 'factory_out'),
+        ),
+    };
+};
+
+/**
+ * Сворачивает рабочий холст фабрики обратно в её ноду: сохраняет subCanvas и
+ * пробрасывает предметы портов на внешние слоты.
+ */
+const applyFactorySubCanvas = (
+    node: RecipeNode,
+    subNodes: RecipeNode[],
+    subConnections: RecipeConnection[],
+): RecipeNode =>
+    reconcileFactoryPorts({
+        ...node,
+        subCanvas: { nodes: subNodes, connections: subConnections },
+    });
 
 export default function RecipeCanvas() {
     const { version, versions, setVersion, setProfileId, ingredientIndex, reloadCatalog, refreshInstalledVersions } =
@@ -468,6 +553,17 @@ export default function RecipeCanvas() {
     const [targetRateUnit, setTargetRateUnit] = useState<FlowRateUnit>('per_minute');
     const [nodeDragState, setNodeDragState] = useState<NodeDragState | null>(null);
     const [itemDragState, setItemDragState] = useState<ItemDragState | null>(null);
+    const [navStack, setNavStack] = useState<CanvasFrame[]>([]);
+    const [labelEditNodeId, setLabelEditNodeId] = useState<string | null>(null);
+    const [labelEditValue, setLabelEditValue] = useState('');
+    const [portPicker, setPortPicker] = useState<{
+        portKind: 'factory_in' | 'factory_out';
+        x: number;
+        y: number;
+        screenX: number;
+        screenY: number;
+        candidates: RecipeItem[];
+    } | null>(null);
     const [recipeSearchQuery, setRecipeSearchQuery] = useState('');
     const [, setLayoutTick] = useState(0);
 
@@ -526,6 +622,7 @@ export default function RecipeCanvas() {
     const handleVersionChange = useCallback(
         (nextVersion: string) => {
             setVersion(nextVersion);
+            setNavStack([]);
             setNodes([]);
             setConnections([]);
             setProductionTarget(null);
@@ -637,7 +734,11 @@ export default function RecipeCanvas() {
         (nodeId: string, slotType: SlotType, itemIndex: number, itemName: string) => {
             setNodes((current) =>
                 current.map((node) => {
-                    if (node.id !== nodeId || node.kind !== 'outpost') return node;
+                    const isFillable =
+                        node.kind === 'outpost' ||
+                        node.kind === 'factory_in' ||
+                        node.kind === 'factory_out';
+                    if (node.id !== nodeId || !isFillable) return node;
 
                     const items = slotType === 'input' ? node.inputs : node.outputs;
                     const item = items[itemIndex];
@@ -679,6 +780,113 @@ export default function RecipeCanvas() {
         );
         setProductionTarget((current) => (current?.nodeId === nodeId ? null : current));
     }, []);
+
+    /** Войти в рабочий холст фабрики (kind === 'outpost'). */
+    const openFactory = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node || node.kind !== 'outpost') {
+                return;
+            }
+            setNavStack((stack) => [
+                ...stack,
+                {
+                    outpostId: nodeId,
+                    label: displayNodeName(node),
+                    nodes,
+                    connections,
+                    productionTarget,
+                },
+            ]);
+            setNodes(node.subCanvas?.nodes ?? []);
+            setConnections(node.subCanvas?.connections ?? []);
+            setProductionTarget(null);
+            setContextMenu(null);
+            setSelectedRecipe(null);
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
+        },
+        [connections, nodes, productionTarget],
+    );
+
+    /** Вернуться на холст глубины targetDepth, свернув вложенные изменения в дерево. */
+    const exitToFrame = useCallback(
+        (targetDepth: number) => {
+            if (targetDepth >= navStack.length) {
+                return;
+            }
+            let foldNodes = nodes;
+            let foldConnections = connections;
+            let foldTarget = productionTarget;
+            const newStack = [...navStack];
+            while (newStack.length > targetDepth) {
+                const frame = newStack.pop()!;
+                foldNodes = frame.nodes.map((entry) =>
+                    entry.id === frame.outpostId
+                        ? applyFactorySubCanvas(entry, foldNodes, foldConnections)
+                        : entry,
+                );
+                foldConnections = frame.connections;
+                foldTarget = frame.productionTarget;
+            }
+            setNavStack(newStack);
+            setNodes(foldNodes);
+            setConnections(foldConnections);
+            setProductionTarget(foldTarget);
+            setContextMenu(null);
+            setSelectedRecipe(null);
+            setConnectionFlowRates(new Map());
+            setCalculationError(null);
+        },
+        [connections, navStack, nodes, productionTarget],
+    );
+
+    /** Свернуть текущий активный холст и всех предков в единое корневое дерево. */
+    const collapseToRoot = useCallback(() => {
+        let foldNodes = nodes;
+        let foldConnections = connections;
+        let foldTarget = productionTarget;
+        const stack = [...navStack];
+        while (stack.length > 0) {
+            const frame = stack.pop()!;
+            foldNodes = frame.nodes.map((entry) =>
+                entry.id === frame.outpostId
+                    ? applyFactorySubCanvas(entry, foldNodes, foldConnections)
+                    : entry,
+            );
+            foldConnections = frame.connections;
+            foldTarget = frame.productionTarget;
+        }
+        return { nodes: foldNodes, connections: foldConnections, productionTarget: foldTarget };
+    }, [connections, navStack, nodes, productionTarget]);
+
+    const openLabelEditor = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node) {
+                return;
+            }
+            setLabelEditNodeId(nodeId);
+            setLabelEditValue(displayNodeName(node));
+            setContextMenu(null);
+        },
+        [nodes],
+    );
+
+    const applyLabelEdit = useCallback(() => {
+        if (!labelEditNodeId) {
+            return;
+        }
+        const trimmed = labelEditValue.trim();
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === labelEditNodeId
+                    ? { ...node, label: trimmed || undefined }
+                    : node,
+            ),
+        );
+        setLabelEditNodeId(null);
+    }, [labelEditNodeId, labelEditValue]);
 
     const openDurationEditor = useCallback(
         (nodeId: string) => {
@@ -919,6 +1127,39 @@ export default function RecipeCanvas() {
         return node;
     };
 
+    /**
+     * Создаёт порт-ноду вложенного холста.
+     * factory_in — источник (отдаёт ресурс внутрь через output);
+     * factory_out — приёмник (собирает результат через input).
+     */
+    const createPortNode = (
+        portKind: 'factory_in' | 'factory_out',
+        x: number,
+        y: number,
+        item?: RecipeItem,
+    ) => {
+        const slot: RecipeItem = item
+            ? {
+                  name: item.name,
+                  amount: item.amount ?? 1,
+                  item_id: item.item_id,
+                  icon_id: item.icon_id,
+                  metadata: item.metadata,
+              }
+            : { name: '', amount: 1 };
+        const node: RecipeNode = {
+            id: `${portKind}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+            kind: portKind,
+            x,
+            y,
+            machineName: PORT_LABELS[portKind],
+            inputs: portKind === 'factory_out' ? [slot] : [],
+            outputs: portKind === 'factory_in' ? [slot] : [],
+        };
+        setNodes((current) => [...current, node]);
+        return node;
+    };
+
     const connectItemDragToTerminal = (
         menu: ItemRecipeContextMenu,
         terminalNode: RecipeNode,
@@ -1013,6 +1254,55 @@ export default function RecipeCanvas() {
             prefilledSlot,
         );
         connectItemDragToTerminal(contextMenu, terminalNode);
+        closeMenu();
+    };
+
+    /** Внешние предметы родительской фабрики, ещё не представленные портом данного вида. */
+    const factoryPortCandidates = (
+        portKind: 'factory_in' | 'factory_out',
+    ): RecipeItem[] => {
+        const parentFrame = navStack[navStack.length - 1];
+        if (!parentFrame) {
+            return [];
+        }
+        const parentFactory = parentFrame.nodes.find(
+            (entry) => entry.id === parentFrame.outpostId,
+        );
+        if (!parentFactory) {
+            return [];
+        }
+        const externalItems = (
+            portKind === 'factory_in' ? parentFactory.inputs : parentFactory.outputs
+        ).filter((item) => item.name);
+
+        const existingKeys = new Set(
+            collectPortItems(nodes, portKind).map(itemKey),
+        );
+        return externalItems.filter((item) => !existingKeys.has(itemKey(item)));
+    };
+
+    const handlePortNodeClick = (portKind: 'factory_in' | 'factory_out') => {
+        if (!contextMenu || (contextMenu.type !== 'recipe' && contextMenu.type !== 'item-recipe')) {
+            return;
+        }
+        const coords = placeNodeAtScreen(contextMenu.screenX, contextMenu.screenY);
+        if (!coords) return;
+
+        const candidates = factoryPortCandidates(portKind);
+        if (candidates.length === 0) {
+            createPortNode(portKind, coords.x, coords.y);
+            closeMenu();
+            return;
+        }
+
+        setPortPicker({
+            portKind,
+            x: coords.x,
+            y: coords.y,
+            screenX: contextMenu.screenX,
+            screenY: contextMenu.screenY,
+            candidates,
+        });
         closeMenu();
     };
 
@@ -1236,25 +1526,24 @@ export default function RecipeCanvas() {
     };
 
     const handleSaveCanvas = useCallback(() => {
+        const root = collapseToRoot();
         const document = createCanvasDocument({
-            nodes,
-            connections,
+            nodes: root.nodes,
+            connections: root.connections,
             viewport: transform,
             name: 'recipe-tree',
             minecraftVersion: version,
             profileId: activeProfileId,
             defaultDurationTicks,
             flowRateUnit,
-            productionTarget,
+            productionTarget: root.productionTarget,
         });
         downloadCanvasDocument(document);
     }, [
         activeProfileId,
-        connections,
+        collapseToRoot,
         defaultDurationTicks,
         flowRateUnit,
-        nodes,
-        productionTarget,
         transform,
         version,
     ]);
@@ -1268,6 +1557,7 @@ export default function RecipeCanvas() {
             if (document.profileId && document.profileId !== activeProfileId) {
                 await activateProfile(document.profileId);
             }
+            setNavStack([]);
             setNodes(document.nodes);
             setConnections(document.connections);
             setDefaultDurationTicks(document.meta?.defaultDurationTicks ?? DEFAULT_DURATION_TICKS);
@@ -1677,6 +1967,42 @@ export default function RecipeCanvas() {
                 onMouseLeave={handlePanMouseUp}
                 style={{ cursor: isPanning ? 'grabbing' : 'default' }}
             >
+                {navStack.length > 0 && (
+                    <div
+                        className="recipe-canvas-breadcrumbs"
+                        onMouseDown={(event) => event.stopPropagation()}
+                    >
+                        <button
+                            type="button"
+                            className="recipe-breadcrumb"
+                            onClick={() => exitToFrame(0)}
+                        >
+                            Корень
+                        </button>
+                        {navStack.map((frame, index) => {
+                            const depth = index + 1;
+                            const isCurrent = depth === navStack.length;
+                            return (
+                                <span key={frame.outpostId} className="recipe-breadcrumb-group">
+                                    <span className="recipe-breadcrumb-sep">/</span>
+                                    {isCurrent ? (
+                                        <span className="recipe-breadcrumb recipe-breadcrumb--current">
+                                            {frame.label}
+                                        </span>
+                                    ) : (
+                                        <button
+                                            type="button"
+                                            className="recipe-breadcrumb"
+                                            onClick={() => exitToFrame(depth)}
+                                        >
+                                            {frame.label}
+                                        </button>
+                                    )}
+                                </span>
+                            );
+                        })}
+                    </div>
+                )}
                 {dragPreviewPath && (
                     <svg className="recipe-connections-screen-layer" aria-hidden="true">
                         <path
@@ -1753,7 +2079,7 @@ export default function RecipeCanvas() {
                                             handleMachineMouseDown(node.id, event)
                                         }
                                     >
-                                        <span>{node.machineName}</span>
+                                        <span>{displayNodeName(node)}</span>
                                         {node.kind === 'recipe' && node.durationTicks !== undefined && (
                                             <span
                                                 className="recipe-node-duration"
@@ -1810,8 +2136,26 @@ export default function RecipeCanvas() {
                                             className="recipe-context-terminal recipe-context-terminal--outpost"
                                             onClick={() => handleTerminalNodeClick('outpost')}
                                         >
-                                            Аванпост
+                                            Фабрика
                                         </button>
+                                        {navStack.length > 0 && (
+                                            <>
+                                                <button
+                                                    type="button"
+                                                    className="recipe-context-terminal recipe-context-terminal--port"
+                                                    onClick={() => handlePortNodeClick('factory_in')}
+                                                >
+                                                    Вход в фабрику
+                                                </button>
+                                                <button
+                                                    type="button"
+                                                    className="recipe-context-terminal recipe-context-terminal--port"
+                                                    onClick={() => handlePortNodeClick('factory_out')}
+                                                >
+                                                    Выход из фабрики
+                                                </button>
+                                            </>
+                                        )}
                                     </div>
                                     <div className="recipe-context-main">
                                         <div className="recipe-context-main-title">Рецепты</div>
@@ -1864,8 +2208,31 @@ export default function RecipeCanvas() {
                                         (entry) => entry.id === contextMenu.nodeId,
                                     );
                                     const canEditDuration = node?.kind === 'recipe';
+                                    const isFactory = node?.kind === 'outpost';
                                     return (
                                         <>
+                                            {isFactory && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openFactory(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Открыть фабрику
+                                                </button>
+                                            )}
+                                            {isFactory && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openLabelEditor(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Переименовать…
+                                                </button>
+                                            )}
                                             {canEditDuration && (
                                                 <button
                                                     type="button"
@@ -1916,6 +2283,105 @@ export default function RecipeCanvas() {
                                 >
                                     Задать целевой выход…
                                 </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {portPicker &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal recipe-context-modal--transparent"
+                            onClick={() => setPortPicker(null)}
+                        >
+                            <div
+                                className="recipe-node-context-panel"
+                                style={{ left: portPicker.screenX, top: portPicker.screenY }}
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-context-sidebar-title">
+                                    {portPicker.portKind === 'factory_in'
+                                        ? 'Внести ресурс'
+                                        : 'Вывести ресурс'}
+                                </div>
+                                {portPicker.candidates.map((item) => (
+                                    <button
+                                        key={itemKey(item)}
+                                        type="button"
+                                        className="recipe-node-context-item"
+                                        onClick={() => {
+                                            createPortNode(
+                                                portPicker.portKind,
+                                                portPicker.x,
+                                                portPicker.y,
+                                                item,
+                                            );
+                                            setPortPicker(null);
+                                        }}
+                                    >
+                                        {item.name}
+                                    </button>
+                                ))}
+                                <button
+                                    type="button"
+                                    className="recipe-node-context-item"
+                                    onClick={() => {
+                                        createPortNode(
+                                            portPicker.portKind,
+                                            portPicker.x,
+                                            portPicker.y,
+                                        );
+                                        setPortPicker(null);
+                                    }}
+                                >
+                                    Пустой порт
+                                </button>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {labelEditNodeId &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setLabelEditNodeId(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">
+                                    Название фабрики
+                                </div>
+                                <input
+                                    className="recipe-duration-modal-input"
+                                    type="text"
+                                    autoFocus
+                                    value={labelEditValue}
+                                    onChange={(event) => setLabelEditValue(event.target.value)}
+                                    onKeyDown={(event) => {
+                                        if (event.key === 'Enter') {
+                                            applyLabelEdit();
+                                        }
+                                    }}
+                                />
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setLabelEditNodeId(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyLabelEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
                             </div>
                         </div>,
                         document.body,
