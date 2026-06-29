@@ -42,7 +42,9 @@ def test_natures_compass_builds_mod_recipes() -> None:
     assert len(result.recipes) == 2
     assert len(result.skipped) == 0
 
-    shaped = next(recipe for recipe in result.recipes if recipe.id == "naturescompass:natures_compass")
+    shaped = next(
+        recipe for recipe in result.recipes if recipe.id == "naturescompass:natures_compass"
+    )
     assert {part.item_id: part.amount for part in shaped.inputs} == {
         "tag:saplings": 4.0,
         "tag:logs": 4.0,
@@ -73,7 +75,9 @@ def test_storage_drawers_indexes_vanilla_recipes_only() -> None:
     assert len(result.recipes) == 127
     assert len(result.skipped) == 5
 
-    recipe = next(recipe for recipe in result.recipes if recipe.id == "storagedrawers:acacia_full_drawers_1")
+    recipe = next(
+        recipe for recipe in result.recipes if recipe.id == "storagedrawers:acacia_full_drawers_1"
+    )
     assert recipe.catalyst_id == "minecraft:crafting_table"
     assert {part.item_id: part.amount for part in recipe.inputs} == {
         "minecraft:acacia_planks": 6.0,

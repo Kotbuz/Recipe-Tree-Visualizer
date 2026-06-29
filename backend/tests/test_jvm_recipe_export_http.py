@@ -1,6 +1,5 @@
 import httpx
 import pytest
-
 from app.core.config import get_settings
 from app.services.jvm_recipe_export_service import JvmRecipeExportService
 

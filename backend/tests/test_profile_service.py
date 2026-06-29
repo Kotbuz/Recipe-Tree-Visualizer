@@ -1,15 +1,14 @@
 from __future__ import annotations
 
-import zipfile
 import json
+import zipfile
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.services.profile_service import profile_service
 from app.services.version_service import version_service
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -96,7 +95,9 @@ def test_import_modpack_zip_curseforge_layout(
     assert (config_dir / "test.cfg").is_file()
 
 
-def test_delete_profile_removes_files(client: TestClient, isolated_minecraft_versions: Path) -> None:
+def test_delete_profile_removes_files(
+    client: TestClient, isolated_minecraft_versions: Path
+) -> None:
     version = "1.7.10"
     version_service.ensure_profiles_layout(version)
     profile = profile_service.create_profile(version, "Temp Pack", activate=False)
@@ -110,13 +111,17 @@ def test_delete_profile_removes_files(client: TestClient, isolated_minecraft_ver
     assert not version_service.profile_dir(version, profile.profile_id).exists()
 
 
-def test_delete_default_profile_rejected(client: TestClient, isolated_minecraft_versions: Path) -> None:
+def test_delete_default_profile_rejected(
+    client: TestClient, isolated_minecraft_versions: Path
+) -> None:
     version = "1.7.10"
     response = client.delete(f"/versions/{version}/profiles/default")
     assert response.status_code == 400
 
 
-def test_list_profiles_returns_default(client: TestClient, isolated_minecraft_versions: Path) -> None:
+def test_list_profiles_returns_default(
+    client: TestClient, isolated_minecraft_versions: Path
+) -> None:
     version = "1.7.10"
     version_service.ensure_profiles_layout(version)
 

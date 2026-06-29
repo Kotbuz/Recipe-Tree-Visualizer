@@ -1,12 +1,11 @@
 from pathlib import Path
 
+import pytest
 from app.main import app
 from app.recipes.focus import RecipeIngredientRole
-from app.recipes.manager import recipe_manager
 from app.services.mod_service import mod_service
-from app.services.recipe_service import _resolve_vanilla_jar_path, recipe_service
+from app.services.recipe_service import recipe_service
 from fastapi.testclient import TestClient
-import pytest
 
 client = TestClient(app)
 
@@ -101,7 +100,9 @@ def test_items_recipes_via_recipe_manager(isolated_minecraft_versions) -> None:
     body = response.json()
     assert body["item_id"] == "naturescompass:naturescompass"
     assert body["recipes"]
-    assert any(recipe["recipe_id"] == "naturescompass:natures_compass" for recipe in body["recipes"])
+    assert any(
+        recipe["recipe_id"] == "naturescompass:natures_compass" for recipe in body["recipes"]
+    )
 
 
 def test_recipe_service_focus_role() -> None:

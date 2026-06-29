@@ -1,8 +1,5 @@
 from __future__ import annotations
 
-from functools import lru_cache
-from pathlib import Path
-
 from app.recipes.ingredients import create_ingredient_resolver
 from app.recipes.loaders.tag_loader import TagLoader
 from app.recipes.models import ProviderResult
@@ -69,9 +66,7 @@ class KubejsDataProvider:
         if mods_dir.is_dir():
             for jar_path in sorted(mods_dir.glob("*.jar")):
                 tag_maps.append(self._tag_loader.load_from_jar(jar_path))
-        tag_members = (
-            self._tag_loader.merge_tag_maps(*tag_maps) if tag_maps else {}
-        )
+        tag_members = self._tag_loader.merge_tag_maps(*tag_maps) if tag_maps else {}
         resolver = create_ingredient_resolver(version, tag_members=tag_members)
         return JsonRecipeParser(resolver=resolver)
 

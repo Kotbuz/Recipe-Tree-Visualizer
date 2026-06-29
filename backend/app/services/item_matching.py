@@ -70,9 +70,7 @@ def looks_like_quartz_dust_ref(value: str) -> bool:
     path = normalized.split(":", 1)[1] if ":" in normalized else normalized
     if "quartz" not in path or "dust" not in path:
         return False
-    if any(token in path for token in ("glass", "fiber", "bud", "ore")):
-        return False
-    return True
+    return not any(token in path for token in ("glass", "fiber", "bud", "ore"))
 
 
 def quartz_dust_tag_lookup_keys() -> frozenset[str]:

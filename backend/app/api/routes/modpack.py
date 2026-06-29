@@ -12,12 +12,12 @@ from app.schemas.modpack import (
     PickFolderResponse,
 )
 from app.services.folder_picker import pick_folder_dialog
+from app.services.forge_install_service import forge_install_service
 from app.services.minecraft_version_catalog import get_minecraft_version_catalog
 from app.services.modpack_version_detector import (
     detect_modpack_version_from_directory,
     detect_modpack_version_from_zip,
 )
-from app.services.forge_install_service import forge_install_service
 from app.services.version_service import version_service
 
 router = APIRouter(prefix="/modpack", tags=["modpack"])
@@ -25,7 +25,9 @@ router = APIRouter(prefix="/modpack", tags=["modpack"])
 
 def _build_inspect_response(info) -> ModpackInspectResponse:
     installed = version_service.is_version_installed(info.minecraft_version)
-    catalog_available = get_minecraft_version_catalog().get_release(info.minecraft_version) is not None
+    catalog_available = (
+        get_minecraft_version_catalog().get_release(info.minecraft_version) is not None
+    )
     forge_installed = (
         forge_install_service.is_installed(info.minecraft_version, info.forge_version)
         if info.forge_version and info.loader == "forge"

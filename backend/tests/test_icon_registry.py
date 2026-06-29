@@ -1,6 +1,6 @@
+import pytest
 from app.services.icon_registry import collect_recipe_icon_ids, icon_id_for_ingredient
 from app.services.recipe_service import _resolve_vanilla_jar_path
-import pytest
 
 
 def _require_vanilla_jar(version: str = "26.2") -> None:

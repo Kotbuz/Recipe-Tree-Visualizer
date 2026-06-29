@@ -33,7 +33,9 @@ class StorageDrawersExtension:
 
     def display_name(self, raw_type: str) -> str:
         normalized = normalize_recipe_type(raw_type)
-        return _DISPLAY_NAMES.get(normalized, normalized.split(":", 1)[-1].replace("_", " ").title())
+        return _DISPLAY_NAMES.get(
+            normalized, normalized.split(":", 1)[-1].replace("_", " ").title()
+        )
 
 
 def storage_drawers_extension() -> CategoryExtension:

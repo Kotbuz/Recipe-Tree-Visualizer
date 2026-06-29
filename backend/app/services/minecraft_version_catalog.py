@@ -23,12 +23,12 @@ _TABLE_ROW = re.compile(
 _URL_IN_ANGLE = re.compile(r"<(https?://[^>]+)>")
 _URL_PLAIN = re.compile(r"(https?://\S+)")
 _PRERELEASE_MARKERS = (
-  "snapshot",
-  "-pre-",
-  "-rc-",
-  "-inf-",
-  "experimental",
-  "combat-test",
+    "snapshot",
+    "-pre-",
+    "-rc-",
+    "-inf-",
+    "experimental",
+    "combat-test",
 )
 
 

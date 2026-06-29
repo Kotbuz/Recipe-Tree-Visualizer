@@ -7,8 +7,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.services.forge_install_service import (
     ForgeInstallService,
@@ -17,6 +15,7 @@ from app.services.forge_install_service import (
     _supports_modern_forge_install,
 )
 from app.services.version_service import version_service
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -142,10 +141,7 @@ def test_bootstrap_redownloads_library_with_invalid_checksum(
     )
 
     libraries_dir = forge_dir / "libraries"
-    destination = (
-        libraries_dir
-        / "org/scala-lang/scala-xml_2.11/1.0.2/scala-xml_2.11-1.0.2.jar"
-    )
+    destination = libraries_dir / "org/scala-lang/scala-xml_2.11/1.0.2/scala-xml_2.11-1.0.2.jar"
     destination.parent.mkdir(parents=True, exist_ok=True)
     destination.write_bytes(b"PK\x03\x04" + b"broken")
 

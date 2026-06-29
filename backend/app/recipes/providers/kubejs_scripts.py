@@ -1,16 +1,14 @@
 from __future__ import annotations
 
 from functools import lru_cache
-from pathlib import Path
 
 from app.recipes.ingredients import create_ingredient_resolver
 from app.recipes.loaders.tag_loader import TagLoader
-from app.recipes.models import ProviderResult, SkippedRecipe
+from app.recipes.models import ProviderResult, Recipe, SkippedRecipe
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.jar_recipe_loader import try_add_recipe
-from app.recipes.models import Recipe
-from app.recipes.providers.kubejs_script_models import KubejsScriptResult
 from app.recipes.providers.kubejs_custom_machinery_parser import parse_custom_machinery_scripts
+from app.recipes.providers.kubejs_script_models import KubejsScriptResult
 from app.recipes.providers.kubejs_script_parser import (
     apply_kubejs_removes,
     parse_kubejs_server_scripts,

@@ -16,6 +16,7 @@ from app.schemas.profiles import (
     ProfileSyncRequest,
     ProfileSyncResponse,
 )
+from app.services.profile_integrity import ProfileSyncSourceUnavailableError
 from app.services.profile_service import (
     InvalidInstancePathError,
     InvalidModpackError,
@@ -24,7 +25,6 @@ from app.services.profile_service import (
     ProfileNotFoundError,
     profile_service,
 )
-from app.services.profile_integrity import ProfileSyncSourceUnavailableError
 from app.services.profile_storage import validate_profile_id
 from app.services.version_service import version_service
 

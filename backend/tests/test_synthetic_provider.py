@@ -1,8 +1,8 @@
+import pytest
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.types import RecipeType
 from app.services.recipe_service import _resolve_vanilla_jar_path, recipe_service
-import pytest
 
 
 def _require_vanilla_jar(version: str = "26.2") -> None:
@@ -32,7 +32,9 @@ def test_synthetic_provider_builds_compost_recipes() -> None:
     assert len(compost) >= 40
 
     wheat = next(
-        recipe for recipe in compost if recipe.id == "minecraft:synthetic/compost/minecraft/wheat_seeds"
+        recipe
+        for recipe in compost
+        if recipe.id == "minecraft:synthetic/compost/minecraft/wheat_seeds"
     )
     assert wheat.outputs[0].item_id == "minecraft:bone_meal"
     assert wheat.outputs[0].chance == 0.3

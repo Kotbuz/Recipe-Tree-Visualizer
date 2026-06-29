@@ -77,9 +77,7 @@ class BipartiteGraphEngine:
                 raise GraphValidationError(
                     f"Edge {edge.edge_id} must connect an item node and a recipe node"
                 )
-            if not (source_is_item or source_is_recipe) or not (
-                target_is_item or target_is_recipe
-            ):
+            if not (source_is_item or source_is_recipe) or not (target_is_item or target_is_recipe):
                 raise GraphValidationError(f"Edge {edge.edge_id} references invalid nodes")
 
     def validate_acyclic_from_target(self, target_item_id: str) -> None:

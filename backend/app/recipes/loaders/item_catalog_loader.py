@@ -28,12 +28,8 @@ _ORE_NAME_TO_ITEM_MATERIAL: dict[str, str] = {
     "dustEnder": "EnderDust",
     "dustEnderPearl": "EnderDust",
 }
-_LANG_MATERIAL = re.compile(
-    r"item\.appliedenergistics2\.ItemMaterial\.(\w+)\.name=(.+)"
-)
-_LANG_AE2_ENTRY = re.compile(
-    r"(?:tile|item)\.appliedenergistics2\.([\w.]+)\.name=(.+)"
-)
+_LANG_MATERIAL = re.compile(r"item\.appliedenergistics2\.ItemMaterial\.(\w+)\.name=(.+)")
+_LANG_AE2_ENTRY = re.compile(r"(?:tile|item)\.appliedenergistics2\.([\w.]+)\.name=(.+)")
 _BLOCK_SUBTYPE_METADATA = {
     "Block": 1,
     "Brick": 2,

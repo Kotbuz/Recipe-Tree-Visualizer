@@ -23,8 +23,13 @@ def test_legacy_stone_slab_metadata_maps_to_quartz_slab() -> None:
 
 
 def test_legacy_quartz_block_metadata() -> None:
-    assert resolve_legacy_icon_id("minecraft:quartz_block", 1, version="1.7.10") == "chiseled_quartz_block"
-    assert resolve_legacy_display_name("minecraft:quartz_block", 0, version="1.7.10") == "quartz block"
+    assert (
+        resolve_legacy_icon_id("minecraft:quartz_block", 1, version="1.7.10")
+        == "chiseled_quartz_block"
+    )
+    assert (
+        resolve_legacy_display_name("minecraft:quartz_block", 0, version="1.7.10") == "quartz block"
+    )
 
 
 def test_legacy_fire_maps_to_iron_for_display() -> None:

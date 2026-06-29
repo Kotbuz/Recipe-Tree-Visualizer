@@ -4,14 +4,13 @@ import zipfile
 from pathlib import Path, PurePosixPath
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.services.kubejs_import import (
     copy_kubejs_from_directory,
     should_import_kubejs_relative_path,
 )
 from app.services.version_service import version_service
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -75,7 +74,9 @@ def test_copy_kubejs_from_directory_filters_non_recipe_data(tmp_path: Path) -> N
     assert stats.data_files == 2
     assert stats.asset_files == 2
     assert (destination / "server_scripts" / "recipes.js").is_file()
-    assert (destination / "data" / "techopolis" / "recipe" / "normal" / "cobblestone.json").is_file()
+    assert (
+        destination / "data" / "techopolis" / "recipe" / "normal" / "cobblestone.json"
+    ).is_file()
     assert (destination / "data" / "techopolis" / "machine" / "basic_miner.json").is_file()
     assert not (destination / "data" / "techopolis" / "catalogs" / "techopolis.json").exists()
     assert not (destination / "assets" / "techopolis" / "guides" / "readme.md").exists()
@@ -98,7 +99,9 @@ def test_import_from_instance_path_copies_kubejs_from_minecraft_subfolder(
         "{}", encoding="utf-8"
     )
     (kubejs / "data" / "techopolis" / "loot_modifiers").mkdir(parents=True)
-    (kubejs / "data" / "techopolis" / "loot_modifiers" / "skip.json").write_text("{}", encoding="utf-8")
+    (kubejs / "data" / "techopolis" / "loot_modifiers" / "skip.json").write_text(
+        "{}", encoding="utf-8"
+    )
 
     response = client.post(
         f"/versions/{version}/profiles/import-path",

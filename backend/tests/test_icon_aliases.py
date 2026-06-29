@@ -1,5 +1,4 @@
 import pytest
-
 from app.services.version_service import item_name_to_texture_id, version_service
 
 

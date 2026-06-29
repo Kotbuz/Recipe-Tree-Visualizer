@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.recipes.adapters import to_recipe_summary
 from app.recipes.loaders.ae2_recipe_loader import load_ae2_recipe_directory
 from app.recipes.loaders.item_catalog_loader import (
@@ -9,7 +8,6 @@ from app.recipes.loaders.item_catalog_loader import (
     resolve_catalog_display_name,
 )
 from app.recipes.manager import recipe_manager
-from app.recipes.models import RecipeIO
 from app.recipes.registry import get_version_ingredient_registry
 
 
@@ -25,9 +23,7 @@ def test_item_catalog_resolves_certus_quartz_display_name() -> None:
 
 
 @pytest.mark.skipif(
-    not Path(__file__).resolve().parents[2].joinpath(
-        "../MinecraftVersions/1.7.10/mods"
-    ).is_dir(),
+    not Path(__file__).resolve().parents[2].joinpath("../MinecraftVersions/1.7.10/mods").is_dir(),
     reason="1.7.10 mods not available",
 )
 def test_item_catalog_resolves_ae2_cable_display_names() -> None:
@@ -57,9 +53,7 @@ def test_item_catalog_resolves_ae2_cable_display_names() -> None:
 
 
 @pytest.mark.skipif(
-    not Path(__file__).resolve().parents[2].joinpath(
-        "../MinecraftVersions/1.7.10/mods"
-    ).is_dir(),
+    not Path(__file__).resolve().parents[2].joinpath("../MinecraftVersions/1.7.10/mods").is_dir(),
     reason="1.7.10 mods not available",
 )
 def test_item_catalog_resolves_ae2_block_display_names() -> None:

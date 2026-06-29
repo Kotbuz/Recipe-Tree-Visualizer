@@ -182,11 +182,7 @@ class VersionService:
         # Пока renderer ещё не создал rendered-icons, даём манифест из рецептов
         # (с jar-fallback). После появления папки — только реальные PNG, даже если
         # папка пока пустая: иначе браузер запрашивает несуществующие плоские текстуры.
-        if (
-            not icons
-            and rendered_dir is None
-            and self.resolve_jar_path(version) is not None
-        ):
+        if not icons and rendered_dir is None and self.resolve_jar_path(version) is not None:
             icons.update(self._recipe_icon_filenames(version))
 
         return sorted(icons)
@@ -207,10 +203,7 @@ class VersionService:
         from app.recipes.registry import get_version_ingredient_registry
 
         registry = get_version_ingredient_registry(version)
-        tags = {
-            tag_id: registry.resolve_tag(tag_id)
-            for tag_id in registry.list_tag_ids()
-        }
+        tags = {tag_id: registry.resolve_tag(tag_id) for tag_id in registry.list_tag_ids()}
         return {
             "version": version,
             "tags": tags,
@@ -230,7 +223,10 @@ class VersionService:
         texture_id = texture_id_from_icon_filename(safe_name)
         resolved_filename = f"{texture_id}.png"
 
-        for directory in (self._rendered_icons_dir(version, profile_id), self._legacy_textures_dir(version)):
+        for directory in (
+            self._rendered_icons_dir(version, profile_id),
+            self._legacy_textures_dir(version),
+        ):
             if directory is None:
                 continue
             for candidate_name in {safe_name, resolved_filename}:
@@ -293,7 +289,9 @@ class VersionService:
                 for jar_path in jar_paths
                 if namespace_hint.lower() in jar_path.name.lower()
             ]
-            jar_paths = preferred + [jar_path for jar_path in jar_paths if jar_path not in preferred]
+            jar_paths = preferred + [
+                jar_path for jar_path in jar_paths if jar_path not in preferred
+            ]
 
         for jar_path in jar_paths:
             payload = self._read_texture_bytes_from_jar(jar_path, texture_id)
@@ -376,10 +374,13 @@ class VersionService:
         ]
 
     def ensure_rendered_icons_dir(self, version: str, profile_id: str | None = None) -> Path:
-        directory = self.profile_dir(
-            version,
-            self._resolve_profile_id(version, profile_id),
-        ) / "rendered-icons"
+        directory = (
+            self.profile_dir(
+                version,
+                self._resolve_profile_id(version, profile_id),
+            )
+            / "rendered-icons"
+        )
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
@@ -396,10 +397,13 @@ class VersionService:
         return get_settings().minecraft_versions_path / version
 
     def _rendered_icons_dir(self, version: str, profile_id: str | None = None) -> Path | None:
-        directory = self.profile_dir(
-            version,
-            self._resolve_profile_id(version, profile_id),
-        ) / "rendered-icons"
+        directory = (
+            self.profile_dir(
+                version,
+                self._resolve_profile_id(version, profile_id),
+            )
+            / "rendered-icons"
+        )
         if directory.is_dir():
             return directory
         legacy = self._version_dir(version) / "rendered-icons"

@@ -6,8 +6,7 @@ from app.recipes.models import Recipe
 
 
 class CategoryExtension(Protocol):
-    def matches(self, raw_type: str) -> bool:
-        ...
+    def matches(self, raw_type: str) -> bool: ...
 
     def parse(
         self,
@@ -16,11 +15,9 @@ class CategoryExtension(Protocol):
         *,
         source: str,
         mod_id: str | None,
-    ) -> Recipe | None:
-        ...
+    ) -> Recipe | None: ...
 
-    def skip_reason(self, data: dict[str, object]) -> str | None:
-        ...
+    def skip_reason(self, data: dict[str, object]) -> str | None: ...
 
 
 class CategoryExtensionRegistry:

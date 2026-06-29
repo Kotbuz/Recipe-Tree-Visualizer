@@ -170,10 +170,7 @@ def parse_kubejs_ingredient(raw: str) -> dict[str, object] | str:
     if not value:
         raise ValueError("empty ingredient")
 
-    if value[0] in {"'", '"', "`"}:
-        value = _unwrap_js_string(value)
-    else:
-        value = value.strip().rstrip(",")
+    value = _unwrap_js_string(value) if value[0] in {"'", '"', "`"} else value.strip().rstrip(",")
 
     if value.startswith("#"):
         tag = value.removeprefix("#")
@@ -300,7 +297,12 @@ def _read_call_arguments(text: str, start: int) -> tuple[list[str], int]:
                     in_string = None
                 else:
                     template_depth -= 1
-            elif char == "$" and in_string == "`" and index + 1 < len(text) and text[index + 1] == "{":
+            elif (
+                char == "$"
+                and in_string == "`"
+                and index + 1 < len(text)
+                and text[index + 1] == "{"
+            ):
                 template_depth += 1
             index += 1
             continue

@@ -1,7 +1,8 @@
+from pathlib import Path
+
 from app.recipes.extensions import default_category_extensions
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.mod_jar import ModJarProvider
-from pathlib import Path
 
 STORAGE_DRAWERS_JAR = (
     Path(__file__).parent / "fixtures" / "StorageDrawers-fabric-1.21.11-20.0.0.jar"

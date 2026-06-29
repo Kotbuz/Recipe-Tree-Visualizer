@@ -35,7 +35,8 @@ def category_for_canonical_type(canonical_type: str) -> RecipeCategory:
     )
 
 
-from app.recipes.extensions import default_category_extensions
+# Поздний импорт разрывает циклическую зависимость с extensions.
+from app.recipes.extensions import default_category_extensions  # noqa: E402
 
 
 def display_name_for_raw_type(raw_type: str) -> str:
@@ -70,8 +71,5 @@ def display_name_for_raw_type(raw_type: str) -> str:
     }
     if raw_type in mapping:
         return mapping[raw_type]
-    if ":" in raw_type:
-        raw = raw_type.split(":", 1)[1]
-    else:
-        raw = raw_type
+    raw = raw_type.split(":", 1)[1] if ":" in raw_type else raw_type
     return raw.replace("_", " ").capitalize()

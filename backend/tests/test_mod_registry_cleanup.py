@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.indexer.mod_summary import build_mod_summary
 from app.parser.jar_reader import JarReader
 from app.recipes.providers.mod_jar import ModJarProvider
