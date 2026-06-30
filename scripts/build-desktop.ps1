@@ -13,6 +13,23 @@ param(
 
 $ErrorActionPreference = "Stop"
 
+function Write-Utf8NoBom([string] $Path, [string] $Content) {
+    $utf8 = New-Object System.Text.UTF8Encoding $false
+    $normalized = $Content -replace "`r`n", "`n" -replace "`r", "`n"
+    if (-not $normalized.EndsWith("`n")) {
+        $normalized += "`n"
+    }
+    [System.IO.File]::WriteAllText($Path, $normalized.Replace("`n", [Environment]::NewLine), $utf8)
+}
+
+function Set-CargoTomlVersion([string] $Path, [string] $NewVersion) {
+    $lines = Get-Content $Path -Encoding UTF8
+    $updated = $lines | ForEach-Object {
+        if ($_ -match '^\s*version\s*=') { "version = `"$NewVersion`"" } else { $_ }
+    }
+    Write-Utf8NoBom $Path (($updated -join "`n"))
+}
+
 function Require-Command([string] $Name) {
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
         throw "Команда '$Name' не найдена в PATH. См. desktop/README.md"
@@ -40,16 +57,14 @@ if ($Version) {
     Write-Host "Setting desktop version to $Version"
     $conf = Get-Content $TauriConf -Raw | ConvertFrom-Json
     $conf.version = $Version
-    $conf | ConvertTo-Json -Depth 20 | Set-Content $TauriConf -Encoding UTF8
+    Write-Utf8NoBom $TauriConf (($conf | ConvertTo-Json -Depth 20))
 
     $pkgPath = Join-Path $DesktopDir "package.json"
     $pkg = Get-Content $pkgPath -Raw | ConvertFrom-Json
     $pkg.version = $Version
-    $pkg | ConvertTo-Json -Depth 20 | Set-Content $pkgPath -Encoding UTF8
+    Write-Utf8NoBom $pkgPath (($pkg | ConvertTo-Json -Depth 20))
 
-    $cargoToml = Join-Path $TauriDir "Cargo.toml"
-    (Get-Content $cargoToml -Raw) -replace '(?m)^version = ".*"$', "version = `"$Version`"" |
-        Set-Content $cargoToml -Encoding UTF8 -NoNewline
+    Set-CargoTomlVersion (Join-Path $TauriDir "Cargo.toml") $Version
 }
 
 if ($VersionOnly) {
@@ -113,7 +128,7 @@ $manifest = @{
     bundle_root = $BundleRoot
 }
 $manifestPath = Join-Path $OutDir "manifest.json"
-$manifest | ConvertTo-Json -Depth 5 | Set-Content $manifestPath -Encoding UTF8
+Write-Utf8NoBom $manifestPath (($manifest | ConvertTo-Json -Depth 5))
 
 Write-Host ""
 Write-Host "=== Desktop build complete ===" -ForegroundColor Green
