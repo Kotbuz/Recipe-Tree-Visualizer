@@ -11,7 +11,6 @@ from app.api.routes.router import api_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.services.mod_service import mod_service
-from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.version_service import version_service
 
 
@@ -47,15 +46,12 @@ async def _render_vanilla_icons_on_startup() -> None:
         return
 
     try:
-        result = await asyncio.to_thread(vanilla_icon_service.ensure_icons, default_version)
-        if result.errors:
-            logger.warning(
-                "Vanilla icon render for {} finished with errors: {}",
-                default_version,
-                "; ".join(result.errors),
-            )
+        from app.services.asset_render_service import asset_render_service
+
+        active_profile = version_service.get_active_profile_id(default_version)
+        asset_render_service.maybe_start_if_gaps(default_version, active_profile)
     except Exception:
-        logger.exception("Failed to render vanilla icons for {}", default_version)
+        logger.exception("Failed to start startup asset render for {}", default_version)
 
 
 @asynccontextmanager

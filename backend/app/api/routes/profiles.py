@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
+from loguru import logger
 
 from app.schemas.profiles import (
     CreateProfileRequest,
@@ -16,6 +17,17 @@ from app.schemas.profiles import (
     ProfileSyncRequest,
     ProfileSyncResponse,
 )
+from app.schemas.recipe_bake import (
+    AssetRenderProgressResponse,
+    AssetRenderStartResponse,
+    AssetTaskProgress,
+    RecipeBakeRequest,
+    RecipeBakeResponse,
+    RecipeBakeStatusResponse,
+    RecipeStatsResponse,
+)
+from app.services.asset_render_service import asset_render_service
+from app.services.neo_recipe_export_service import NeoRecipeExportError, neo_recipe_export_service
 from app.services.profile_integrity import ProfileSyncSourceUnavailableError
 from app.services.profile_service import (
     InvalidInstancePathError,
@@ -25,7 +37,8 @@ from app.services.profile_service import (
     ProfileNotFoundError,
     profile_service,
 )
-from app.services.profile_storage import validate_profile_id
+from app.services.profile_storage import DEFAULT_PROFILE_ID, validate_profile_id
+from app.services.recipe_snapshot_service import read_snapshot_status
 from app.services.version_service import version_service
 
 router = APIRouter(prefix="/versions/{version}/profiles", tags=["profiles"])
@@ -119,7 +132,7 @@ async def import_modpack(
 def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResponse:
     _require_version(version)
     try:
-        profile, stats = profile_service.import_from_instance_path(
+        profile, stats, bake_started = profile_service.import_from_instance_path(
             version,
             Path(body.path),
             name=body.name,
@@ -145,6 +158,7 @@ def import_from_path(version: str, body: ImportPathRequest) -> ImportModpackResp
         kubejs_server_scripts_imported=stats.kubejs_server_scripts_imported,
         kubejs_data_files_imported=stats.kubejs_data_files_imported,
         kubejs_asset_files_imported=stats.kubejs_asset_files_imported,
+        recipe_bake_started=bake_started,
     )
 
 
@@ -222,6 +236,144 @@ def sync_profile_from_source_route(
     )
 
 
+@router.get("/{profile_id}/bake-recipes/status", response_model=RecipeBakeStatusResponse)
+def recipe_bake_status(version: str, profile_id: str) -> RecipeBakeStatusResponse:
+    _require_version(version)
+    try:
+        profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    status = neo_recipe_export_service.get_status(version, profile_id)
+    return RecipeBakeStatusResponse(
+        version=version,
+        profile_id=profile_id,
+        has_snapshot=bool(status.get("has_snapshot")),
+        recipe_count=int(status.get("recipe_count", 0)),
+        item_count=int(status.get("item_count", 0)),
+        exported_at=status.get("exported_at"),
+        minecraft_version=status.get("minecraft_version"),
+        loader_version=status.get("loader_version"),
+        last_error=status.get("last_error"),
+        export_running=bool(neo_recipe_export_service.get_exporter_busy()),
+    )
+
+
+@router.get("/{profile_id}/recipe-stats", response_model=RecipeStatsResponse)
+def recipe_stats(version: str, profile_id: str) -> RecipeStatsResponse:
+    """Статус `Nр · Mп` под профилем: vanilla — из каталога, модпак — из снимка (I2)."""
+    _require_version(version)
+    try:
+        profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    if profile_id == DEFAULT_PROFILE_ID:
+        from app.recipes.manager import recipe_manager
+
+        recipes = recipe_manager.get_version_recipes(
+            version, profile_id=profile_id, include_mods=True, include_synthetic=True
+        )
+        item_ids: set[str] = set()
+        for recipe in recipes:
+            for part in [*recipe.inputs, *recipe.outputs]:
+                item_ids.add(part.item_id)
+        return RecipeStatsResponse(
+            version=version,
+            profile_id=profile_id,
+            has_stats=True,
+            recipe_count=len(recipes),
+            item_count=len(item_ids),
+            source="catalog",
+        )
+
+    snapshot = read_snapshot_status(version, profile_id)
+    if snapshot.has_snapshot:
+        return RecipeStatsResponse(
+            version=version,
+            profile_id=profile_id,
+            has_stats=True,
+            recipe_count=snapshot.recipe_count,
+            item_count=snapshot.item_count,
+            source="snapshot",
+        )
+    return RecipeStatsResponse(
+        version=version,
+        profile_id=profile_id,
+        has_stats=False,
+        source="none",
+    )
+
+
+@router.get("/{profile_id}/asset-progress", response_model=AssetRenderProgressResponse)
+def asset_render_progress(version: str, profile_id: str) -> AssetRenderProgressResponse:
+    _require_version(version)
+    state = asset_render_service.get_state(version, profile_id)
+    return AssetRenderProgressResponse(
+        version=version,
+        profile_id=profile_id,
+        running=state.running,
+        icons=AssetTaskProgress(**state.icons.as_dict()),
+        blocks=AssetTaskProgress(**state.blocks.as_dict()),
+    )
+
+
+@router.post("/{profile_id}/render-assets", response_model=AssetRenderStartResponse)
+def start_asset_render(version: str, profile_id: str) -> AssetRenderStartResponse:
+    """Кнопка «Рендер иконок» — полный повторный скан jar (L3), фоново."""
+    _require_version(version)
+    try:
+        profile = profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    # Модпак без указанной папки инстанса не рендерим (Z1); vanilla/default — можно без неё.
+    if profile_id != DEFAULT_PROFILE_ID and not profile.source_path:
+        raise HTTPException(status_code=422, detail="Укажите папку инстанса")
+
+    started = asset_render_service.start(version, profile_id, full_rescan=True)
+    return AssetRenderStartResponse(version=version, profile_id=profile_id, started=started)
+
+
+@router.post("/{profile_id}/bake-recipes", response_model=RecipeBakeResponse)
+def bake_profile_recipes(
+    version: str,
+    profile_id: str,
+    body: RecipeBakeRequest | None = None,
+) -> RecipeBakeResponse:
+    _require_version(version)
+    try:
+        profile_service.get_profile(version, profile_id)
+    except ProfileNotFoundError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    request = body or RecipeBakeRequest()
+    try:
+        result = neo_recipe_export_service.bake_profile(
+            version,
+            profile_id,
+            force=request.force,
+            source_path_override=request.source_path,
+        )
+    except NeoRecipeExportError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    status_code = result.get("status", "error")
+    return RecipeBakeResponse(
+        version=version,
+        profile_id=profile_id,
+        status=status_code,
+        recipe_count=int(result.get("recipe_count", 0)),
+        item_count=int(result.get("item_count", 0)),
+        duration_seconds=result.get("duration_seconds"),
+        log_tail=result.get("log_tail"),
+        error=result.get("error"),
+        kept_previous_snapshot=bool(result.get("kept_previous_snapshot")),
+        backend_log_path=result.get("backend_log_path"),
+        bake_log_path=result.get("bake_log_path"),
+    )
+
+
 @router.post("/{profile_id}/activate", response_model=ProfileResponse)
 def activate_profile(version: str, profile_id: str) -> ProfileResponse:
     _require_version(version)
@@ -229,6 +381,12 @@ def activate_profile(version: str, profile_id: str) -> ProfileResponse:
         profile = profile_service.activate_profile(version, profile_id)
     except ProfileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        asset_render_service.maybe_start_if_gaps(version, profile_id)
+    except Exception:
+        logger.exception("Failed to start asset render after profile activation")
+
     return ProfileResponse(version=version, profile=profile)
 
 

@@ -384,6 +384,59 @@ class VersionService:
         directory.mkdir(parents=True, exist_ok=True)
         return directory
 
+    def profile_block_textures_dir(
+        self,
+        version: str,
+        profile_id: str | None = None,
+        *,
+        create: bool = False,
+    ) -> Path:
+        directory = self.profile_dir(
+            version,
+            self._resolve_profile_id(version, profile_id),
+        ) / "block-textures"
+        if create:
+            directory.mkdir(parents=True, exist_ok=True)
+        return directory
+
+    def _legacy_block_textures_dir(self, version: str) -> Path | None:
+        directory = self._version_dir(version) / "block-textures"
+        if directory.is_dir():
+            return directory
+        return None
+
+    def resolve_block_texture_path(
+        self,
+        version: str,
+        filename: str,
+        profile_id: str | None = None,
+    ) -> Path | None:
+        safe_name = Path(filename).name
+        if safe_name != filename or not safe_name.endswith(".png"):
+            return None
+
+        for directory in (
+            self.profile_block_textures_dir(version, profile_id),
+            self._legacy_block_textures_dir(version),
+        ):
+            if directory is None or not directory.is_dir():
+                continue
+            candidate = directory / safe_name
+            if candidate.is_file():
+                return candidate
+        return None
+
+    def list_block_textures(self, version: str, profile_id: str | None = None) -> list[str]:
+        names: set[str] = set()
+        for directory in (
+            self.profile_block_textures_dir(version, profile_id),
+            self._legacy_block_textures_dir(version),
+        ):
+            if directory is None or not directory.is_dir():
+                continue
+            names.update(path.name for path in directory.glob("*.png"))
+        return sorted(names)
+
     def list_rendered_icon_ids(self, version: str, profile_id: str | None = None) -> set[str]:
         directory = self._rendered_icons_dir(version, profile_id)
         if directory is None:

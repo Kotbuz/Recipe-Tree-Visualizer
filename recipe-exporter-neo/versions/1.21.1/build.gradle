@@ -1,0 +1,48 @@
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.141'
+}
+
+version = mod_version
+group = mod_group_id
+
+base {
+    archivesName = 'recipe-exporter-neo-1.21.1'
+}
+
+java.toolchain.languageVersion = JavaLanguageVersion.of(21)
+
+neoForge {
+    version = project.neo_version
+
+    parchment {
+        mappingsVersion = project.parchment_mappings_version
+        minecraftVersion = project.parchment_minecraft_version
+    }
+
+    runs {
+        server {
+            server()
+            programArgument '--nogui'
+            systemProperty 'rtv.recipe.export', 'true'
+            systemProperty 'rtv.recipe.export.dir', layout.buildDirectory.dir('export').get().asFile.absolutePath
+        }
+    }
+
+    mods {
+        "${mod_id}" {
+            sourceSet(sourceSets.main)
+        }
+    }
+}
+
+tasks.named('jar', Jar).configure {
+    finalizedBy 'copyExporterJar'
+}
+
+tasks.register('copyExporterJar', Copy) {
+    dependsOn jar
+    from jar.archiveFile
+    into rootProject.file('../../dist')
+    rename { 'recipe-exporter-neo-1.21.1.jar' }
+}

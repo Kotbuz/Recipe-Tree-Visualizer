@@ -222,6 +222,7 @@ backend/logs/
 backend/data/mods/*.jar
 backend/data/rendered/*
 !backend/data/rendered/.gitkeep
+backend/data/java_settings.json
 # Minecraft versions — local data (jar, recipes, textures, rendered icons)
 MinecraftVersions/*
 !MinecraftVersions/.gitkeep
@@ -236,7 +237,15 @@ LocalFiles/*
 # Ephemeral Forge JVM export workspace (server install, world, logs, AE2 generated config)
 recipe-exporter/forge-runtime/
 
-#
+# Neo/Forge exporter mod jars (built locally); keep dist/ for Docker COPY
+recipe-exporter-neo/dist/*
+!recipe-exporter-neo/dist/.gitkeep
+recipe-exporter/dist/*
+!recipe-exporter/dist/.gitkeep
 
-package-lock.json
+# Desktop CI/local build output
+release/
+
+# Lockfiles at repo root only (frontend/desktop lockfiles are committed)
+/package-lock.json
 node_modules/

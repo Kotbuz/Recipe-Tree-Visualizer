@@ -609,6 +609,28 @@ class RecipeManager:
             self._clear_caches()
         return result
 
+    def clear_version_cache(
+        self,
+        version: str,
+        *,
+        profile_id: str | None = None,
+    ) -> None:
+        keys_to_drop = [
+            key
+            for key in list(self._version_recipe_cache)
+            if key[0] == resolve_recipe_scope(version, profile_id)[2]
+        ]
+        for key in keys_to_drop:
+            self._version_recipe_cache.pop(key, None)
+        bundle_keys_to_drop = [
+            key
+            for key in list(self._version_bundle_cache)
+            if key[0] == resolve_recipe_scope(version, profile_id)[2]
+        ]
+        for key in bundle_keys_to_drop:
+            self._version_bundle_cache.pop(key, None)
+        get_profile_ingredient_registry.cache_clear()
+
     def get_recipe_bundle(
         self,
         version: str,
@@ -698,6 +720,13 @@ class RecipeManager:
             return cached
 
         mc_version, resolved_profile, storage_key = resolve_recipe_scope(version, profile_id)
+        from app.services.recipe_snapshot_service import load_snapshot_recipes
+
+        baked = load_snapshot_recipes(version, resolved_profile)
+        if baked is not None:
+            self._version_recipe_cache[cache_key] = baked
+            return baked
+
         merged: dict[str, Recipe] = {
             recipe.id: recipe for recipe in self._load_vanilla_recipes(mc_version, resolved_profile)
         }

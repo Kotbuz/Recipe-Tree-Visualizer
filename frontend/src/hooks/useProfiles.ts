@@ -9,6 +9,8 @@ export type ProfileSummary = {
     active: boolean;
     loader?: string | null;
     forge_version?: string | null;
+    minecraft_version?: string | null;
+    source_path?: string | null;
 };
 
 type ProfileListResponse = {
@@ -23,6 +25,10 @@ type ImportModpackResponse = {
     jars_imported: number;
     config_files_imported: number;
     script_files_imported: number;
+    kubejs_server_scripts_imported?: number;
+    kubejs_data_files_imported?: number;
+    kubejs_asset_files_imported?: number;
+    recipe_bake_started?: boolean;
 };
 
 export function useProfiles(gameVersion: string) {

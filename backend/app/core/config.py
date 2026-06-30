@@ -30,6 +30,19 @@ class Settings(BaseSettings):
     recipe_exporter_url: str = ""
     recipe_exporter_mode: str = "auto"
     recipe_exporter_timeout_seconds: float = 1800.0
+    neo_recipe_exporter_url: str = ""
+    neo_recipe_exporter_timeout_seconds: float = 3600.0
+    auto_bake_recipes_after_instance_import: bool = False
+    neo_recipe_export_supported_versions: str = "1.21.1"
+    # Корень репозитория на хосте (для путей к логам в UI при backend в Docker)
+    project_host_path: str = ""
+
+    def neo_recipe_export_supported_list(self) -> frozenset[str]:
+        return frozenset(
+            part.strip()
+            for part in self.neo_recipe_export_supported_versions.split(",")
+            if part.strip()
+        )
     curseforge_api_key: str = ""
     curseforge_user_agent: str = (
         "Recipe-Tree-Visualizer/1.0 (https://github.com/Kotbuz/Recipe-Tree-Visualizer)"
@@ -45,6 +58,14 @@ class Settings(BaseSettings):
     @property
     def minecraft_versions_path(self) -> Path:
         path = Path(self.minecraft_versions_dir)
+        if path.is_absolute():
+            return path
+        backend_root = Path(__file__).resolve().parents[2]
+        return (backend_root / path).resolve()
+
+    @property
+    def log_dir_path(self) -> Path:
+        path = Path(self.log_dir)
         if path.is_absolute():
             return path
         backend_root = Path(__file__).resolve().parents[2]

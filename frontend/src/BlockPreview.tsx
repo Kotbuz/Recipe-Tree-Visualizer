@@ -60,9 +60,18 @@ const normalizeName = (name: string) => name.trim().replace(/\.png$/i, '').repla
 
 interface BlockPreviewProps {
     blockName: string;
+    version?: string;
+    profileId?: string;
 }
 
-const BlockPreview = ({ blockName }: BlockPreviewProps) => {
+const profileQuery = (profileId: string | undefined) => {
+    if (!profileId || profileId === 'default') {
+        return '';
+    }
+    return `?profile_id=${encodeURIComponent(profileId)}`;
+};
+
+const BlockPreview = ({ blockName, version, profileId }: BlockPreviewProps) => {
     const [faces, setFaces] = useState<{ [key: string]: string } | null>(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -85,7 +94,11 @@ const BlockPreview = ({ blockName }: BlockPreviewProps) => {
             const found: Record<string, string> = {};
             await Promise.all(
                 candidateSuffixes.map(async (candidate) => {
-                    const url = `/block/${normalized}${candidate.suffix}.png`;
+                    const fileName = `${normalized}${candidate.suffix}.png`;
+                    const url =
+                        version != null
+                            ? `/versions/${encodeURIComponent(version)}/blocks/${fileName}${profileQuery(profileId)}`
+                            : `/block/${fileName}`;
                     if (await maybeFetch(url)) {
                         found[candidate.key] = url;
                     }
@@ -111,7 +124,7 @@ const BlockPreview = ({ blockName }: BlockPreviewProps) => {
         return () => {
             active = false;
         };
-    }, [blockName]);
+    }, [blockName, version, profileId]);
 
     return (
         <div className="block-preview-card">

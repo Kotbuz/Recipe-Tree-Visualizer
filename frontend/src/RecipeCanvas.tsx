@@ -13,6 +13,7 @@ import ModsPanel from './components/ModsPanel';
 import ExportStatusBanner from './components/ExportStatusBanner';
 import VersionManagerModal from './components/VersionManagerModal';
 import ModpackImportDialog from './components/ModpackImportDialog';
+import { useJavaSettings } from './hooks/useJavaSettings';
 import { useModpackInspect, type ModpackInspectResult } from './hooks/useModpackInspect';
 import { prepareForgeInstall } from './hooks/useForgePrepare';
 import { useVersionCatalog } from './hooks/useVersionCatalog';
@@ -28,6 +29,13 @@ import { useRecipeExportStatus } from './hooks/useRecipeExportStatus';
 import { useRecipeSearch } from './hooks/useRecipeSearch';
 import { useVersionMaintenance } from './hooks/useVersionMaintenance';
 import { useProfileIntegrity } from './hooks/useProfileIntegrity';
+import { useRecipeBake } from './hooks/useRecipeBake';
+import { useRecipeStats } from './hooks/useRecipeStats';
+import { useAssetRender } from './hooks/useAssetRender';
+import { useToast } from './hooks/useToast';
+import OperationStatusBar from './components/OperationStatusBar';
+import ToastStack from './components/ToastStack';
+import { buildOperationStatusLines } from './utils/operationStatus';
 import {
     ingredientsCompatible,
     itemIdToDisplayName,
@@ -396,6 +404,7 @@ export default function RecipeCanvas() {
         deletingProfileId,
         error: profilesError,
         refresh: refreshProfiles,
+        activeProfile,
     } = useProfiles(version);
 
     useEffect(() => {
@@ -422,6 +431,44 @@ export default function RecipeCanvas() {
         syncFromSource,
         clearReport: clearIntegrityReport,
     } = useProfileIntegrity(version, activeProfileId);
+    const {
+        baking: bakingRecipes,
+        error: recipeBakeError,
+        status: recipeBakeStatus,
+        lastResult: recipeBakeResult,
+        refreshStatus: refreshRecipeBakeStatus,
+        bakeRecipes,
+    } = useRecipeBake(version, activeProfileId);
+    const { stats: recipeStats, refresh: refreshRecipeStats } = useRecipeStats(
+        version,
+        activeProfileId,
+    );
+    const {
+        progress: assetProgress,
+        starting: assetStarting,
+        refresh: refreshAssetProgress,
+        startRender: startAssetRender,
+    } = useAssetRender(version, activeProfileId);
+    const { toasts, push, dismiss } = useToast();
+    const [exportStartedAt, setExportStartedAt] = useState<number | null>(null);
+    const [exportElapsedSec, setExportElapsedSec] = useState(0);
+    const prevBakingRef = useRef(false);
+    const prevAssetRunningRef = useRef(false);
+
+    useEffect(() => {
+        void refreshRecipeBakeStatus();
+    }, [refreshRecipeBakeStatus, activeProfileId]);
+
+    // Опрос статуса экспорта каждые 10 с (W1): ловим busy после перезагрузки вкладки.
+    useEffect(() => {
+        if (activeProfileId === 'default') {
+            return;
+        }
+        const timer = window.setInterval(() => {
+            void refreshRecipeBakeStatus();
+        }, 10000);
+        return () => window.clearInterval(timer);
+    }, [refreshRecipeBakeStatus, activeProfileId]);
 
     useEffect(() => {
         clearIntegrityReport();
@@ -439,6 +486,56 @@ export default function RecipeCanvas() {
             // ошибка уже в maintenanceError
         }
     }, [reloadMods, refreshMods, refreshExportStatus, reloadCatalog]);
+
+    const handleBakeRecipes = useCallback(async () => {
+        const message = recipeBakeStatus?.has_snapshot
+            ? 'Пересобрать снимок рецептов? Текущий снимок будет заменён. ' +
+              'Экспорт может занять 5–20 минут и ~8 ГБ RAM.'
+            : 'Первый экспорт рецептов из инстанса лаунчера.\n\n' +
+              'NeoForge поднимет сервер с полным модпаком (~8 ГБ RAM, 5–20 мин). ' +
+              'При ошибке останется предыдущий снимок.';
+        if (!window.confirm(message)) {
+            return;
+        }
+        setExportStartedAt(Date.now());
+        setExportElapsedSec(0);
+        const result = await bakeRecipes({
+            force: true,
+            sourcePath: integritySourcePath.trim() || undefined,
+        });
+        if (result?.status === 'ok') {
+            // Панель остаётся заблокированной во время перезагрузки каталога и счётчиков (Q7).
+            setFinalizingExport(true);
+            try {
+                await handleReloadMods();
+                await refreshRecipeStats();
+                // Рендер иконок бэкенд уже запустил фоном — просто подхватываем прогресс.
+                await refreshAssetProgress();
+            } finally {
+                setFinalizingExport(false);
+            }
+        }
+    }, [
+        bakeRecipes,
+        integritySourcePath,
+        handleReloadMods,
+        recipeBakeStatus,
+        refreshRecipeStats,
+        refreshAssetProgress,
+    ]);
+
+    const handleRenderIcons = useCallback(async () => {
+        try {
+            const result = await startAssetRender();
+            if (result?.started) {
+                push('Запущен полный рендер иконок и текстур блоков', 'info');
+            } else {
+                push('Рендер уже выполняется', 'warn');
+            }
+        } catch {
+            push('Не удалось запустить рендер ассетов', 'error');
+        }
+    }, [startAssetRender, push]);
 
     const handleCheckIntegrity = useCallback(async () => {
         try {
@@ -504,6 +601,7 @@ export default function RecipeCanvas() {
     } = useModDependencyDownload(version, activeProfileId, handleDepsDownloadComplete);
     const [versionManagerOpen, setVersionManagerOpen] = useState(false);
     const [modsPanelExpanded, setModsPanelExpanded] = useState(false);
+    const [finalizingExport, setFinalizingExport] = useState(false);
     const [modsToggleSlot, setModsToggleSlot] = useState<HTMLDivElement | null>(null);
     const [pendingModpackImport, setPendingModpackImport] = useState<
         | {
@@ -529,6 +627,15 @@ export default function RecipeCanvas() {
     const [preparingForge, setPreparingForge] = useState(false);
     const { inspectZip, inspectPath, pickFolder, inspecting: modpackInspecting, error: modpackInspectError } =
         useModpackInspect();
+    const {
+        settings: javaSettings,
+        loading: javaLoading,
+        saving: javaSaving,
+        picking: javaPicking,
+        error: javaError,
+        setJavaHome,
+        pickJava,
+    } = useJavaSettings();
     const { installVersion, installingVersion } = useVersionCatalog();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
@@ -1585,11 +1692,19 @@ export default function RecipeCanvas() {
                 await refreshMods();
                 await refreshExportStatus();
                 await reloadCatalog();
+                await refreshAssetProgress();
             } catch {
                 // ошибка в profilesError
             }
         },
-        [activeProfileId, activateProfile, refreshMods, refreshExportStatus, reloadCatalog],
+        [
+            activeProfileId,
+            activateProfile,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            refreshAssetProgress,
+        ],
     );
 
     const handleProfileDelete = useCallback(
@@ -1680,8 +1795,11 @@ export default function RecipeCanvas() {
 
                 const profileName = importResult?.profile?.name ?? 'модпак';
                 const jarCount = importResult?.jars_imported ?? 0;
+                const bakeNote = importResult?.recipe_bake_started
+                    ? ' Запущена фоновая сборка рецептов из инстанса (~5–20 мин).'
+                    : '';
                 setImportFlowSuccess(
-                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».`,
+                    `Готово: импортировано ${jarCount} модов в профиль «${profileName}».${bakeNote}`,
                 );
             } catch (flowError) {
                 const message =
@@ -1917,6 +2035,150 @@ export default function RecipeCanvas() {
     }, [coords, itemDragState]);
 
     const isJvmExportVersion = exportStatus?.layout === 'jvm';
+
+    // --- Логика кнопок «Экспорт рецептов» / «Рендер иконок» (фаза 1) ---
+    const profileMcVersion = activeProfile?.minecraft_version ?? version;
+    const profileSourcePath = (activeProfile?.source_path ?? '').trim();
+    const hasInstancePath = Boolean(profileSourcePath) || Boolean(integritySourcePath.trim());
+    const exportRunning = recipeBakeStatus?.export_running ?? false;
+    const assetRunning = assetProgress?.running ?? false;
+    const iconsPartial =
+        Boolean(assetProgress) &&
+        !assetProgress?.icons.running &&
+        (assetProgress?.icons.total ?? 0) > 0 &&
+        (Boolean(assetProgress?.icons.error) ||
+            (assetProgress?.icons.done ?? 0) < (assetProgress?.icons.total ?? 0));
+    const blocksPartial =
+        Boolean(assetProgress) &&
+        !assetProgress?.blocks.running &&
+        (assetProgress?.blocks.total ?? 0) > 0 &&
+        (Boolean(assetProgress?.blocks.error) ||
+            (assetProgress?.blocks.done ?? 0) < (assetProgress?.blocks.total ?? 0));
+
+    const exportDisabledReason: string | null = (() => {
+        if (activeProfileId === 'default') {
+            return 'Для vanilla рецепты уже в каталоге, экспорт не требуется';
+        }
+        if (profileMcVersion === '1.16.5' || profileMcVersion === '1.18.2') {
+            return `In-game экспорт для ${profileMcVersion} пока недоступен`;
+        }
+        if (!hasInstancePath) {
+            return 'Укажите папку инстанса';
+        }
+        if (exportRunning) {
+            return 'Экспорт уже выполняется';
+        }
+        if (profileMcVersion !== '1.21.1') {
+            return `In-game экспорт для ${profileMcVersion} пока недоступен`;
+        }
+        return null;
+    })();
+
+    const renderIconsDisabledReason: string | null = (() => {
+        if (activeProfileId !== 'default' && !hasInstancePath) {
+            return 'Укажите папку инстанса';
+        }
+        if (assetRunning || assetStarting) {
+            return 'Идёт рендер…';
+        }
+        return null;
+    })();
+
+    // Вся панель «Модпак» блокируется на время экспорта (синхронного и после перезагрузки).
+    const panelLocked = bakingRecipes || exportRunning || finalizingExport;
+    const exportLogPath =
+        recipeBakeResult?.backend_log_path ?? recipeBakeResult?.bake_log_path ?? null;
+
+    const exportActive = bakingRecipes || exportRunning || finalizingExport;
+
+    const operationStatusLines = useMemo(
+        () =>
+            buildOperationStatusLines({
+                exportActive,
+                exportElapsedSec,
+                exportDisabledReason,
+                exportError: recipeBakeError ?? recipeBakeStatus?.last_error ?? null,
+                hasSnapshot: recipeBakeStatus?.has_snapshot ?? false,
+                exportedAt: recipeBakeStatus?.exported_at ?? null,
+                isDefaultProfile: activeProfileId === 'default',
+                assetProgress,
+                iconsPartial,
+                blocksPartial,
+            }),
+        [
+            exportActive,
+            exportElapsedSec,
+            exportDisabledReason,
+            recipeBakeError,
+            recipeBakeStatus,
+            activeProfileId,
+            assetProgress,
+            iconsPartial,
+            blocksPartial,
+        ],
+    );
+
+    useEffect(() => {
+        if ((exportRunning || bakingRecipes) && exportStartedAt === null) {
+            setExportStartedAt(Date.now());
+        }
+    }, [exportRunning, bakingRecipes, exportStartedAt]);
+
+    useEffect(() => {
+        if (!exportStartedAt || !exportActive) {
+            return;
+        }
+        const tick = () => {
+            setExportElapsedSec(Math.floor((Date.now() - exportStartedAt) / 1000));
+        };
+        tick();
+        const timerId = window.setInterval(tick, 1000);
+        return () => window.clearInterval(timerId);
+    }, [exportStartedAt, exportActive]);
+
+    useEffect(() => {
+        if (!exportActive) {
+            setExportStartedAt(null);
+            setExportElapsedSec(0);
+        }
+    }, [exportActive]);
+
+    useEffect(() => {
+        if (bakingRecipes && !prevBakingRef.current) {
+            push('Экспорт рецептов запущен — это может занять до 20 минут', 'info');
+        }
+        if (!bakingRecipes && prevBakingRef.current && !finalizingExport) {
+            const errorText = recipeBakeError ?? recipeBakeStatus?.last_error;
+            if (errorText) {
+                push('Экспорт рецептов завершился с ошибкой', 'error');
+            } else if (recipeBakeResult?.status === 'ok') {
+                push('Экспорт рецептов успешно завершён', 'success');
+            }
+        }
+        prevBakingRef.current = bakingRecipes;
+    }, [
+        bakingRecipes,
+        finalizingExport,
+        push,
+        recipeBakeError,
+        recipeBakeResult,
+        recipeBakeStatus?.last_error,
+    ]);
+
+    useEffect(() => {
+        if (assetRunning && !prevAssetRunningRef.current) {
+            push('Фоновый рендер иконок и текстур блоков запущен', 'info');
+        }
+        if (!assetRunning && prevAssetRunningRef.current) {
+            if (iconsPartial || blocksPartial) {
+                push('Рендер ассетов завершён частично — можно повторить в «Сервис»', 'warn');
+            } else {
+                push('Рендер ассетов завершён', 'success');
+            }
+        }
+        prevAssetRunningRef.current = assetRunning;
+    }, [assetRunning, blocksPartial, iconsPartial, push]);
+
     const missingDependencyCount =
         isJvmExportVersion && exportStatus
             ? exportStatus.missing_dependencies.reduce(
@@ -1954,6 +2216,7 @@ export default function RecipeCanvas() {
                     Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
                     панорама
                 </div>
+                <OperationStatusBar lines={operationStatusLines} />
                 <div ref={setModsToggleSlot} className="recipe-canvas-topbar-slot" />
             </header>
             <div
@@ -2561,7 +2824,44 @@ export default function RecipeCanvas() {
                 flowRateUnit={flowRateUnit}
                 onFlowRateUnitChange={setFlowRateUnit}
                 calculationError={calculationError}
+                onExportRecipes={
+                    !isJvmExportVersion ? () => void handleBakeRecipes() : undefined
+                }
+                exportDisabledReason={exportDisabledReason}
+                bakingRecipes={bakingRecipes}
+                recipeStats={recipeStats}
+                recipeExportedAt={recipeBakeStatus?.exported_at ?? null}
+                recipeBakeError={recipeBakeError ?? recipeBakeStatus?.last_error ?? null}
+                exportLogPath={exportLogPath}
+                panelLocked={panelLocked}
+                onRenderIcons={
+                    versions.length > 0 ? () => void handleRenderIcons() : undefined
+                }
+                renderIconsDisabledReason={renderIconsDisabledReason}
+                renderingIcons={assetRunning || assetStarting}
+                assetPartialHint={
+                    iconsPartial || blocksPartial
+                        ? [
+                              iconsPartial ? 'Иконки отрендерены частично' : null,
+                              blocksPartial ? 'Текстуры блоков извлечены частично' : null,
+                          ]
+                              .filter(Boolean)
+                              .join(' · ')
+                        : null
+                }
+                operationStatusLines={operationStatusLines}
+                showJavaSettings
+                javaRuntimes={javaSettings?.runtimes ?? []}
+                javaSelected={javaSettings?.selected ?? {}}
+                javaLoading={javaLoading}
+                javaSaving={javaSaving}
+                javaPicking={javaPicking}
+                javaError={javaError}
+                onPickJava={() => void pickJava()}
+                onJavaMajorChange={(major, home) => void setJavaHome(major, home)}
             />
+
+            <ToastStack toasts={toasts} onDismiss={dismiss} />
 
             <VersionManagerModal
                 open={versionManagerOpen}

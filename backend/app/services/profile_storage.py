@@ -200,7 +200,7 @@ def write_active_profile_id(profiles_dir: Path, profile_id: str) -> None:
 
 
 def ensure_profile_subdirs(profile_dir: Path) -> None:
-    for name in ("mods", "recipe", "config", "scripts", "kubejs", "rendered-icons"):
+    for name in ("mods", "recipe", "config", "scripts", "kubejs", "rendered-icons", "block-textures"):
         (profile_dir / name).mkdir(parents=True, exist_ok=True)
 
 

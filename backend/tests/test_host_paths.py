@@ -6,6 +6,7 @@ from pathlib import Path, PureWindowsPath
 import pytest
 from app.services.host_paths import (
     format_stored_path_for_display,
+    instance_path_missing_message,
     map_windows_path_to_container,
     resolve_host_filesystem_path,
 )
@@ -87,3 +88,39 @@ def test_map_windows_path_to_container_relative_parts(tmp_path: Path) -> None:
         assert mapped == host_root / "Techopolis 3"
     finally:
         os.environ.pop("HOST_PATH_MAPPINGS", None)
+
+
+def test_instance_path_missing_message_in_docker(tmp_path: Path) -> None:
+    if os.name == "nt":
+        pytest.skip("Docker/Linux message")
+    resolved = tmp_path / "Techopolis 3"
+    message = instance_path_missing_message(
+        r"C:\Users\efimi\AppData\Roaming\PrismLauncher\instances\Techopolis 3",
+        resolved,
+    )
+    assert "контейнере" in message
+    assert str(resolved) in message
+
+
+def test_path_for_user_display_maps_container_paths() -> None:
+    if os.name == "nt":
+        pytest.skip("Docker display mapping")
+    previous = os.environ.get("PROJECT_HOST_PATH")
+    os.environ["PROJECT_HOST_PATH"] = r"P:/Practice/Recipe-Tree-Visualizer"
+    try:
+        from app.services.host_paths import path_for_user_display
+
+        bake = path_for_user_display(
+            Path(
+                "/app/MinecraftVersions/1.21.1/profiles/techopolis-3-4c450a94/bake/bake.log"
+            )
+        )
+        assert bake.replace("/", "\\").endswith(
+            r"MinecraftVersions\1.21.1\profiles\techopolis-3-4c450a94\bake\bake.log"
+        )
+        assert bake.startswith("P:")
+    finally:
+        if previous is None:
+            os.environ.pop("PROJECT_HOST_PATH", None)
+        else:
+            os.environ["PROJECT_HOST_PATH"] = previous

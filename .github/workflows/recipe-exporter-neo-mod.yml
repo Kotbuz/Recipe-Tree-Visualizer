@@ -1,0 +1,27 @@
+name: Build recipe-exporter-neo mod
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build-mod-jar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Build NeoForge exporter mod
+        working-directory: recipe-exporter-neo/versions/1.21.1
+        run: chmod +x gradlew && ./gradlew build --no-daemon --stacktrace
+
+      - name: Upload mod jar artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: recipe-exporter-neo-1.21.1
+          path: recipe-exporter-neo/dist/recipe-exporter-neo-1.21.1.jar
+          if-no-files-found: error

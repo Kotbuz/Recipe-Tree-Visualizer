@@ -322,7 +322,7 @@ class ProfileService:
         *,
         name: str | None = None,
         activate: bool = True,
-    ) -> tuple[ProfileSummary, ModpackImportStats]:
+    ) -> tuple[ProfileSummary, ModpackImportStats, bool]:
         version_service.ensure_profiles_layout(version)
         raw_path = str(source_path).strip()
         resolved = resolve_host_filesystem_path(raw_path)
@@ -376,7 +376,19 @@ class ProfileService:
             enrich_recipes=False,
         )
 
-        return self.get_profile(version, profile_id), stats
+        from app.services.recipe_bake_scheduler import schedule_neo_recipe_bake_after_import
+
+        mc_for_layout = (
+            detected.minecraft_version if detected is not None else version
+        )
+        bake_started = schedule_neo_recipe_bake_after_import(
+            version,
+            profile_id,
+            source_path=raw_path,
+            minecraft_version=mc_for_layout,
+        )
+
+        return self.get_profile(version, profile_id), stats, bake_started
 
     def _build_summary(
         self,
@@ -397,6 +409,18 @@ class ProfileService:
             loader=str(meta["loader"]) if isinstance(meta.get("loader"), str) else None,
             forge_version=(
                 str(meta["forge_version"]) if isinstance(meta.get("forge_version"), str) else None
+            ),
+            minecraft_version=(
+                str(meta["minecraft_version"]).strip()
+                if isinstance(meta.get("minecraft_version"), str)
+                and str(meta["minecraft_version"]).strip()
+                else None
+            ),
+            source_path=(
+                str(meta["source_path"]).strip()
+                if isinstance(meta.get("source_path"), str)
+                and str(meta["source_path"]).strip()
+                else None
             ),
         )
 

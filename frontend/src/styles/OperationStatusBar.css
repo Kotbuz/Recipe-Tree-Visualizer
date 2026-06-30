@@ -1,0 +1,98 @@
+.operation-status-bar {
+    flex: 0 1 auto;
+    max-width: min(52vw, 640px);
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0 0.65rem;
+    background: var(--ui-bg-toolbar);
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    color: #374151;
+    font-size: 0.78rem;
+    line-height: 1.2;
+    box-shadow: var(--ui-shadow-sm);
+    pointer-events: auto;
+    overflow: hidden;
+}
+
+.operation-status-bar--compact {
+    flex-direction: column;
+    align-items: stretch;
+    max-width: none;
+    gap: 0.25rem;
+    padding: 0.5rem 0.65rem;
+}
+
+.operation-status-line {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    min-width: 0;
+    white-space: nowrap;
+}
+
+.operation-status-bar--compact .operation-status-line {
+    display: flex;
+    white-space: normal;
+}
+
+.operation-status-line + .operation-status-line {
+    padding-left: 0.45rem;
+    border-left: 1px solid var(--ui-border);
+}
+
+.operation-status-bar--compact .operation-status-line + .operation-status-line {
+    padding-left: 0;
+    border-left: none;
+    padding-top: 0.2rem;
+    border-top: 1px solid var(--ui-border-subtle, #e5e7eb);
+}
+
+.operation-status-label {
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.operation-status-text {
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.operation-status-line--active .operation-status-text {
+    color: #1d4ed8;
+}
+
+.operation-status-line--success .operation-status-text {
+    color: #047857;
+}
+
+.operation-status-line--warn .operation-status-text {
+    color: #b45309;
+}
+
+.operation-status-line--error .operation-status-text {
+    color: #b91c1c;
+}
+
+.operation-status-line--muted .operation-status-text {
+    color: #6b7280;
+    font-weight: 500;
+}
+
+.operation-status-spinner {
+    width: 12px;
+    height: 12px;
+    flex: 0 0 auto;
+    border: 2px solid #bfdbfe;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: operation-status-spin 0.8s linear infinite;
+}
+
+@keyframes operation-status-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

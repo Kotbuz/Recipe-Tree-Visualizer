@@ -85,6 +85,20 @@ def resolve_host_filesystem_path(raw: str) -> Path:
     return path.resolve()
 
 
+def instance_path_missing_message(raw: str, resolved: Path) -> str:
+    """Сообщение, если Windows-путь есть, но папки нет в контейнере / на диске."""
+    display = format_stored_path_for_display(raw)
+    if os.name != "nt" and is_windows_absolute_path(raw):
+        return (
+            f"Папка инстанса не найдена в контейнере: {display}\n"
+            f"Ожидаемый путь внутри Docker: {resolved}\n"
+            "Проверьте: 1) папка существует на Windows; 2) в .env задан INSTANCES_HOST_PATH "
+            "(родитель instances, не сам модпак); 3) в docker-compose.yml смонтирован volume "
+            "${INSTANCES_HOST_PATH}:/host/instances:ro; 4) перезапущены backend и recipe-exporter-neo."
+        )
+    return f"Папка инстанса не найдена: {display}"
+
+
 def host_path_unavailable_hint(raw: str) -> str | None:
     if os.name == "nt" or not is_windows_absolute_path(raw):
         return None
@@ -95,3 +109,27 @@ def host_path_unavailable_hint(raw: str) -> str | None:
         "Смонтируйте папку instances в контейнер, задайте INSTANCES_HOST_PATH в .env "
         "(см. .env.example и docker-compose.yml), либо запускайте backend локально на Windows."
     )
+
+
+def path_for_user_display(resolved: Path) -> str:
+    """Путь для копирования в проводник: на хосте Windows, не внутри контейнера."""
+    if os.name == "nt":
+        return str(resolved.resolve())
+
+    project_host = os.environ.get("PROJECT_HOST_PATH", "").strip()
+    if not project_host:
+        return str(resolved)
+
+    host_root = PureWindowsPath(project_host.replace("/", "\\"))
+    container_mappings: list[tuple[Path, PureWindowsPath]] = [
+        (Path("/app/MinecraftVersions"), host_root / "MinecraftVersions"),
+        (Path("/app/backend/logs"), host_root / "backend" / "logs"),
+    ]
+    normalized = Path(str(resolved).replace("\\", "/"))
+    for container_prefix, host_prefix in container_mappings:
+        try:
+            relative = normalized.relative_to(container_prefix)
+            return str(host_prefix.joinpath(*relative.parts))
+        except ValueError:
+            continue
+    return str(resolved)

@@ -45,6 +45,8 @@ export default function ModpackImportDialog({
         Boolean(inspect.forge_version) &&
         inspect.forge_installed === false;
 
+    const isNeoForge = inspect.loader === 'neoforge';
+
     let actionLabel = 'Импортировать';
     if (needsInstall && needsSwitch) {
         actionLabel = `Установить ${inspect.minecraft_version} и импортировать`;
@@ -105,6 +107,14 @@ export default function ModpackImportDialog({
                 {needsForgePrepare && !busy ? (
                     <p className="modpack-import-note">
                         Forge {inspect.forge_version} будет скачан перед импортом модов.
+                    </p>
+                ) : null}
+
+                {isNeoForge && !busy ? (
+                    <p className="modpack-import-note">
+                        NeoForge {inspect.forge_version} берётся из инстанса лаунчера. Для иконок
+                        и ванильных данных скачается только client.jar — перезапуск Docker не
+                        нужен. После импорта рецепты соберутся автоматически в фоне.
                     </p>
                 ) : null}
 

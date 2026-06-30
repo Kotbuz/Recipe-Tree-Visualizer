@@ -32,6 +32,22 @@ services:
       - "8090:8090"
     restart: unless-stopped
 
+  recipe-exporter-neo:
+    build:
+      context: ./recipe-exporter-neo
+      dockerfile: docker/Dockerfile
+    environment:
+      PORT: 8091
+      NEOFORGE_JAVA_XMX: 8G
+      EXPORT_TIMEOUT_SECONDS: 3600
+      SUPPORTED_MINECRAFT_VERSIONS: "1.21.1"
+    volumes:
+      - ./MinecraftVersions:/data/minecraft:rw
+      - ${INSTANCES_HOST_PATH}:/host/instances:ro
+    ports:
+      - "8091:8091"
+    restart: unless-stopped
+
   backend:
     build:
       context: .
@@ -44,18 +60,20 @@ services:
       RENDERER_MINECRAFT_ROOT: /data/minecraft
       RECIPE_EXPORTER_URL: http://recipe-exporter:8090
       RECIPE_EXPORTER_MODE: auto
+      NEO_RECIPE_EXPORTER_URL: http://recipe-exporter-neo:8091
       MINECRAFT_DEFAULT_VERSION: "26.2"
       VANILLA_ICON_RENDER_ON_STARTUP: "true"
       CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173,http://localhost
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:rw
       - ./backend/logs:/app/backend/logs
-      # После INSTANCES_HOST_PATH в .env раскомментируйте:
-      # - ${INSTANCES_HOST_PATH}:/host/instances:ro
+      - ${INSTANCES_HOST_PATH}:/host/instances:ro
     ports:
       - "8000:8000"
     depends_on:
       renderer:
+        condition: service_healthy
+      recipe-exporter-neo:
         condition: service_healthy
     restart: unless-stopped
 
