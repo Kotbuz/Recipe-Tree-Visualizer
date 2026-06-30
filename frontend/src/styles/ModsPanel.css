@@ -253,6 +253,23 @@
     color: #92400e;
 }
 
+.mods-panel-operation-status {
+    margin: 0.35rem 0 0.5rem;
+    padding: 0.55rem 0.65rem;
+    border: 1px solid var(--ui-border);
+    border-radius: 8px;
+    background: #f8fafc;
+}
+
+.mods-panel-operation-title {
+    margin: 0 0 0.4rem;
+    font-size: 0.72rem;
+    font-weight: 700;
+    letter-spacing: 0.02em;
+    text-transform: uppercase;
+    color: #64748b;
+}
+
 .mods-panel-errors {
     display: flex;
     flex-direction: column;

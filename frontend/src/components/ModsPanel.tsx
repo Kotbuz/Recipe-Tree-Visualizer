@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { createPortal } from 'react-dom';
+import OperationStatusBar from './OperationStatusBar';
+import type { OperationStatusLine } from '../utils/operationStatus';
 import { DEFAULT_DURATION_TICKS, TICKS_PER_SECOND } from '../canvas';
 import type { FlowRateUnit } from '../types/production';
 import { FLOW_RATE_UNIT_LABELS } from '../utils/flowRate';
@@ -86,6 +88,8 @@ type ModsPanelProps = {
     renderingIcons?: boolean;
     /** Подсказка, если иконки/блоки отрендерены не полностью (H3). */
     assetPartialHint?: string | null;
+    /** Постоянный статус экспорта / рендера (фаза 1 UX). */
+    operationStatusLines?: OperationStatusLine[];
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -236,6 +240,7 @@ export default function ModsPanel({
     renderIconsDisabledReason = null,
     renderingIcons = false,
     assetPartialHint,
+    operationStatusLines,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
@@ -514,6 +519,13 @@ export default function ModsPanel({
                             ) : null}
                         </div>
                     ) : null}
+                </div>
+            ) : null}
+
+            {operationStatusLines && operationStatusLines.length > 0 ? (
+                <div className="mods-panel-operation-status">
+                    <h3 className="mods-panel-operation-title">Состояние задач</h3>
+                    <OperationStatusBar lines={operationStatusLines} compact />
                 </div>
             ) : null}
 

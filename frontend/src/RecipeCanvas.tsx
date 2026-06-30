@@ -31,6 +31,10 @@ import { useProfileIntegrity } from './hooks/useProfileIntegrity';
 import { useRecipeBake } from './hooks/useRecipeBake';
 import { useRecipeStats } from './hooks/useRecipeStats';
 import { useAssetRender } from './hooks/useAssetRender';
+import { useToast } from './hooks/useToast';
+import OperationStatusBar from './components/OperationStatusBar';
+import ToastStack from './components/ToastStack';
+import { buildOperationStatusLines } from './utils/operationStatus';
 import {
     ingredientsCompatible,
     itemIdToDisplayName,
@@ -359,6 +363,11 @@ export default function RecipeCanvas() {
         refresh: refreshAssetProgress,
         startRender: startAssetRender,
     } = useAssetRender(version, activeProfileId);
+    const { toasts, push, dismiss } = useToast();
+    const [exportStartedAt, setExportStartedAt] = useState<number | null>(null);
+    const [exportElapsedSec, setExportElapsedSec] = useState(0);
+    const prevBakingRef = useRef(false);
+    const prevAssetRunningRef = useRef(false);
 
     useEffect(() => {
         void refreshRecipeBakeStatus();
@@ -402,6 +411,8 @@ export default function RecipeCanvas() {
         if (!window.confirm(message)) {
             return;
         }
+        setExportStartedAt(Date.now());
+        setExportElapsedSec(0);
         const result = await bakeRecipes({
             force: true,
             sourcePath: integritySourcePath.trim() || undefined,
@@ -429,11 +440,16 @@ export default function RecipeCanvas() {
 
     const handleRenderIcons = useCallback(async () => {
         try {
-            await startAssetRender();
+            const result = await startAssetRender();
+            if (result?.started) {
+                push('Запущен полный рендер иконок и текстур блоков', 'info');
+            } else {
+                push('Рендер уже выполняется', 'warn');
+            }
         } catch {
-            // ошибку рендера показываем неблокирующе; повторный запуск пока занято отклоняется
+            push('Не удалось запустить рендер ассетов', 'error');
         }
-    }, [startAssetRender]);
+    }, [startAssetRender, push]);
 
     const handleCheckIntegrity = useCallback(async () => {
         try {
@@ -1773,6 +1789,93 @@ export default function RecipeCanvas() {
     const exportLogPath =
         recipeBakeResult?.backend_log_path ?? recipeBakeResult?.bake_log_path ?? null;
 
+    const exportActive = bakingRecipes || exportRunning || finalizingExport;
+
+    const operationStatusLines = useMemo(
+        () =>
+            buildOperationStatusLines({
+                exportActive,
+                exportElapsedSec,
+                exportDisabledReason,
+                exportError: recipeBakeError ?? recipeBakeStatus?.last_error ?? null,
+                hasSnapshot: recipeBakeStatus?.has_snapshot ?? false,
+                exportedAt: recipeBakeStatus?.exported_at ?? null,
+                isDefaultProfile: activeProfileId === 'default',
+                assetProgress,
+                iconsPartial,
+                blocksPartial,
+            }),
+        [
+            exportActive,
+            exportElapsedSec,
+            exportDisabledReason,
+            recipeBakeError,
+            recipeBakeStatus,
+            activeProfileId,
+            assetProgress,
+            iconsPartial,
+            blocksPartial,
+        ],
+    );
+
+    useEffect(() => {
+        if ((exportRunning || bakingRecipes) && exportStartedAt === null) {
+            setExportStartedAt(Date.now());
+        }
+    }, [exportRunning, bakingRecipes, exportStartedAt]);
+
+    useEffect(() => {
+        const tick = () => {
+            setExportElapsedSec(Math.floor((Date.now() - exportStartedAt) / 1000));
+        };
+        tick();
+        const timerId = window.setInterval(tick, 1000);
+        return () => window.clearInterval(timerId);
+    }, [exportStartedAt, exportActive]);
+
+    useEffect(() => {
+        if (!exportActive) {
+            setExportStartedAt(null);
+            setExportElapsedSec(0);
+        }
+    }, [exportActive]);
+
+    useEffect(() => {
+        if (bakingRecipes && !prevBakingRef.current) {
+            push('Экспорт рецептов запущен — это может занять до 20 минут', 'info');
+        }
+        if (!bakingRecipes && prevBakingRef.current && !finalizingExport) {
+            const errorText = recipeBakeError ?? recipeBakeStatus?.last_error;
+            if (errorText) {
+                push('Экспорт рецептов завершился с ошибкой', 'error');
+            } else if (recipeBakeResult?.status === 'ok') {
+                push('Экспорт рецептов успешно завершён', 'success');
+            }
+        }
+        prevBakingRef.current = bakingRecipes;
+    }, [
+        bakingRecipes,
+        finalizingExport,
+        push,
+        recipeBakeError,
+        recipeBakeResult,
+        recipeBakeStatus?.last_error,
+    ]);
+
+    useEffect(() => {
+        if (assetRunning && !prevAssetRunningRef.current) {
+            push('Фоновый рендер иконок и текстур блоков запущен', 'info');
+        }
+        if (!assetRunning && prevAssetRunningRef.current) {
+            if (iconsPartial || blocksPartial) {
+                push('Рендер ассетов завершён частично — можно повторить в «Сервис»', 'warn');
+            } else {
+                push('Рендер ассетов завершён', 'success');
+            }
+        }
+        prevAssetRunningRef.current = assetRunning;
+    }, [assetRunning, blocksPartial, iconsPartial, push]);
+
     const missingDependencyCount =
         isJvmExportVersion && exportStatus
             ? exportStatus.missing_dependencies.reduce(
@@ -1810,39 +1913,7 @@ export default function RecipeCanvas() {
                     Тяните за ингредиент/результат — связь • Колесо — зум • ЛКМ+движение —
                     панорама
                 </div>
-                {(() => {
-                    const items: string[] = [];
-                    if (bakingRecipes || exportRunning) {
-                        items.push('Экспорт рецептов…');
-                    }
-                    if (assetProgress?.icons.running) {
-                        items.push(
-                            `Иконки: ${assetProgress.icons.done} / ${assetProgress.icons.total}`,
-                        );
-                    } else if (iconsPartial) {
-                        items.push('Иконки: частично');
-                    }
-                    if (assetProgress?.blocks.running) {
-                        items.push(
-                            `Блоки: ${assetProgress.blocks.done} / ${assetProgress.blocks.total}`,
-                        );
-                    } else if (blocksPartial) {
-                        items.push('Блоки: частично');
-                    }
-                    if (items.length === 0) {
-                        return null;
-                    }
-                    return (
-                        <div className="recipe-canvas-progress" role="status">
-                            <span className="recipe-canvas-progress-spinner" aria-hidden />
-                            {items.map((label) => (
-                                <span key={label} className="recipe-canvas-progress-item">
-                                    {label}
-                                </span>
-                            ))}
-                        </div>
-                    );
-                })()}
+                <OperationStatusBar lines={operationStatusLines} />
                 <div ref={setModsToggleSlot} className="recipe-canvas-topbar-slot" />
             </header>
             <div
@@ -2299,7 +2370,10 @@ export default function RecipeCanvas() {
                               .join(' · ')
                         : null
                 }
+                operationStatusLines={operationStatusLines}
             />
+
+            <ToastStack toasts={toasts} onDismiss={dismiss} />
 
             <VersionManagerModal
                 open={versionManagerOpen}

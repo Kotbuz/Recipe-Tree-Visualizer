@@ -25,7 +25,7 @@ export function useRecipeStats(version: string, profileId?: string) {
         setLoading(true);
         try {
             const response = await fetch(
-                `/api/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/recipe-stats`,
+                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/recipe-stats`,
             );
             if (!response.ok) {
                 setStats(null);

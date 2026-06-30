@@ -35,7 +35,7 @@ export function useAssetRender(version: string, profileId?: string) {
         }
         try {
             const response = await fetch(
-                `/api/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/asset-progress`,
+                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/asset-progress`,
             );
             if (!response.ok) {
                 return null;
@@ -55,7 +55,7 @@ export function useAssetRender(version: string, profileId?: string) {
         setStarting(true);
         try {
             const response = await fetch(
-                `/api/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/render-assets`,
+                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/render-assets`,
                 { method: 'POST' },
             );
             if (!response.ok) {

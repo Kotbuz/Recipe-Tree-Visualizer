@@ -27,6 +27,41 @@ export type RecipeBakeResult = {
     bake_log_path?: string | null;
 };
 
+async function readApiError(response: Response): Promise<string> {
+    const detail = await response.text();
+    const trimmed = detail.trim();
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+        try {
+            const parsed = JSON.parse(trimmed) as { detail?: string };
+            return parsed.detail ?? trimmed;
+        } catch {
+            return trimmed;
+        }
+    }
+    if (trimmed.startsWith('<')) {
+        return `HTTP ${response.status}: сервер вернул HTML вместо JSON (проверьте прокси nginx /api)`;
+    }
+    return trimmed || `HTTP ${response.status}`;
+}
+
+async function readApiJson<T>(response: Response): Promise<T> {
+    const text = await response.text();
+    const trimmed = text.trim();
+    if (!trimmed) {
+        throw new Error('Пустой ответ сервера');
+    }
+    if (trimmed.startsWith('<')) {
+        throw new Error(
+            'Сервер вернул HTML вместо JSON — запрос не дошёл до backend (часто nginx без прокси /api)',
+        );
+    }
+    try {
+        return JSON.parse(trimmed) as T;
+    } catch {
+        throw new Error('Ответ сервера не является JSON');
+    }
+}
+
 export function useRecipeBake(version: string, profileId?: string) {
     const [baking, setBaking] = useState(false);
     const [loadingStatus, setLoadingStatus] = useState(false);
@@ -43,13 +78,12 @@ export function useRecipeBake(version: string, profileId?: string) {
         setError(null);
         try {
             const response = await fetch(
-                `/api/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/bake-recipes/status`,
+                `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/bake-recipes/status`,
             );
             if (!response.ok) {
-                const detail = await response.text();
-                throw new Error(detail || `HTTP ${response.status}`);
+                throw new Error(await readApiError(response));
             }
-            const payload = (await response.json()) as RecipeBakeStatus;
+            const payload = await readApiJson<RecipeBakeStatus>(response);
             setStatus(payload);
             return payload;
         } catch (caught) {
@@ -70,7 +104,7 @@ export function useRecipeBake(version: string, profileId?: string) {
             setError(null);
             try {
                 const response = await fetch(
-                    `/api/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/bake-recipes`,
+                    `/versions/${encodeURIComponent(version)}/profiles/${encodeURIComponent(profileId)}/bake-recipes`,
                     {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
@@ -81,16 +115,9 @@ export function useRecipeBake(version: string, profileId?: string) {
                     },
                 );
                 if (!response.ok) {
-                    let detail = await response.text();
-                    try {
-                        const parsed = JSON.parse(detail) as { detail?: string };
-                        detail = parsed.detail ?? detail;
-                    } catch {
-                        // keep raw text
-                    }
-                    throw new Error(detail || `HTTP ${response.status}`);
+                    throw new Error(await readApiError(response));
                 }
-                const payload = (await response.json()) as RecipeBakeResult;
+                const payload = await readApiJson<RecipeBakeResult>(response);
                 setLastResult(payload);
                 if (payload.status !== 'ok' && payload.error) {
                     setError(payload.error);
