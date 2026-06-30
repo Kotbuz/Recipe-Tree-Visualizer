@@ -1,24 +1,45 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use tauri::Manager;
-
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 
 struct BackendChild(Mutex<Option<Child>>);
 
-fn repo_root() -> PathBuf {
-    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    match manifest.parent().and_then(|p| p.parent()) {
-        Some(root) => root.to_path_buf(),
-        None => manifest,
+fn resolve_backend_dir() -> Option<PathBuf> {
+    if let Ok(root) = std::env::var("RTV_REPO_ROOT") {
+        let backend_dir = PathBuf::from(root).join("backend");
+        if backend_dir.join("app").join("main.py").is_file() {
+            return Some(backend_dir);
+        }
     }
+
+    if let Ok(exe) = std::env::current_exe() {
+        if let Some(exe_dir) = exe.parent() {
+            for candidate in [
+                exe_dir.join("backend"),
+                exe_dir.join("..").join("backend"),
+                exe_dir.join("..").join("..").join("backend"),
+            ] {
+                if candidate.join("app").join("main.py").is_file() {
+                    return candidate.canonicalize().ok().or(Some(candidate));
+                }
+            }
+        }
+    }
+
+    let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
+    let compile_root = manifest.parent().and_then(|p| p.parent())?;
+    let backend_dir = compile_root.join("backend");
+    if backend_dir.join("app").join("main.py").is_file() {
+        return Some(backend_dir);
+    }
+
+    None
 }
 
 fn start_backend() -> Option<Child> {
-    let root = repo_root();
-    let backend_dir = root.join("backend");
+    let backend_dir = resolve_backend_dir()?;
 
     let mut cmd = if cfg!(windows) {
         let mut c = Command::new("cmd");
@@ -62,14 +83,12 @@ fn main() {
         .plugin(tauri_plugin_shell::init())
         .manage(backend)
         .setup(|app| {
-            if cfg!(debug_assertions) {
-                return Ok(());
-            }
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.eval(
-                    "window.location.replace('http://127.0.0.1:8000');",
+            if resolve_backend_dir().is_none() {
+                eprintln!(
+                    "Backend not found. Install uv, set RTV_REPO_ROOT, or run from a full repo checkout."
                 );
             }
+            let _ = app;
             Ok(())
         })
         .build(tauri::generate_context!())

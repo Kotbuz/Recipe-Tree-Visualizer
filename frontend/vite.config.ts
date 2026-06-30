@@ -20,7 +20,12 @@ const fileExists = async (path: string) => {
     }
 };
 
+const isTauriBuild = Boolean(process.env.TAURI_ENV_PLATFORM);
+
 export default defineConfig({
+    define: {
+        __RTV_DESKTOP__: JSON.stringify(isTauriBuild),
+    },
     plugins: [
         react(),
         {
