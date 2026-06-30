@@ -18,6 +18,7 @@ from pathlib import Path
 import httpx
 from loguru import logger
 
+from app.services import java_runtime_service
 from app.services.modpack_version_detector import forge_installer_version
 
 _LEGACY_FORGE_VERSION = "1.7.10-10.13.4.1448-1.7.10"
@@ -558,66 +559,10 @@ class ForgeInstallService:
 
     def _resolve_java_executable(self, minecraft_version: str) -> str:
         required_major = _required_java_major(minecraft_version)
-        env_home = (
-            os.environ.get("FORGE_JAVA_HOME")
-            or os.environ.get(f"JAVA{required_major}_HOME")
-            or (os.environ.get("JAVA8_HOME") if required_major == 8 else None)
-        )
-        candidates: list[Path] = []
-        if env_home:
-            candidates.append(Path(env_home))
-
-        gradle_props = Path.home() / ".gradle" / "gradle.properties"
-        if gradle_props.is_file():
-            match = re.search(
-                r"org\.gradle\.java\.installations\.paths\s*=\s*(.+)",
-                gradle_props.read_text(encoding="utf-8", errors="replace"),
-            )
-            if match:
-                for raw_path in match.group(1).split(","):
-                    candidates.append(Path(raw_path.strip().strip('"')))
-
-        if sys.platform.startswith("win"):
-            program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-            if required_major == 8:
-                default_names = (
-                    "Eclipse Adoptium/jdk-8.0.492.9-hotspot",
-                    "Java/jdk1.8.0_202",
-                    "Eclipse Adoptium/jdk-8.0.402.8-hotspot",
-                )
-                candidates.extend(Path(program_files) / name for name in default_names)
-                glob_patterns = (
-                    r"C:\Program Files\Eclipse Adoptium\jdk-8*",
-                    r"C:\Program Files\Java\jdk1.8*",
-                )
-            elif required_major == 17:
-                glob_patterns = (
-                    r"C:\Program Files\Eclipse Adoptium\jdk-17*",
-                    r"C:\Program Files\Java\jdk-17*",
-                )
-            else:
-                glob_patterns = (
-                    r"C:\Program Files\Eclipse Adoptium\jdk-21*",
-                    r"C:\Program Files\Eclipse Adoptium\jre-21*",
-                    r"C:\Program Files\Java\jdk-21*",
-                )
-            for pattern in glob_patterns:
-                candidates.extend(Path(path) for path in sorted(glob.glob(pattern)))
-
-        for candidate in candidates:
-            java_path = candidate / "bin" / (
-                "java.exe" if sys.platform.startswith("win") else "java"
-            )
-            if java_path.is_file():
-                return str(java_path)
-
-        which_java = shutil.which("java")
-        if which_java:
-            return which_java
-        raise ForgeInstallError(
-            f"Для установки Forge {minecraft_version} нужна Java {required_major}. "
-            f"Установите Temurin JDK {required_major} и задайте FORGE_JAVA_HOME."
-        )
+        try:
+            return java_runtime_service.resolve_java_executable(required_major)
+        except FileNotFoundError as exc:
+            raise ForgeInstallError(str(exc)) from exc
 
 
 forge_install_service = ForgeInstallService()

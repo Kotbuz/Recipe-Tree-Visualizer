@@ -13,7 +13,9 @@ from app.core.config import get_settings
 from app.core.recipe_layout import recipe_layout_for_version
 from app.services.host_paths import (
     host_path_unavailable_hint,
+    instance_path_missing_message,
     map_windows_path_to_container,
+    path_for_user_display,
     resolve_host_filesystem_path,
 )
 from app.services.modpack_version_detector import (
@@ -120,7 +122,9 @@ class NeoRecipeExportService:
 
         instance_path = resolve_host_filesystem_path(instance_path_raw)
         if not instance_path.is_dir():
-            raise NeoRecipeExportError(f"Папка инстанса не найдена: {instance_path_raw}")
+            raise NeoRecipeExportError(
+                instance_path_missing_message(instance_path_raw, instance_path)
+            )
 
         detected = detect_modpack_version_from_directory(instance_path)
         if detected is not None and detected.minecraft_version != mc_version:
@@ -308,8 +312,8 @@ class NeoRecipeExportService:
         """Дублирует bake.log в backend/logs/ и (при успехе) запускает фоновый рендер."""
         backend_log = self._copy_backend_log(version, profile_id, timestamp)
         if backend_log is not None:
-            result["backend_log_path"] = str(backend_log)
-        result["bake_log_path"] = str(bake_log_path(version, profile_id))
+            result["backend_log_path"] = path_for_user_display(backend_log)
+        result["bake_log_path"] = path_for_user_display(bake_log_path(version, profile_id))
 
         if result.get("status") == "ok":
             try:

@@ -13,6 +13,7 @@ import ModsPanel from './components/ModsPanel';
 import ExportStatusBanner from './components/ExportStatusBanner';
 import VersionManagerModal from './components/VersionManagerModal';
 import ModpackImportDialog from './components/ModpackImportDialog';
+import { useJavaSettings } from './hooks/useJavaSettings';
 import { useModpackInspect, type ModpackInspectResult } from './hooks/useModpackInspect';
 import { prepareForgeInstall } from './hooks/useForgePrepare';
 import { useVersionCatalog } from './hooks/useVersionCatalog';
@@ -541,6 +542,15 @@ export default function RecipeCanvas() {
     const [preparingForge, setPreparingForge] = useState(false);
     const { inspectZip, inspectPath, pickFolder, inspecting: modpackInspecting, error: modpackInspectError } =
         useModpackInspect();
+    const {
+        settings: javaSettings,
+        loading: javaLoading,
+        saving: javaSaving,
+        picking: javaPicking,
+        error: javaError,
+        setJavaHome,
+        pickJava,
+    } = useJavaSettings();
     const { installVersion, installingVersion } = useVersionCatalog();
     const [contextMenu, setContextMenu] = useState<ContextMenu | null>(null);
     const [selectedRecipe, setSelectedRecipe] = useState<RecipeSummary | null>(null);
@@ -1825,6 +1835,9 @@ export default function RecipeCanvas() {
     }, [exportRunning, bakingRecipes, exportStartedAt]);
 
     useEffect(() => {
+        if (!exportStartedAt || !exportActive) {
+            return;
+        }
         const tick = () => {
             setExportElapsedSec(Math.floor((Date.now() - exportStartedAt) / 1000));
         };
@@ -2371,6 +2384,15 @@ export default function RecipeCanvas() {
                         : null
                 }
                 operationStatusLines={operationStatusLines}
+                showJavaSettings
+                javaRuntimes={javaSettings?.runtimes ?? []}
+                javaSelected={javaSettings?.selected ?? {}}
+                javaLoading={javaLoading}
+                javaSaving={javaSaving}
+                javaPicking={javaPicking}
+                javaError={javaError}
+                onPickJava={() => void pickJava()}
+                onJavaMajorChange={(major, home) => void setJavaHome(major, home)}
             />
 
             <ToastStack toasts={toasts} onDismiss={dismiss} />

@@ -44,4 +44,5 @@ tasks.register('copyExporterJar', Copy) {
     dependsOn jar
     from jar.archiveFile
     into rootProject.file('../../dist')
+    rename { 'recipe-exporter-neo-1.21.1.jar' }
 }

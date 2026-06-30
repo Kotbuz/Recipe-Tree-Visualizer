@@ -222,6 +222,7 @@ backend/logs/
 backend/data/mods/*.jar
 backend/data/rendered/*
 !backend/data/rendered/.gitkeep
+backend/data/java_settings.json
 # Minecraft versions — local data (jar, recipes, textures, rendered icons)
 MinecraftVersions/*
 !MinecraftVersions/.gitkeep

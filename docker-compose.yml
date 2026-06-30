@@ -43,8 +43,7 @@ services:
       SUPPORTED_MINECRAFT_VERSIONS: "1.21.1"
     volumes:
       - ./MinecraftVersions:/data/minecraft:rw
-      # Раскомментируйте после INSTANCES_HOST_PATH в .env:
-      # - ${INSTANCES_HOST_PATH}:/host/instances:ro
+      - ${INSTANCES_HOST_PATH}:/host/instances:ro
     ports:
       - "8091:8091"
     restart: unless-stopped
@@ -68,8 +67,7 @@ services:
     volumes:
       - ./MinecraftVersions:/app/MinecraftVersions:rw
       - ./backend/logs:/app/backend/logs
-      # После INSTANCES_HOST_PATH в .env раскомментируйте:
-      # - ${INSTANCES_HOST_PATH}:/host/instances:ro
+      - ${INSTANCES_HOST_PATH}:/host/instances:ro
     ports:
       - "8000:8000"
     depends_on:

@@ -1,0 +1,27 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "type": "java",
+      "request": "launch",
+      "name": "Server",
+      "presentation": {
+        "group": "Mod Development - recipe-exporter-neo-1.21.1",
+        "order": 0
+      },
+      "projectName": "recipe-exporter-neo-1.21.1",
+      "mainClass": "net.neoforged.devlaunch.Main",
+      "args": [
+        "@P:\\Practice\\Recipe-Tree-Visualizer\\recipe-exporter-neo\\versions\\1.21.1\\build\\moddev\\serverRunProgramArgs.txt"
+      ],
+      "vmArgs": [
+        "@P:\\Practice\\Recipe-Tree-Visualizer\\recipe-exporter-neo\\versions\\1.21.1\\build\\moddev\\serverRunVmArgs.txt",
+        "-Dfml.modFolders\u003drtvrecipeexporterneo%%P:\\Practice\\Recipe-Tree-Visualizer\\recipe-exporter-neo\\versions\\1.21.1\\bin\\main"
+      ],
+      "cwd": "${workspaceFolder}\\run",
+      "env": {},
+      "console": "internalConsole",
+      "shortenCommandLine": "none"
+    }
+  ]
+}

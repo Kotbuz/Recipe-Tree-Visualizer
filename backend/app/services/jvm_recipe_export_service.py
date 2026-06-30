@@ -17,6 +17,7 @@ from loguru import logger
 
 from app.core.config import get_settings
 from app.core.recipe_layout import recipe_layout_for_version
+from app.services import java_runtime_service
 from app.services.forge_install_service import ForgeInstallError, forge_install_service
 from app.services.modpack_version_detector import forge_installer_version
 from app.services.profile_storage import resolve_profile_forge_build
@@ -468,54 +469,12 @@ class JvmRecipeExportService:
         return path.resolve().as_posix()
 
     def _resolve_java8_executable(self) -> str:
-        env_home = os.environ.get("FORGE_JAVA_HOME") or os.environ.get("JAVA8_HOME")
-        candidates: list[Path] = []
-        if env_home:
-            candidates.append(Path(env_home))
-
-        gradle_props = Path.home() / ".gradle" / "gradle.properties"
-        if gradle_props.is_file():
-            match = re.search(
-                r"org\.gradle\.java\.installations\.paths\s*=\s*(.+)",
-                gradle_props.read_text(encoding="utf-8", errors="replace"),
-            )
-            if match:
-                for raw_path in match.group(1).split(","):
-                    candidates.append(Path(raw_path.strip().strip('"')))
-
-        if sys.platform.startswith("win"):
-            program_files = os.environ.get("ProgramFiles", r"C:\Program Files")
-            candidates.extend(
-                Path(program_files) / name
-                for name in (
-                    "Eclipse Adoptium/jdk-8.0.492.9-hotspot",
-                    "Java/jdk1.8.0_202",
-                    "Eclipse Adoptium/jdk-8.0.402.8-hotspot",
-                )
-            )
-            for pattern in (
-                r"C:\Program Files\Eclipse Adoptium\jdk-8*",
-                r"C:\Program Files\Java\jdk1.8*",
-            ):
-                candidates.extend(Path(path) for path in sorted(glob.glob(pattern)))
-
-        for candidate in candidates:
-            java_path = candidate / "bin" / ("java.exe" if sys.platform.startswith("win") else "java")
-            if java_path.is_file():
-                logger.info("Using Java 8 for Forge export: {}", java_path)
-                return str(java_path)
-
-        which_java = shutil.which("java")
-        if which_java:
-            logger.warning(
-                "Java 8 not found (set FORGE_JAVA_HOME). Falling back to PATH java: {}",
-                which_java,
-            )
-            return which_java
-        raise JvmRecipeExportError(
-            "Java 8 is required for Minecraft 1.7.10 Forge export. "
-            "Install Temurin JDK 8 and set FORGE_JAVA_HOME."
-        )
+        try:
+            java_path = java_runtime_service.resolve_java_executable(8)
+        except FileNotFoundError as exc:
+            raise JvmRecipeExportError(str(exc)) from exc
+        logger.info("Using Java 8 for Forge export: {}", java_path)
+        return java_path
 
     def _universal_forge_dir(self, version: str, *, forge_build: str | None = None) -> Path:
         return forge_install_service.universal_forge_dir(version, forge_build=forge_build)

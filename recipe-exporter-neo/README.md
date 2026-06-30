@@ -11,11 +11,11 @@
 
 ## Сборка мода
 
-Нужен **JDK 21**. Если в `versions/1.21.1` нет `gradlew`, один раз сгенерируйте wrapper:
+Нужен **JDK 21**. Wrapper (`gradlew` / `gradlew.bat`) уже в репозитории.
 
 ```powershell
 cd recipe-exporter-neo/versions/1.21.1
-gradle wrapper
+$env:JAVA_HOME = "C:\Program Files\Java\jdk-21"   # или ваша JDK 21
 .\gradlew.bat build
 ```
 

@@ -60,14 +60,15 @@ public final class RecipeExportHandler {
         var ops = server.registryAccess().createSerializationContext(JsonOps.INSTANCE);
 
         for (RecipeHolder<?> holder : server.getRecipeManager().getRecipes()) {
-            ResourceLocation id = holder.id().location();
+            ResourceLocation id = holder.id();
             Recipe<?> recipe = holder.value();
             RecipeSerializer<?> serializer = recipe.getSerializer();
             ResourceLocation typeId = BuiltInRegistries.RECIPE_SERIALIZER.getKey(serializer);
 
             var encoded = Recipe.CODEC.encodeStart(ops, recipe);
             if (encoded.isError()) {
-                skipped.add(id + ": " + encoded.error().message());
+                String err = encoded.error().map(e -> e.message()).orElse("encode error");
+                skipped.add(id + ": " + err);
                 continue;
             }
 
@@ -104,6 +105,6 @@ public final class RecipeExportHandler {
     }
 
     private static void halt(MinecraftServer server) {
-        server.getServerThread().execute(() -> server.halt(false));
+        server.execute(() -> server.halt(false));
     }
 }

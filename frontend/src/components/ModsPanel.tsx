@@ -90,6 +90,21 @@ type ModsPanelProps = {
     assetPartialHint?: string | null;
     /** Постоянный статус экспорта / рендера (фаза 1 UX). */
     operationStatusLines?: OperationStatusLine[];
+    /** Настройки Java для JVM-экспорта (локальный backend). */
+    showJavaSettings?: boolean;
+    javaRuntimes?: Array<{
+        major: number;
+        home: string;
+        label: string;
+        source: string;
+    }>;
+    javaSelected?: Record<string, string>;
+    javaLoading?: boolean;
+    javaSaving?: boolean;
+    javaPicking?: boolean;
+    javaError?: string | null;
+    onPickJava?: () => void;
+    onJavaMajorChange?: (major: number, home: string) => void;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -241,12 +256,22 @@ export default function ModsPanel({
     renderingIcons = false,
     assetPartialHint,
     operationStatusLines,
+    showJavaSettings = false,
+    javaRuntimes = [],
+    javaSelected = {},
+    javaLoading = false,
+    javaSaving = false,
+    javaPicking = false,
+    javaError = null,
+    onPickJava,
+    onJavaMajorChange,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
     const [modsOpen, setModsOpen] = useState(true);
     const [calcOpen, setCalcOpen] = useState(false);
     const [toolsOpen, setToolsOpen] = useState(false);
+    const [javaOpen, setJavaOpen] = useState(false);
     const [isDragOver, setIsDragOver] = useState(false);
 
     useEffect(() => {
@@ -757,6 +782,81 @@ export default function ModsPanel({
                         </ul>
                     )}
                 </PanelSection>
+
+                {showJavaSettings ? (
+                    <PanelSection
+                        title="Java (JVM)"
+                        summary={
+                            javaSelected['21'] || javaSelected['8'] || javaSelected['17']
+                                ? 'настроено'
+                                : 'авто'
+                        }
+                        open={javaOpen}
+                        onToggle={() => setJavaOpen((v) => !v)}
+                    >
+                        <p className="mods-panel-hint">
+                            Для экспорта рецептов через JVM нужна подходящая версия Java: 8 для
+                            1.7.10, 17 для 1.17–1.20, 21 для NeoForge 1.21+.
+                        </p>
+                        {javaError ? (
+                            <p className="mods-panel-error" role="alert">
+                                {javaError}
+                            </p>
+                        ) : null}
+                        {[8, 17, 21].map((major) => {
+                            const options = javaRuntimes.filter((runtime) => runtime.major === major);
+                            const selectedHome = javaSelected[String(major)] ?? '';
+                            return (
+                                <label key={major} className="mods-panel-field">
+                                    <span className="mods-panel-field-label">Java {major}</span>
+                                    <div className="mods-panel-path-row">
+                                        <select
+                                            className="mods-panel-path-input"
+                                            disabled={
+                                                javaLoading ||
+                                                javaSaving ||
+                                                javaPicking ||
+                                                options.length === 0
+                                            }
+                                            value={selectedHome}
+                                            onChange={(event) => {
+                                                const home = event.target.value;
+                                                if (home) {
+                                                    onJavaMajorChange?.(major, home);
+                                                }
+                                            }}
+                                        >
+                                            <option value="">
+                                                {options.length === 0
+                                                    ? 'Не найдена на компьютере'
+                                                    : 'Авто / не выбрано'}
+                                            </option>
+                                            {options.map((runtime) => (
+                                                <option key={runtime.home} value={runtime.home}>
+                                                    {runtime.label}
+                                                    {runtime.source === 'user' ? ' ★' : ''}
+                                                </option>
+                                            ))}
+                                        </select>
+                                    </div>
+                                </label>
+                            );
+                        })}
+                        {onPickJava ? (
+                            <button
+                                type="button"
+                                className="mods-panel-btn mods-panel-btn--block"
+                                disabled={javaLoading || javaSaving || javaPicking}
+                                onClick={onPickJava}
+                            >
+                                {javaPicking ? 'Выбор…' : 'Указать java.exe…'}
+                            </button>
+                        ) : null}
+                        {javaLoading ? (
+                            <div className="mods-panel-status">Поиск установленных JDK…</div>
+                        ) : null}
+                    </PanelSection>
+                ) : null}
 
                 {hasTools ? (
                     <PanelSection
