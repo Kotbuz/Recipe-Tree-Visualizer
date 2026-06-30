@@ -1,6 +1,6 @@
 [package]
 name = "recipe-tree-visualizer-desktop"
-version = "0.1.0"
+version = "0.1.2"
 description = "Recipe Tree Visualizer desktop shell"
 authors = ["Recipe Tree Visualizer"]
 edition = "2021"

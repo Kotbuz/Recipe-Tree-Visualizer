@@ -36,6 +36,16 @@ function Require-Command([string] $Name) {
     }
 }
 
+function Ensure-RustPath {
+    if (Get-Command cargo -ErrorAction SilentlyContinue) {
+        return
+    }
+    $cargoBin = Join-Path $env:USERPROFILE ".cargo\bin"
+    if (Test-Path (Join-Path $cargoBin "cargo.exe")) {
+        $env:PATH = "$cargoBin;$env:PATH"
+    }
+}
+
 $Root = Split-Path -Parent $PSScriptRoot
 $FrontendDir = Join-Path $Root "frontend"
 $DesktopDir = Join-Path $Root "desktop"
@@ -46,6 +56,7 @@ $OutDir = Join-Path $Root "release\desktop"
 Require-Command node
 Require-Command npm
 if (-not $VersionOnly) {
+    Ensure-RustPath
     Require-Command cargo
 }
 
