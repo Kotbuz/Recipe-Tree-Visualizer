@@ -243,7 +243,9 @@ recipe-exporter-neo/dist/*
 recipe-exporter/dist/*
 !recipe-exporter/dist/.gitkeep
 
-#
+# Desktop CI/local build output
+release/
 
-package-lock.json
+# Lockfiles at repo root only (frontend/desktop lockfiles are committed)
+/package-lock.json
 node_modules/

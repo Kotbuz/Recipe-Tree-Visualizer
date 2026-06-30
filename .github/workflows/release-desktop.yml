@@ -1,0 +1,122 @@
+name: Release Desktop (Windows)
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Semver without v (e.g. 0.1.0)"
+        required: true
+        default: "0.1.0"
+      draft:
+        description: "Create as draft release (manual run only)"
+        type: boolean
+        default: true
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Resolve version
+        id: ver
+        shell: bash
+        run: |
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" ]]; then
+            echo "number=${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+            echo "tag=v${{ inputs.version }}" >> "$GITHUB_OUTPUT"
+          else
+            TAG="${GITHUB_REF_NAME}"
+            echo "tag=${TAG}" >> "$GITHUB_OUTPUT"
+            echo "number=${TAG#v}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            desktop/package-lock.json
+
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Rust cache
+        uses: swatinem/rust-cache@v2
+        with:
+          workspaces: desktop/src-tauri
+
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+
+      - name: Install desktop dependencies
+        working-directory: desktop
+        run: npm ci
+
+      - name: Ensure Tauri icons
+        shell: pwsh
+        run: ./scripts/ensure-tauri-icons.ps1
+
+      - name: Sync version in project files
+        shell: pwsh
+        run: ./scripts/build-desktop.ps1 -Version ${{ steps.ver.outputs.number }} -VersionOnly
+
+      - name: Build frontend
+        working-directory: frontend
+        run: npm run build
+
+      - name: Build Tauri bundle and release
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          projectPath: desktop
+          tagName: ${{ steps.ver.outputs.tag }}
+          releaseName: Recipe Tree Visualizer ${{ steps.ver.outputs.tag }}
+          releaseBody: |
+            Windows desktop build for **Recipe Tree Visualizer** ${{ steps.ver.outputs.tag }}.
+
+            ### Установка
+            - **`*-setup.exe`** — NSIS installer (рекомендуется)
+
+            ### Зависимости на машине пользователя
+            - [uv](https://docs.astral.sh/uv/) в PATH — backend (`uv run uvicorn`)
+            - JDK 8/17/21 для JVM-экспорта (UI → Модпак → Java)
+
+            NeoForge 1.21+ и рендер иконок — через `docker compose` (см. README репозитория).
+          releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
+          prerelease: false
+          args: --verbose
+
+      - name: Copy artifacts to release/desktop
+        shell: pwsh
+        run: |
+          $out = "release/desktop"
+          New-Item -ItemType Directory -Force -Path $out | Out-Null
+          $bundle = "desktop/src-tauri/target/release/bundle"
+          if (Test-Path $bundle) {
+            Get-ChildItem $bundle -Recurse -Include *.exe,*.msi | ForEach-Object {
+              Copy-Item $_.FullName (Join-Path $out $_.Name) -Force
+            }
+          }
+          $portable = "desktop/src-tauri/target/release/recipe-tree-visualizer-desktop.exe"
+          if (Test-Path $portable) {
+            Copy-Item $portable (Join-Path $out "Recipe-Tree-Visualizer_${{ steps.ver.outputs.number }}-portable.exe") -Force
+          }
+
+      - name: Upload CI artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: desktop-windows-${{ steps.ver.outputs.tag }}
+          path: release/desktop/**
+          if-no-files-found: warn
