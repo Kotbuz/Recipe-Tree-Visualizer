@@ -32,10 +32,7 @@ def detect_kubejs_root(
     for option in KUBEJS_ROOT_CANDIDATES:
         if is_zip:
             names = source  # type: ignore[assignment]
-            if any(
-                name == option or name.startswith(f"{option}/")
-                for name in names
-            ):
+            if any(name == option or name.startswith(f"{option}/") for name in names):
                 matched.append(option)
         elif (source / option).exists():  # type: ignore[operator]
             matched.append(option)
@@ -138,9 +135,7 @@ def _is_machine_asset_path(relative: PurePosixPath) -> bool:
         return False
     if parts[2] == "models" and parts[3] == "machine":
         return True
-    if parts[2] == "textures" and parts[3] in {"block", "gui"}:
-        return True
-    return False
+    return bool(parts[2] == "textures" and parts[3] in {"block", "gui"})
 
 
 def _increment_stats(stats: KubejsImportStats, category: str) -> KubejsImportStats:

@@ -1,5 +1,4 @@
 import pytest
-
 from app.recipes.manager import recipe_manager
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.services.version_service import version_service

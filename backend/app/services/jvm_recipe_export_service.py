@@ -1,12 +1,12 @@
 from __future__ import annotations
 
+import glob
 import json
 import os
 import re
 import shutil
 import subprocess
 import sys
-import glob
 import threading
 import time
 import zipfile
@@ -48,9 +48,7 @@ _FORGE_EXPORT_CLIENT_ONLY_FRAGMENTS = (
     "loadingprofiler",
 )
 
-_FORGE_HEADLESS_JAVA_OPTS = (
-    "-Djava.awt.headless=true",
-)
+_FORGE_HEADLESS_JAVA_OPTS = ("-Djava.awt.headless=true",)
 
 
 class JvmRecipeExportError(RuntimeError):
@@ -78,11 +76,7 @@ class JvmRecipeExportService:
         if recipe_layout_for_version(version) != "jvm":
             return False
         recipe_dir = self.recipe_dir(version, profile_id)
-        return not any(
-            path
-            for path in recipe_dir.glob("*.json")
-            if not path.name.startswith("_")
-        )
+        return not any(path for path in recipe_dir.glob("*.json") if not path.name.startswith("_"))
 
     def ensure_exported(
         self,
@@ -100,11 +94,7 @@ class JvmRecipeExportService:
         if not force and not self.needs_export(version, profile_id):
             self.ensure_ae2_recipes_synced(version, profile_id=profile_id)
             return len(
-                [
-                    path
-                    for path in recipe_dir.glob("*.json")
-                    if not path.name.startswith("_")
-                ]
+                [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
             )
 
         lock = self._export_lock_for(version)
@@ -112,11 +102,7 @@ class JvmRecipeExportService:
             if not force and not self.needs_export(version, profile_id):
                 self.ensure_ae2_recipes_synced(version, profile_id=profile_id)
                 return len(
-                    [
-                        path
-                        for path in recipe_dir.glob("*.json")
-                        if not path.name.startswith("_")
-                    ]
+                    [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
                 )
 
             client_jar = version_service.client_jar_path(version)
@@ -181,7 +167,8 @@ class JvmRecipeExportService:
                         f"Recipe exporter HTTP request failed: {exc}"
                     ) from exc
                 logger.info(
-                    "Docker recipe exporter unreachable for {} ({}), falling back to universal Forge",
+                    "Docker recipe exporter unreachable for {} ({}), "
+                    "falling back to universal Forge",
                     version,
                     exc,
                 )
@@ -208,7 +195,8 @@ class JvmRecipeExportService:
                         f"Экспорт через universal Forge не удался: {exc}"
                     ) from exc
                 logger.info(
-                    "Universal Forge export unavailable for {} ({}), falling back to Gradle dev server",
+                    "Universal Forge export unavailable for {} ({}), "
+                    "falling back to Gradle dev server",
                     version,
                     exc,
                 )
@@ -257,11 +245,7 @@ class JvmRecipeExportService:
             logger.info("Forge exporter stderr:\n{}", completed.stderr.strip())
 
         exported = len(
-            [
-                path
-                for path in recipe_dir.glob("*.json")
-                if not path.name.startswith("_")
-            ]
+            [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
         )
         logger.info("Forge recipe export for {} finished with {} recipe file(s)", version, exported)
         self._finalize_export_status(version, profile_id=profile_id)
@@ -303,9 +287,7 @@ class JvmRecipeExportService:
         ]
 
         installer_version = (
-            forge_installer_version(version, forge_build)
-            if forge_build
-            else _LEGACY_FORGE_VERSION
+            forge_installer_version(version, forge_build) if forge_build else _LEGACY_FORGE_VERSION
         )
         logger.info(
             "Running universal Forge {} export for {}: {}",
@@ -334,11 +316,7 @@ class JvmRecipeExportService:
             logger.info("Universal Forge exporter stderr:\n{}", completed.stderr.strip())
 
         exported = len(
-            [
-                path
-                for path in recipe_dir.glob("*.json")
-                if not path.name.startswith("_")
-            ]
+            [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
         )
         logger.info(
             "Universal Forge recipe export for {} finished with {} recipe file(s)",
@@ -396,11 +374,7 @@ class JvmRecipeExportService:
         exported = int(data.get("exported", 0))
         if exported <= 0:
             exported = len(
-                [
-                    path
-                    for path in recipe_dir.glob("*.json")
-                    if not path.name.startswith("_")
-                ]
+                [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
             )
         logger.info(
             "HTTP recipe export for {} finished with {} recipe file(s) in {}s",
@@ -452,11 +426,7 @@ class JvmRecipeExportService:
             logger.info("JVM exporter stdout: {}", completed.stdout.strip())
 
         exported = len(
-            [
-                path
-                for path in recipe_dir.glob("*.json")
-                if not path.name.startswith("_")
-            ]
+            [path for path in recipe_dir.glob("*.json") if not path.name.startswith("_")]
         )
         logger.info("JVM recipe export for {} finished with {} recipe file(s)", version, exported)
         return exported
@@ -502,8 +472,7 @@ class JvmRecipeExportService:
         gradlew = self._gradlew_path(project_dir)
         if gradlew is None:
             raise JvmRecipeExportError(
-                "Recipe exporter mod jar is missing. "
-                f"Run Gradle build in {project_dir} first."
+                f"Recipe exporter mod jar is missing. Run Gradle build in {project_dir} first."
             )
 
         logger.info("Building recipe-exporter mod jar via Gradle")
@@ -698,7 +667,8 @@ class JvmRecipeExportService:
     ) -> tuple[int, bool]:
         if recipe_layout_for_version(version) != "jvm":
             raise JvmRecipeExportError(
-                f"Очистка экспортированных рецептов поддерживается только для JVM-версий (получено {version})"
+                "Очистка экспортированных рецептов поддерживается только "
+                f"для JVM-версий (получено {version})"
             )
 
         resolved_profile = version_service._resolve_profile_id(version, profile_id)

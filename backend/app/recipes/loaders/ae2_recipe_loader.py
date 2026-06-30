@@ -6,9 +6,9 @@ from pathlib import Path
 
 from app.parser.recipe_types import CRAFTING_SHAPED, CRAFTING_SHAPELESS, SMELTING
 from app.recipes.ae2_material_metadata import ae2_item_material_metadata
+from app.recipes.item_ref import split_trailing_metadata
 from app.recipes.loaders.item_catalog_loader import _build_ae2_token_map
 from app.recipes.loaders.ore_dict_loader import OreDictEntry, load_ore_dict
-from app.recipes.item_ref import split_trailing_metadata
 from app.recipes.models import ProviderResult, Recipe, RecipeIO, SkippedRecipe
 from app.recipes.recipe_io_utils import normalize_recipe
 from app.recipes.types import RecipeType
@@ -24,8 +24,16 @@ _AE2_MACHINE_CONFIG: dict[str, tuple[RecipeType, str, str]] = {
     "smelt": (RecipeType.SMELTING, SMELTING, "minecraft:furnace"),
     "grind": (RecipeType.SMELTING, "ae2:grind", "appliedenergistics2:tile.BlockGrinder"),
     "grindfz": (RecipeType.SMELTING, "ae2:grind", "appliedenergistics2:tile.BlockGrinder"),
-    "press": (RecipeType.CRAFTING_SHAPELESS, "ae2:press", "appliedenergistics2:tile.BlockInscriber"),
-    "inscribe": (RecipeType.CRAFTING_SHAPELESS, "ae2:inscribe", "appliedenergistics2:tile.BlockInscriber"),
+    "press": (
+        RecipeType.CRAFTING_SHAPELESS,
+        "ae2:press",
+        "appliedenergistics2:tile.BlockInscriber",
+    ),
+    "inscribe": (
+        RecipeType.CRAFTING_SHAPELESS,
+        "ae2:inscribe",
+        "appliedenergistics2:tile.BlockInscriber",
+    ),
     "macerator": (RecipeType.SMELTING, "ae2:macerator", "ic2:blockMachine"),
     "pulverizer": (RecipeType.SMELTING, "ae2:pulverizer", "thermalexpansion:Machine"),
     "mekcrusher": (RecipeType.SMELTING, "ae2:mekcrusher", "mekanism:MachineBlock"),
@@ -97,11 +105,7 @@ def _iter_recipe_definitions(text: str) -> list[tuple[str, list[str], int]]:
             continue
         body = inline_match.group("body").strip()
         input_part, _, output_part = body.partition("->")
-        inline_lines = [
-            token
-            for token in input_part.split()
-            if token and token != "_"
-        ]
+        inline_lines = [token for token in input_part.split() if token and token != "_"]
         inline_lines.append(f"-> {output_part.strip()}")
         recipe_index += 1
         definitions.append((block_type, inline_lines, recipe_index))

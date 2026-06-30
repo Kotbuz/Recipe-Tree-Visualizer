@@ -1,14 +1,13 @@
-from app.services.version_service import version_service
 import pytest
+from app.services.version_service import version_service
 
 
 def test_ingredient_index_endpoint() -> None:
     if version_service.resolve_jar_path("26.2") is None:
         pytest.skip("26.2.jar is not present")
 
-    from fastapi.testclient import TestClient
-
     from app.main import app
+    from fastapi.testclient import TestClient
 
     client = TestClient(app)
     response = client.get("/versions/26.2/ingredient-index")

@@ -56,9 +56,7 @@ class RecipeService:
 
         recipes = recipe_manager.get_version_recipes(version, include_mods=include_mods)
         registry = get_version_ingredient_registry(version)
-        return tuple(
-            to_recipe_summary(recipe, ingredient_registry=registry) for recipe in recipes
-        )
+        return tuple(to_recipe_summary(recipe, ingredient_registry=registry) for recipe in recipes)
 
 
 recipe_service = RecipeService()

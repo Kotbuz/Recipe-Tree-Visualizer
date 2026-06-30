@@ -70,7 +70,9 @@ class CurseForgeClient:
         if slug:
             project_url = f"https://www.curseforge.com/minecraft/mc-mods/{slug}"
         elif isinstance(selected.get("projectId"), int):
-            project_url = f"https://www.curseforge.com/minecraft/mc-mods/project/{selected['projectId']}"
+            project_url = (
+                f"https://www.curseforge.com/minecraft/mc-mods/project/{selected['projectId']}"
+            )
 
         return ResolvedModFile(
             file_name=file_name,

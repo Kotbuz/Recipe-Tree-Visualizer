@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.services.version_service import item_name_to_texture_id, version_service
 
 
@@ -59,7 +58,9 @@ def test_renderer_jar_path_maps_to_renderer_root_in_docker(
     version_service_module.get_version_service.cache_clear()
 
 
-def test_resolve_item_icon_prefers_rendered_icons(tmp_path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_resolve_item_icon_prefers_rendered_icons(
+    tmp_path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     version_dir = tmp_path / "9.9"
     rendered_dir = version_dir / "profiles" / "default" / "rendered-icons"
     legacy_dir = version_dir / "item-textures"

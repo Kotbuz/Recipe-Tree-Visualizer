@@ -1,7 +1,13 @@
-from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
-from fastapi.responses import FileResponse, Response
 from pathlib import Path
 
+from fastapi import APIRouter, BackgroundTasks, HTTPException, Query
+from fastapi.responses import FileResponse, Response
+from loguru import logger
+
+from app.recipes.loaders.recipe_paths import recipe_layout_for_version
+from app.schemas.forge import ForgeInstallStatusResponse, ForgePrepareRequest
+from app.schemas.mod_dependencies import ModDependencyDownloadResponse
+from app.schemas.vanilla_icons import VanillaIconRenderResponse
 from app.schemas.versions import (
     ClearRecipeExportResponse,
     IngredientIndexResponse,
@@ -13,9 +19,7 @@ from app.schemas.versions import (
     VersionInstallResponse,
     VersionListResponse,
 )
-from app.schemas.forge import ForgeInstallStatusResponse, ForgePrepareRequest
-from app.schemas.mod_dependencies import ModDependencyDownloadResponse
-from app.recipes.loaders.recipe_paths import recipe_layout_for_version
+from app.services.forge_install_service import ForgeInstallError, forge_install_service
 from app.services.jvm_export_status_service import (
     RecipeExportStatus,
     _extract_forge_loader_errors,
@@ -23,16 +27,13 @@ from app.services.jvm_export_status_service import (
     recipe_export_status_service,
 )
 from app.services.jvm_recipe_export_service import JvmRecipeExportError, jvm_recipe_export_service
-from app.schemas.vanilla_icons import VanillaIconRenderResponse
-from loguru import logger
 from app.services.minecraft_version_catalog import get_minecraft_version_catalog
-from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.mod_dependency_service import (
     ModDependencyDownloadError,
     mod_dependency_service,
 )
 from app.services.mod_service import ModVersionNotInstalledError, mod_service
-from app.services.forge_install_service import ForgeInstallError, forge_install_service
+from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.version_install_service import version_install_service
 from app.services.version_service import version_service
 
@@ -248,7 +249,9 @@ def reload_mods(
                 profile_id=profile_id,
             )
             if export_recipe_count == 0:
-                loader_errors = _extract_forge_loader_errors(_forge_log_path(version), version=version)
+                loader_errors = _extract_forge_loader_errors(
+                    _forge_log_path(version), version=version
+                )
                 if loader_errors:
                     export_error = loader_errors[0]
                 else:

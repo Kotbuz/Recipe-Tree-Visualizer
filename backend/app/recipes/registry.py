@@ -94,9 +94,7 @@ class IngredientRegistry:
                 if ":" in member_key:
                     short_key = member_key.split(":", 1)[1]
                     item_tags.setdefault(short_key, set()).add(normalize_tag_id(tag_id))
-        self._item_tag_index = {
-            key: frozenset(values) for key, values in item_tags.items()
-        }
+        self._item_tag_index = {key: frozenset(values) for key, values in item_tags.items()}
 
     def register_from_recipes(
         self,
@@ -232,9 +230,12 @@ class IngredientRegistry:
             if quartz_dust_tags_compatible(normalized_needle, normalized_id):
                 return True
 
-            if ":" in normalized_needle and not is_tag_id(normalized_needle):
-                if self._is_member_of_tag(normalized_needle, normalized_id):
-                    return True
+            if (
+                ":" in normalized_needle
+                and not is_tag_id(normalized_needle)
+                and self._is_member_of_tag(normalized_needle, normalized_id)
+            ):
+                return True
 
             visiting = _visiting_tags or frozenset()
             if normalized_id in visiting:

@@ -1,15 +1,15 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 from collections import defaultdict
+from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
-from app.parser.minecraft_version import mod_supports_game_version
 from app.parser.models import RawModMeta
-from app.recipes.adapters import item_id_to_display_name, to_recipe_summary, _display_name_for_part
+from app.recipes.adapters import _display_name_for_part, item_id_to_display_name, to_recipe_summary
 from app.recipes.focus import RecipeIngredientRole
 from app.recipes.item_ref import normalize_item_ref, parse_item_needle
+from app.recipes.loaders.recipe_paths import recipe_layout_for_version
 from app.recipes.models import ProviderResult, Recipe, RecipeIO
 from app.recipes.providers.kubejs_data import KubejsDataProvider
 from app.recipes.providers.kubejs_scripts import (
@@ -21,8 +21,6 @@ from app.recipes.providers.kubejs_scripts import (
 from app.recipes.providers.mod_jar import ModJarProvider
 from app.recipes.providers.synthetic import SyntheticProvider
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
-from app.recipes.loaders.recipe_paths import recipe_layout_for_version
-from app.services.jvm_recipe_export_service import jvm_recipe_export_service
 from app.recipes.registry import (
     IngredientRegistry,
     get_profile_ingredient_registry,
@@ -38,6 +36,7 @@ from app.services.item_matching import (
     quartz_dust_tag_lookup_keys,
     text_query_contains,
 )
+from app.services.jvm_recipe_export_service import jvm_recipe_export_service
 from app.services.profile_storage import profile_storage_key
 from app.services.version_service import version_service
 
@@ -49,6 +48,7 @@ def resolve_recipe_scope(
     """Возвращает (mc_version, profile_id, storage_key)."""
     resolved_profile = version_service._resolve_profile_id(version, profile_id)
     return version, resolved_profile, profile_storage_key(version, resolved_profile)
+
 
 _default_vanilla_provider = VanillaJarProvider()
 _default_mod_provider = ModJarProvider()
@@ -331,7 +331,9 @@ class RecipeLookup:
                 filtered.append(recipe)
                 if limit is not None and len(filtered) >= limit:
                     break
-        return RecipeLookup(tuple(filtered), self._ingredient_registry, self._version, bundle=self._bundle)
+        return RecipeLookup(
+            tuple(filtered), self._ingredient_registry, self._version, bundle=self._bundle
+        )
 
     def _recipe_text_query_matches(
         self,
@@ -354,10 +356,7 @@ class RecipeLookup:
         if text_query_contains(needle, machine_name):
             return True
 
-        for part in recipe.outputs:
-            if self._text_search_matches(needle, part, metadata):
-                return True
-        return False
+        return any(self._text_search_matches(needle, part, metadata) for part in recipe.outputs)
 
     def _text_search_matches(
         self,
@@ -479,7 +478,9 @@ class RecipeLookup:
         item_id_lower = item_id.lower()
         cheap_display = item_id_to_display_name(item_id).lower()
 
-        if item_id_path_matches(needle, item_id_lower) or display_name_matches(needle, cheap_display):
+        if item_id_path_matches(needle, item_id_lower) or display_name_matches(
+            needle, cheap_display
+        ):
             return True
 
         if self._version is not None:
@@ -727,8 +728,7 @@ class RecipeManager:
             return baked
 
         merged: dict[str, Recipe] = {
-            recipe.id: recipe
-            for recipe in self._load_vanilla_recipes(mc_version, resolved_profile)
+            recipe.id: recipe for recipe in self._load_vanilla_recipes(mc_version, resolved_profile)
         }
 
         if include_synthetic:
@@ -772,9 +772,7 @@ class RecipeManager:
             include_synthetic=include_synthetic,
         )
         registry = (
-            get_profile_ingredient_registry(version, profile_id)
-            if require_registry
-            else None
+            get_profile_ingredient_registry(version, profile_id) if require_registry else None
         )
         if recipe_type is None:
             return RecipeLookup(
@@ -783,9 +781,7 @@ class RecipeManager:
                 mc_version,
                 bundle=bundle,
             )
-        filtered = tuple(
-            recipe for recipe in bundle.recipes if recipe.recipe_type == recipe_type
-        )
+        filtered = tuple(recipe for recipe in bundle.recipes if recipe.recipe_type == recipe_type)
         return RecipeLookup(filtered, registry, mc_version, bundle=bundle)
 
     def get_ingredient_registry(self, version: str) -> IngredientRegistry:

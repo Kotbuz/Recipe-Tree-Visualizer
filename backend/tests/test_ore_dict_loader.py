@@ -2,7 +2,6 @@ import json
 from pathlib import Path
 
 import pytest
-
 from app.core.config import get_settings
 from app.recipes.loaders.ore_dict_loader import (
     load_ore_dict,
@@ -10,7 +9,9 @@ from app.recipes.loaders.ore_dict_loader import (
 )
 
 
-def test_load_ore_dict_prefers_version_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_ore_dict_prefers_version_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
     version_dir.mkdir()
@@ -28,7 +29,9 @@ def test_load_ore_dict_prefers_version_file(tmp_path: Path, monkeypatch: pytest.
     assert version_ore_dict_path(version) == version_file
 
 
-def test_load_ore_dict_falls_back_to_bundled(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_ore_dict_falls_back_to_bundled(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     version = "1.12.2"
     monkeypatch.setenv("MINECRAFT_VERSIONS_DIR", str(tmp_path))
     get_settings.cache_clear()
@@ -37,7 +40,9 @@ def test_load_ore_dict_falls_back_to_bundled(tmp_path: Path, monkeypatch: pytest
     assert entries["gemDiamond"].item_id == "minecraft:diamond"
 
 
-def test_load_ore_dict_parses_metadata_object(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_load_ore_dict_parses_metadata_object(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
     version_dir.mkdir()

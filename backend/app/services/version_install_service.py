@@ -45,10 +45,12 @@ class VersionInstallService:
     @staticmethod
     def _download_file(url: str, destination) -> None:
         destination.parent.mkdir(parents=True, exist_ok=True)
-        with httpx.Client(timeout=600.0, follow_redirects=True) as client:
-            with client.stream("GET", url) as response:
-                response.raise_for_status()
-                destination.write_bytes(response.read())
+        with (
+            httpx.Client(timeout=600.0, follow_redirects=True) as client,
+            client.stream("GET", url) as response,
+        ):
+            response.raise_for_status()
+            destination.write_bytes(response.read())
 
 
 version_install_service = VersionInstallService()

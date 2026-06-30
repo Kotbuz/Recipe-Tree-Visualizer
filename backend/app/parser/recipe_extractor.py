@@ -12,9 +12,7 @@ class RecipeExtractor:
         data = recipe_file.data
         if not self._parser.can_parse(data):
             return False
-        if self._parser.skip_reason(data):
-            return False
-        return True
+        return not self._parser.skip_reason(data)
 
     def extract(self, recipe_file: RawRecipeFile, mod_id: str) -> Recipe:
         parsed = self._parser.parse(
@@ -30,12 +28,8 @@ class RecipeExtractor:
         return Recipe(
             id=parsed.id,
             machine_id=parsed.catalyst_id,
-            inputs=[
-                RecipeIO(item_id=part.item_id, amount=part.amount) for part in parsed.inputs
-            ],
-            outputs=[
-                RecipeIO(item_id=part.item_id, amount=part.amount) for part in parsed.outputs
-            ],
+            inputs=[RecipeIO(item_id=part.item_id, amount=part.amount) for part in parsed.inputs],
+            outputs=[RecipeIO(item_id=part.item_id, amount=part.amount) for part in parsed.outputs],
             duration_ticks=parsed.duration_ticks,
             mod_id=mod_id,
         )

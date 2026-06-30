@@ -2,7 +2,6 @@ import shutil
 from pathlib import Path
 
 import pytest
-
 from app.services.mod_service import mod_service
 from app.services.version_service import version_service
 

@@ -4,7 +4,6 @@ import os
 from pathlib import Path, PureWindowsPath
 
 import pytest
-
 from app.services.host_paths import (
     format_stored_path_for_display,
     instance_path_missing_message,

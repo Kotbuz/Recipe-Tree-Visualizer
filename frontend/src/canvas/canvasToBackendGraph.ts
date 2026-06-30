@@ -48,11 +48,20 @@ function resolveConnectionEnds(connection: RecipeConnection) {
     return null;
 }
 
+/**
+ * Преобразует холст (включая вложенные холсты фабрик) в bipartite-граф backend.
+ *
+ * Фабрики с собственным subCanvas НЕ отправляются как терминальные recipe-ноды
+ * (их синтетический recipe_id не прошёл бы валидацию backend). Вместо этого их
+ * внутренние холсты рекурсивно «разворачиваются» в общий граф: в backend уходят
+ * только реальные recipe-ноды (внешние и внутренние) + item-ноды. Стыковка границ
+ * происходит естественно по item_id — движок сопоставляет производителя и
+ * потребителя предмета независимо от уровня вложенности.
+ */
 export function canvasToBackendGraph(
     nodes: CanvasNodeRecord[],
     connections: RecipeConnection[],
 ): BackendCanvasGraph {
-    const nodeById = new Map(nodes.map((node) => [node.id, node]));
     const itemNodes: BackendCanvasGraph['item_nodes'] = [];
     const recipeNodes: BackendCanvasGraph['recipe_nodes'] = [];
     const edges: BackendCanvasGraph['edges'] = [];
@@ -76,108 +85,142 @@ export function canvasToBackendGraph(
         });
     };
 
-    for (const node of nodes) {
-        if (node.kind === 'recipe') {
-            if (!node.recipeId) {
-                throw new CanvasConversionError(`Recipe node ${node.id} is missing recipeId`);
+    const processCanvas = (
+        levelNodes: CanvasNodeRecord[],
+        levelConnections: RecipeConnection[],
+        prefix: string,
+    ) => {
+        const ns = (id: string) => `${prefix}${id}`;
+        const nodeById = new Map(levelNodes.map((node) => [node.id, node]));
+
+        for (const node of levelNodes) {
+            if (node.kind === 'recipe') {
+                if (!node.recipeId) {
+                    throw new CanvasConversionError(`Recipe node ${node.id} is missing recipeId`);
+                }
+                recipeNodes.push({
+                    node_id: ns(node.id),
+                    recipe_id: node.recipeId,
+                    kind: null,
+                    duration_ticks: node.durationTicks ?? null,
+                    x: node.x,
+                    y: node.y,
+                });
+                continue;
             }
-            recipeNodes.push({
-                node_id: node.id,
-                recipe_id: node.recipeId,
-                kind: null,
-                duration_ticks: node.durationTicks ?? null,
-                x: node.x,
-                y: node.y,
-            });
-            continue;
+
+            // Фабрика с содержимым — разворачиваем её холст вместо терминальной ноды.
+            if (node.kind === 'outpost' && node.subCanvas) {
+                processCanvas(
+                    node.subCanvas.nodes,
+                    node.subCanvas.connections,
+                    `${ns(node.id)}::`,
+                );
+                continue;
+            }
+
+            // Сундук и пустая фабрика — терминальные проходные ноды (как раньше).
+            if (node.kind === 'chest' || node.kind === 'outpost') {
+                recipeNodes.push({
+                    node_id: ns(node.id),
+                    recipe_id: node.recipeId ?? `${node.kind}:${node.id}`,
+                    kind: node.kind,
+                    duration_ticks: null,
+                    x: node.x,
+                    y: node.y,
+                });
+            }
+
+            // factory_in / factory_out — внутренняя «проводка», не эмитируем как recipe-ноды.
         }
 
-        if (node.kind === 'chest' || node.kind === 'outpost') {
-            recipeNodes.push({
-                node_id: node.id,
-                recipe_id: node.recipeId ?? `${node.kind}:${node.id}`,
-                kind: node.kind,
-                duration_ticks: null,
-                x: node.x,
-                y: node.y,
-            });
-        }
-    }
+        for (const connection of levelConnections) {
+            const ends = resolveConnectionEnds(connection);
+            if (!ends) {
+                continue;
+            }
 
-    for (const connection of connections) {
-        const ends = resolveConnectionEnds(connection);
-        if (!ends) {
-            continue;
-        }
+            const producerNode = nodeById.get(ends.producer.nodeId);
+            const consumerNode = nodeById.get(ends.consumer.nodeId);
+            if (!producerNode || !consumerNode) {
+                continue;
+            }
 
-        const producerNode = nodeById.get(ends.producer.nodeId);
-        const consumerNode = nodeById.get(ends.consumer.nodeId);
-        if (!producerNode || !consumerNode) {
-            continue;
-        }
+            const outputItem = getSlotItem(
+                producerNode,
+                ends.producer.slotType,
+                ends.producer.itemIndex,
+            );
+            const inputItem = getSlotItem(
+                consumerNode,
+                ends.consumer.slotType,
+                ends.consumer.itemIndex,
+            );
+            const itemId = outputItem?.item_id ?? inputItem?.item_id;
+            if (!itemId) {
+                throw new CanvasConversionError(
+                    `Невозможно рассчитать: нет item_id для связи ${connection.id}`,
+                );
+            }
 
-        const outputItem = getSlotItem(producerNode, ends.producer.slotType, ends.producer.itemIndex);
-        const inputItem = getSlotItem(consumerNode, ends.consumer.slotType, ends.consumer.itemIndex);
-        const itemId = outputItem?.item_id ?? inputItem?.item_id;
-        if (!itemId) {
-            throw new CanvasConversionError(`Невозможно рассчитать: нет item_id для связи ${connection.id}`);
-        }
-
-        const amount = outputItem?.amount ?? inputItem?.amount ?? 1;
-        const itemNodeId = `item-${connection.id}`;
-        ensureItemNode(
-            itemNodeId,
-            itemId,
-            amount,
-            (producerNode.x + consumerNode.x) / 2,
-            (producerNode.y + consumerNode.y) / 2,
-        );
-
-        if (producerNode.kind === 'recipe') {
-            edges.push({
-                edge_id: `${connection.id}-out`,
-                source_node_id: ends.producer.nodeId,
-                target_node_id: itemNodeId,
-                item_id: itemId,
+            const amount = outputItem?.amount ?? inputItem?.amount ?? 1;
+            const itemNodeId = ns(`item-${connection.id}`);
+            ensureItemNode(
+                itemNodeId,
+                itemId,
                 amount,
-            });
-        }
+                (producerNode.x + consumerNode.x) / 2,
+                (producerNode.y + consumerNode.y) / 2,
+            );
 
-        if (consumerNode.kind === 'recipe') {
-            edges.push({
-                edge_id: `${connection.id}-in`,
-                source_node_id: itemNodeId,
-                target_node_id: ends.consumer.nodeId,
-                item_id: itemId,
-                amount,
-            });
-        }
-    }
-
-    for (const node of nodes) {
-        if (node.kind !== 'recipe') {
-            continue;
-        }
-
-        node.inputs.forEach((input, index) => {
-            if (!input.item_id || !input.name) {
-                return;
-            }
-            if (isSlotConnected(node.id, 'input', index, connections)) {
-                return;
+            if (producerNode.kind === 'recipe') {
+                edges.push({
+                    edge_id: ns(`${connection.id}-out`),
+                    source_node_id: ns(ends.producer.nodeId),
+                    target_node_id: itemNodeId,
+                    item_id: itemId,
+                    amount,
+                });
             }
 
-            const itemNodeId = `raw-${node.id}-in-${index}`;
-            ensureItemNode(itemNodeId, input.item_id, input.amount, node.x - 48, node.y);
-            edges.push({
-                edge_id: `raw-edge-${node.id}-in-${index}`,
-                source_node_id: itemNodeId,
-                target_node_id: node.id,
-                item_id: input.item_id,
-                amount: input.amount,
+            if (consumerNode.kind === 'recipe') {
+                edges.push({
+                    edge_id: ns(`${connection.id}-in`),
+                    source_node_id: itemNodeId,
+                    target_node_id: ns(ends.consumer.nodeId),
+                    item_id: itemId,
+                    amount,
+                });
+            }
+        }
+
+        for (const node of levelNodes) {
+            if (node.kind !== 'recipe') {
+                continue;
+            }
+
+            node.inputs.forEach((input, index) => {
+                if (!input.item_id || !input.name) {
+                    return;
+                }
+                if (isSlotConnected(node.id, 'input', index, levelConnections)) {
+                    return;
+                }
+
+                const itemNodeId = ns(`raw-${node.id}-in-${index}`);
+                ensureItemNode(itemNodeId, input.item_id, input.amount, node.x - 48, node.y);
+                edges.push({
+                    edge_id: ns(`raw-edge-${node.id}-in-${index}`),
+                    source_node_id: itemNodeId,
+                    target_node_id: ns(node.id),
+                    item_id: input.item_id,
+                    amount: input.amount,
+                });
             });
-        });
-    }
+        }
+    };
+
+    processCanvas(nodes, connections, '');
 
     return { item_nodes: itemNodes, recipe_nodes: recipeNodes, edges };
 }

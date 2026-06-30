@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 import glob
 import hashlib
 import json
@@ -12,6 +11,7 @@ import sys
 import threading
 import time
 import zipfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -303,9 +303,7 @@ class ForgeInstallService:
         )
         universal = self.find_universal_forge_jar(forge_dir)
         if universal is None:
-            raise ForgeInstallError(
-                f"Forge universal jar not found after install in {forge_dir}"
-            )
+            raise ForgeInstallError(f"Forge universal jar not found after install in {forge_dir}")
         return universal
 
     def _run_install(self, minecraft_version: str, forge_build: str) -> None:
@@ -416,7 +414,9 @@ class ForgeInstallService:
                     report,
                 )
 
-        report("running_installer", "Запуск установщика Forge (это может занять несколько минут)…", 50)
+        report(
+            "running_installer", "Запуск установщика Forge (это может занять несколько минут)…", 50
+        )
         try:
             subprocess.run(
                 [
@@ -435,8 +435,7 @@ class ForgeInstallService:
             detail = (exc.stderr or exc.stdout or str(exc)).strip()
             artifact = "universal server" if legacy_install else "server"
             raise ForgeInstallError(
-                f"Не удалось установить Forge {artifact} "
-                f"({forge_version}). {detail}"
+                f"Не удалось установить Forge {artifact} ({forge_version}). {detail}"
             ) from exc
         finally:
             installer_path.unlink(missing_ok=True)
@@ -453,9 +452,7 @@ class ForgeInstallService:
         else:
             server = self.find_forge_server_jar(forge_dir, forge_version)
             if server is None:
-                raise ForgeInstallError(
-                    f"Forge server jar not found after install in {forge_dir}"
-                )
+                raise ForgeInstallError(f"Forge server jar not found after install in {forge_dir}")
             installed_artifact = server
         logger.info(
             "Forge {} installed for Minecraft {} at {}",
@@ -553,8 +550,7 @@ class ForgeInstallService:
         ]
         if missing:
             raise ForgeInstallError(
-                "Не удалось подготовить библиотеки Forge перед установкой: "
-                + ", ".join(missing)
+                "Не удалось подготовить библиотеки Forge перед установкой: " + ", ".join(missing)
             )
 
     def _resolve_java_executable(self, minecraft_version: str) -> str:

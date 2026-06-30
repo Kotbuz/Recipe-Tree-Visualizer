@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
-
 from app.mod_deps.catalog import catalog_entry_for, load_dependency_catalog
 from app.mod_deps.curseforge import ResolvedModFile, _pick_file
 from app.mod_deps.resolver import DependencyResolution
@@ -72,7 +71,9 @@ def test_collect_missing_dependencies(tmp_path: Path, monkeypatch: pytest.Monkey
     assert "Baubles" in missing
 
 
-def test_download_missing_dependencies_no_missing(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_download_missing_dependencies_no_missing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
     version = "1.7.10"
     version_dir = tmp_path / version
     version_dir.mkdir(parents=True)
@@ -88,15 +89,17 @@ def test_download_missing_dependencies_no_missing(tmp_path: Path, monkeypatch: p
     version_service_module.get_version_service.cache_clear()
 
     service = ModDependencyService()
-    with patch(
-        "app.services.mod_dependency_service._collect_missing_dependencies",
-        return_value=(),
-    ):
-        with patch(
+    with (
+        patch(
+            "app.services.mod_dependency_service._collect_missing_dependencies",
+            return_value=(),
+        ),
+        patch(
             "app.services.mod_dependency_service.version_service.list_installed_versions",
             return_value=[version],
-        ):
-            result = service.download_missing_dependencies(version)
+        ),
+    ):
+        result = service.download_missing_dependencies(version)
 
     assert result.requested == ()
     assert result.all_resolved is True

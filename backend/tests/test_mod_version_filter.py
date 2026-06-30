@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.parser.jar_reader import JarReader
 from app.parser.minecraft_version import mod_supports_game_version, version_in_constraint
 from app.recipes.manager import recipe_manager

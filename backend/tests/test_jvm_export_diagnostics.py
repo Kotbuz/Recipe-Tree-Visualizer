@@ -1,8 +1,8 @@
 from __future__ import annotations
 
 from app.services.jvm_export_status_service import (
-    _extract_missing_mods_from_diagnostic,
     _extract_forge_loader_errors,
+    _extract_missing_mods_from_diagnostic,
     _jar_provides_dependency,
 )
 
@@ -40,7 +40,9 @@ cpw.mods.fml.common.MissingModsException
     log_path = tmp_path / "latest.log"
     log_path.write_text(text, encoding="utf-8")
     messages = _extract_forge_loader_errors(log_path)
-    assert any("Forge 10.13.4.1558" in message and "10.13.4.1448" in message for message in messages)
+    assert any(
+        "Forge 10.13.4.1558" in message and "10.13.4.1448" in message for message in messages
+    )
     assert not any("отсутствует мод «Forge»" in message for message in messages)
 
 

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from app.parser.recipe_types import CRAFTING_SHAPED, CRAFTING_SHAPELESS, normalize_recipe_type
 from app.recipes.extensions.base import CategoryExtension
+from app.recipes.models import Recipe
 
 _FORGE_TYPE_ALIASES: dict[str, str] = {
     "ore_shaped": CRAFTING_SHAPED,

@@ -5,8 +5,6 @@ import zipfile
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.services.modpack_version_detector import (
     ModpackVersionInfo,
@@ -19,6 +17,7 @@ from app.services.modpack_version_detector import (
     normalize_minecraft_version,
 )
 from app.services.version_service import version_service
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -92,14 +91,7 @@ def test_detect_from_curseforge_manifest_modern_forge(tmp_path: Path) -> None:
 
 
 def test_detect_forge_from_modern_instance_libraries(tmp_path: Path) -> None:
-    lib_dir = (
-        tmp_path
-        / "libraries"
-        / "net"
-        / "minecraftforge"
-        / "forge"
-        / "1.21.1-52.0.24"
-    )
+    lib_dir = tmp_path / "libraries" / "net" / "minecraftforge" / "forge" / "1.21.1-52.0.24"
     lib_dir.mkdir(parents=True)
     (lib_dir / "forge-1.21.1-52.0.24-server.jar").write_bytes(b"x")
 
@@ -138,12 +130,7 @@ def test_detect_from_mmc_pack_directory(tmp_path: Path) -> None:
 
 def test_detect_forge_from_instance_libraries(tmp_path: Path) -> None:
     lib_dir = (
-        tmp_path
-        / "libraries"
-        / "net"
-        / "minecraftforge"
-        / "forge"
-        / "1.7.10-10.13.4.1558-1.7.10"
+        tmp_path / "libraries" / "net" / "minecraftforge" / "forge" / "1.7.10-10.13.4.1558-1.7.10"
     )
     lib_dir.mkdir(parents=True)
     (lib_dir / "forge-1.7.10-10.13.4.1558-1.7.10-universal.jar").write_bytes(b"x")
@@ -173,7 +160,9 @@ def test_find_modpack_metadata_root_from_minecraft_subfolder(tmp_path: Path) -> 
 def test_detect_from_instance_cfg_directory(tmp_path: Path) -> None:
     instance = tmp_path / "MyPack"
     (instance / "mods").mkdir(parents=True)
-    (instance / "instance.cfg").write_text("InstanceType=One Six\nMCVersion=1.12.2\n", encoding="utf-8")
+    (instance / "instance.cfg").write_text(
+        "InstanceType=One Six\nMCVersion=1.12.2\n", encoding="utf-8"
+    )
     (instance / "mods" / "test.jar").write_bytes(b"jar")
 
     info = detect_modpack_version_from_directory(instance)
@@ -194,7 +183,10 @@ def test_inspect_modpack_zip_endpoint(
     archive = tmp_path / "pack.zip"
     manifest = {
         "name": "Test Pack",
-        "minecraft": {"version": "1.7.10", "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}]},
+        "minecraft": {
+            "version": "1.7.10",
+            "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}],
+        },
     }
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
@@ -224,7 +216,10 @@ def test_import_modpack_rejects_version_mismatch(
     archive = tmp_path / "pack.zip"
     manifest = {
         "name": "Old Pack",
-        "minecraft": {"version": "1.7.10", "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}]},
+        "minecraft": {
+            "version": "1.7.10",
+            "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}],
+        },
     }
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
@@ -253,7 +248,10 @@ def test_import_modpack_allows_matching_version(
     archive = tmp_path / "pack.zip"
     manifest = {
         "name": "Match Pack",
-        "minecraft": {"version": "1.7.10", "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}]},
+        "minecraft": {
+            "version": "1.7.10",
+            "modLoaders": [{"id": "forge-10.13.4.1614", "primary": True}],
+        },
     }
     with zipfile.ZipFile(archive, "w") as zf:
         zf.writestr("manifest.json", json.dumps(manifest))
@@ -267,7 +265,9 @@ def test_import_modpack_allows_matching_version(
     assert response.status_code == 200, response.text
     assert response.json()["jars_imported"] == 1
     profile_dir = isolated_minecraft_versions / version / "profiles"
-    imported = next(path for path in profile_dir.iterdir() if path.is_dir() and path.name != "default")
+    imported = next(
+        path for path in profile_dir.iterdir() if path.is_dir() and path.name != "default"
+    )
     meta = json.loads((imported / "profile.json").read_text(encoding="utf-8"))
     assert meta.get("loader") == "forge"
     assert meta.get("forge_version") == "10.13.4.1614"

@@ -5,20 +5,22 @@ import zipfile
 from dataclasses import dataclass
 from pathlib import Path, PurePosixPath
 
-from app.services.kubejs_import import (
-    KubejsImportStats,
-    copy_kubejs_from_directory,
-    copy_kubejs_from_zip_members,
-    detect_kubejs_root,
-    list_importable_kubejs_relative_paths,
-    should_import_kubejs_relative_path,
-)
 from app.services.host_paths import (
     format_stored_path_for_display,
     host_path_unavailable_hint,
     resolve_host_filesystem_path,
 )
-from app.services.profile_storage import count_mod_jars, read_profile_meta, update_profile_source_path
+from app.services.kubejs_import import (
+    KubejsImportStats,
+    detect_kubejs_root,
+    list_importable_kubejs_relative_paths,
+    should_import_kubejs_relative_path,
+)
+from app.services.profile_storage import (
+    count_mod_jars,
+    read_profile_meta,
+    update_profile_source_path,
+)
 from app.services.version_service import version_service
 
 
@@ -88,7 +90,10 @@ def check_profile_integrity(
                         profile_count=0,
                         source_count=0,
                         missing_count=0,
-                        message="Путь к инстансу не сохранён — укажите папку при проверке или повторите импорт.",
+                        message=(
+                            "Путь к инстансу не сохранён — "
+                            "укажите папку при проверке или повторите импорт."
+                        ),
                     )
                 )
         else:
@@ -106,7 +111,10 @@ def check_profile_integrity(
                         profile_count=0,
                         source_count=0,
                         missing_count=0,
-                        message=f"Папка инстанса не найдена: {format_stored_path_for_display(override_raw)}",
+                        message=(
+                            "Папка инстанса не найдена: "
+                            f"{format_stored_path_for_display(override_raw)}"
+                        ),
                     )
                 )
             elif stored_path_raw:
@@ -152,13 +160,10 @@ def check_profile_integrity(
             )
 
     compare_missing = any(
-        issue.missing_count > 0 and issue.category not in {"source"}
-        for issue in issues
+        issue.missing_count > 0 and issue.category not in {"source"} for issue in issues
     )
     needs_source_path = source == "instance_path" and not source_available
-    healthy = all(
-        issue.status == "ok" for issue in issues if issue.category not in {"source"}
-    )
+    healthy = all(issue.status == "ok" for issue in issues if issue.category not in {"source"})
     can_sync = compare_missing and source_available
 
     return IntegrityReport(
@@ -344,7 +349,9 @@ def _compare_kubejs_directory(profile_dir: Path, source_root: Path) -> list[Inte
     ]
 
 
-def _compare_kubejs_zip(profile_dir: Path, archive: zipfile.ZipFile, names: list[str]) -> list[IntegrityIssue]:
+def _compare_kubejs_zip(
+    profile_dir: Path, archive: zipfile.ZipFile, names: list[str]
+) -> list[IntegrityIssue]:
     kubejs_prefix = detect_kubejs_root(names, is_zip=True)
     if not kubejs_prefix:
         return [
@@ -555,7 +562,9 @@ def _sync_kubejs_directory(profile_dir: Path, source_root: Path) -> KubejsImport
     return stats
 
 
-def _sync_kubejs_zip(profile_dir: Path, archive: zipfile.ZipFile, names: list[str]) -> KubejsImportStats:
+def _sync_kubejs_zip(
+    profile_dir: Path, archive: zipfile.ZipFile, names: list[str]
+) -> KubejsImportStats:
     kubejs_prefix = detect_kubejs_root(names, is_zip=True)
     if not kubejs_prefix:
         return KubejsImportStats()
@@ -694,7 +703,9 @@ def _relative_files_in_zip(names: list[str], prefix: str) -> set[str]:
     return files
 
 
-def _importable_kubejs_paths_in_zip(names: list[str], kubejs_prefix: str) -> frozenset[PurePosixPath]:
+def _importable_kubejs_paths_in_zip(
+    names: list[str], kubejs_prefix: str
+) -> frozenset[PurePosixPath]:
     prefix_path = PurePosixPath(kubejs_prefix)
     paths: set[PurePosixPath] = set()
     for member in names:
@@ -802,8 +813,7 @@ def _count_jars_under_prefix(
         return sum(
             1
             for name in names
-            if (name == prefix or name.startswith(f"{prefix}/"))
-            and name.lower().endswith(".jar")
+            if (name == prefix or name.startswith(f"{prefix}/")) and name.lower().endswith(".jar")
         )
     root = source / prefix  # type: ignore[operator]
     if not root.is_dir():
@@ -822,8 +832,7 @@ def _count_files_under_prefix(
         return sum(
             1
             for name in names
-            if (name == prefix or name.startswith(f"{prefix}/"))
-            and not name.endswith("/")
+            if (name == prefix or name.startswith(f"{prefix}/")) and not name.endswith("/")
         )
     root = source / prefix  # type: ignore[operator]
     if not root.is_dir():

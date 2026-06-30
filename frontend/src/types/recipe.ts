@@ -19,7 +19,7 @@ export interface RecipeListResponse {
     recipes: RecipeSummary[];
 }
 
-export type NodeKind = 'recipe' | 'chest' | 'outpost';
+export type NodeKind = 'recipe' | 'chest' | 'outpost' | 'factory_in' | 'factory_out';
 
 export type SlotType = 'input' | 'output';
 

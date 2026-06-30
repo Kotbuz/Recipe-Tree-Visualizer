@@ -1,5 +1,4 @@
 import pytest
-
 from app.recipes.ingredients.resolver import IngredientResolver
 from app.recipes.loaders.ore_dict_loader import load_ore_dict
 from app.recipes.loaders.recipe_paths import (
@@ -63,9 +62,12 @@ def test_ingredient_resolver_ore_dict_and_metadata() -> None:
 
 
 @pytest.mark.skipif(
-    not __import__("pathlib").Path(__file__).resolve().parents[2].joinpath(
-        "../MinecraftVersions/1.12.2/client.jar"
-    ).is_file(),
+    not __import__("pathlib")
+    .Path(__file__)
+    .resolve()
+    .parents[2]
+    .joinpath("../MinecraftVersions/1.12.2/client.jar")
+    .is_file(),
     reason="1.12.2 client.jar not available",
 )
 def test_vanilla_1_12_2_loads_crafting_recipes() -> None:

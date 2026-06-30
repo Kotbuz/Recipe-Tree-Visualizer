@@ -1,4 +1,4 @@
-from app.recipes.loaders.ae2_recipe_loader import _resolve_item_token, _Ae2RecipeContext
+from app.recipes.loaders.ae2_recipe_loader import _Ae2RecipeContext, _resolve_item_token
 from app.recipes.loaders.ore_dict_loader import load_ore_dict
 
 

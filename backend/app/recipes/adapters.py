@@ -93,9 +93,7 @@ def to_recipe_summary(
         machine_name=display_name_for_raw_type(machine_type),
         inputs=[
             RecipeItem(
-                name=_display_name_for_part(
-                    part.item_id, metadata=part.metadata, version=version
-                ),
+                name=_display_name_for_part(part.item_id, metadata=part.metadata, version=version),
                 amount=int(part.amount),
                 item_id=part.item_id,
                 metadata=part.metadata,
@@ -110,9 +108,7 @@ def to_recipe_summary(
         ],
         outputs=[
             RecipeItem(
-                name=_display_name_for_part(
-                    part.item_id, metadata=part.metadata, version=version
-                ),
+                name=_display_name_for_part(part.item_id, metadata=part.metadata, version=version),
                 amount=int(part.amount),
                 item_id=part.item_id,
                 metadata=part.metadata,

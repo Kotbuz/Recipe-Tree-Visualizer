@@ -3,11 +3,10 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from fastapi.testclient import TestClient
-
 from app.main import create_app
 from app.services.profile_storage import read_profile_meta, write_profile_meta
 from app.services.version_service import version_service
+from fastapi.testclient import TestClient
 
 
 @pytest.fixture
@@ -55,8 +54,12 @@ def test_integrity_detects_missing_kubejs_and_sync_restores(
     payload = integrity.json()
     assert payload["healthy"] is False
     assert payload["can_sync"] is True
-    assert any(issue["category"] == "kubejs" and issue["missing_count"] > 0 for issue in payload["issues"])
-    assert any(issue["category"] == "mods" and issue["missing_count"] > 0 for issue in payload["issues"])
+    assert any(
+        issue["category"] == "kubejs" and issue["missing_count"] > 0 for issue in payload["issues"]
+    )
+    assert any(
+        issue["category"] == "mods" and issue["missing_count"] > 0 for issue in payload["issues"]
+    )
 
     sync = client.post(f"/versions/{version}/profiles/{profile_id}/sync")
     assert sync.status_code == 200, sync.text

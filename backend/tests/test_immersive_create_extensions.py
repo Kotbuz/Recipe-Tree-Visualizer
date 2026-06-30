@@ -1,7 +1,6 @@
 from app.recipes.extensions import default_category_extensions
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 
-
 TREATED_WOOD_IE = {
     "type": "immersiveengineering:shaped_fluid",
     "category": "misc",

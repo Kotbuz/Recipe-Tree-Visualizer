@@ -126,7 +126,7 @@ def _build_function_expansions(
             if any("${" in arg for arg in args):
                 continue
             expanded_body = body
-            for param, arg in zip(params, args):
+            for param, arg in zip(params, args, strict=False):
                 expanded_body = re.sub(
                     rf"(?<![.\w]){re.escape(param)}\b",
                     arg,

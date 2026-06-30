@@ -7,10 +7,10 @@ from pathlib import Path, PurePosixPath
 import orjson
 
 from app.core.config import get_settings
+from app.recipes.ingredients import create_ingredient_resolver
 from app.recipes.loaders.ae2_recipe_loader import load_ae2_recipe_directory
 from app.recipes.loaders.export_recipe_repair import repair_exported_forge_recipe
 from app.recipes.loaders.ore_dict_loader import load_ore_dict
-from app.recipes.ingredients import create_ingredient_resolver
 from app.recipes.loaders.recipe_paths import (
     discover_recipe_file,
     jar_recipe_patterns_for_version,

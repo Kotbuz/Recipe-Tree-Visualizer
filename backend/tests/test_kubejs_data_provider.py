@@ -17,16 +17,16 @@ from app.services.version_service import version_service
 
 def test_recipe_id_from_data_relative() -> None:
     assert (
-        recipe_id_from_data_relative(
-            PurePosixPath("techopolis/recipe/skyblock/cobblestone.json")
-        )
+        recipe_id_from_data_relative(PurePosixPath("techopolis/recipe/skyblock/cobblestone.json"))
         == "techopolis:skyblock/cobblestone"
     )
     assert (
         recipe_id_from_data_relative(PurePosixPath("minecraft/recipe/stick.json"))
         == "minecraft:stick"
     )
-    assert recipe_id_from_data_relative(PurePosixPath("techopolis/machine/basic_miner.json")) is None
+    assert (
+        recipe_id_from_data_relative(PurePosixPath("techopolis/machine/basic_miner.json")) is None
+    )
 
 
 def test_is_kubejs_recipe_enabled() -> None:
@@ -84,10 +84,7 @@ def test_kubejs_data_provider_with_profile_dir(isolated_minecraft_versions: Path
     assert len(result.recipes) == 1
     assert result.recipes[0].id == "techopolis:normal/cobblestone"
     assert result.recipes[0].outputs[0].item_id == "minecraft:cobblestone"
-    assert any(
-        skipped.reason == "disabled by recipe condition"
-        for skipped in result.skipped
-    )
+    assert any(skipped.reason == "disabled by recipe condition" for skipped in result.skipped)
 
     merged = recipe_manager.get_version_recipes(
         version,

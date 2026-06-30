@@ -1,3 +1,4 @@
+import pytest
 from app.recipes.adapters import item_id_to_display_name
 from app.recipes.focus import RecipeIngredientRole
 from app.recipes.manager import RecipeLookup, recipe_manager
@@ -5,8 +6,7 @@ from app.recipes.models import Recipe, RecipeIO
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.vanilla_jar import VanillaJarProvider
 from app.recipes.types import RecipeType
-from app.services.recipe_service import _resolve_vanilla_jar_path, recipe_service
-import pytest
+from app.services.recipe_service import recipe_service
 
 
 def test_json_recipe_parser_shapeless_stick() -> None:
@@ -140,7 +140,9 @@ def test_recipe_service_still_returns_summaries() -> None:
     _require_recipe_source()
     results = recipe_service.search_recipes(version="26.2", query="oak planks", limit=10)
     assert results
-    assert any("oak planks" in output.name.lower() for recipe in results for output in recipe.outputs)
+    assert any(
+        "oak planks" in output.name.lower() for recipe in results for output in recipe.outputs
+    )
 
 
 def test_focus_finds_recipes_by_tag_member_item() -> None:
@@ -303,9 +305,7 @@ def test_recipe_manager_focus_matches_tag_inputs() -> None:
         .all()
     )
     assert results
-    assert any(
-        any(part.item_id.startswith("tag:") for part in recipe.inputs) for recipe in results
-    )
+    assert any(any(part.item_id.startswith("tag:") for part in recipe.inputs) for recipe in results)
 
 
 def test_vanilla_provider_skips_unsupported_recipes() -> None:

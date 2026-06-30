@@ -7,7 +7,7 @@ import re
 import shutil
 import stat
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DEFAULT_PROFILE_ID = "default"
@@ -47,7 +47,7 @@ def validate_profile_id(profile_id: str) -> str:
 
 
 def utc_now_iso() -> str:
-    return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+    return datetime.now(UTC).replace(microsecond=0).isoformat()
 
 
 def read_profile_meta(profile_dir: Path) -> dict[str, object]:
@@ -147,9 +147,7 @@ def resolve_profile_forge_build(
     if isinstance(source_path, str) and source_path.strip():
         from app.services.host_paths import resolve_host_filesystem_path
 
-        detected = detect_modpack_version_from_directory(
-            resolve_host_filesystem_path(source_path)
-        )
+        detected = detect_modpack_version_from_directory(resolve_host_filesystem_path(source_path))
         if detected is not None and detected.forge_version:
             update_profile_forge_version(profile_dir, detected.forge_version)
             return detected.forge_version

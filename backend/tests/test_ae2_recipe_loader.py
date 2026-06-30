@@ -1,7 +1,6 @@
 from pathlib import Path
 
 import pytest
-
 from app.parser.recipe_types import SMELTING
 from app.recipes.loaders.ae2_recipe_loader import load_ae2_recipe_directory
 from app.recipes.manager import recipe_manager
@@ -132,9 +131,11 @@ def test_load_ae2_item_part_recipe_uses_display_names(
 
 
 @pytest.mark.skipif(
-    not Path(__file__).resolve().parents[2].joinpath(
-        "../MinecraftVersions/1.7.10/mods"
-    ).glob("*appliedenergistics2*.jar"),
+    not Path(__file__)
+    .resolve()
+    .parents[2]
+    .joinpath("../MinecraftVersions/1.7.10/mods")
+    .glob("*appliedenergistics2*.jar"),
     reason="AE2 mod jar not available",
 )
 def test_load_ae2_item_part_recipe_resolves_lang_display_name() -> None:
@@ -168,16 +169,21 @@ def test_load_ae2_item_part_recipe_resolves_lang_display_name() -> None:
     ]
     assert interface_recipes
     recipe = interface_recipes[0]
-    part = next(part for part in recipe.inputs if part.item_id.endswith(":item.Interface"))
     summary = to_recipe_summary(recipe, version="1.7.10")
-    interface_name = next(item.name for item in summary.inputs if item.item_id.endswith(":item.Interface"))
+    interface_name = next(
+        item.name for item in summary.inputs if item.item_id.endswith(":item.Interface")
+    )
     assert "interface" in interface_name.lower()
 
 
 @pytest.mark.skipif(
-    not Path(__file__).resolve().parents[2].joinpath(
+    not Path(__file__)
+    .resolve()
+    .parents[2]
+    .joinpath(
         "../recipe-exporter/forge-runtime/1.7.10/config/AppliedEnergistics2/recipes/generated"
-    ).is_dir(),
+    )
+    .is_dir(),
     reason="AE2 generated recipes not available",
 )
 def test_load_ae2_recipes_from_forge_runtime() -> None:
@@ -198,9 +204,7 @@ def test_load_ae2_recipes_from_forge_runtime() -> None:
 
 
 @pytest.mark.skipif(
-    not Path(__file__).resolve().parents[2].joinpath(
-        "../MinecraftVersions/1.7.10/recipe"
-    ).is_dir(),
+    not Path(__file__).resolve().parents[2].joinpath("../MinecraftVersions/1.7.10/recipe").is_dir(),
     reason="1.7.10 recipe export not available",
 )
 def test_vanilla_provider_merges_exported_ae2_recipes(

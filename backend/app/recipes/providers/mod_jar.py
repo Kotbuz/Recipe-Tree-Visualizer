@@ -9,6 +9,7 @@ from app.recipes.models import ProviderResult
 from app.recipes.parsers.json_recipe_parser import JsonRecipeParser
 from app.recipes.providers.jar_recipe_loader import try_add_recipe
 
+
 class ModJarProvider:
     def __init__(
         self,
