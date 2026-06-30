@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 import httpx
@@ -8,6 +9,8 @@ from loguru import logger
 from app.core.config import get_settings
 from app.services.icon_registry import collect_recipe_icon_ids
 from app.services.version_service import version_service
+
+ProgressCallback = Callable[[int, int], None]
 
 
 @dataclass(frozen=True)
@@ -38,6 +41,8 @@ class VanillaIconService:
         version: str,
         *,
         profile_id: str | None = None,
+        force: bool = False,
+        progress_cb: ProgressCallback | None = None,
     ) -> VanillaIconRenderResult:
         jar_path = version_service.resolve_jar_path(version)
         if jar_path is None:
@@ -55,7 +60,16 @@ class VanillaIconService:
         required_ids = self.collect_required_icon_ids(version, profile_id=profile_id)
         version_service.ensure_rendered_icons_dir(version, profile_id=profile_id)
         existing_ids = version_service.list_rendered_icon_ids(version, profile_id=profile_id)
-        missing_ids = [icon_id for icon_id in required_ids if icon_id not in existing_ids]
+        # Полный повторный скан (кнопка «Рендер иконок», L3) перерисовывает все нужные иконки;
+        # фоновая догонка — только пробелы.
+        missing_ids = (
+            list(required_ids)
+            if force
+            else [icon_id for icon_id in required_ids if icon_id not in existing_ids]
+        )
+
+        if progress_cb:
+            progress_cb(0, len(missing_ids))
 
         if not missing_ids:
             logger.info(
@@ -112,6 +126,8 @@ class VanillaIconService:
             skipped_total += len(payload.get("skipped", []))
             if payload.get("status") == "error":
                 errors.append(str(payload.get("error", "Unknown renderer error")))
+            if progress_cb:
+                progress_cb(min(offset + len(batch), len(missing_ids)), len(missing_ids))
 
         logger.info(
             "Vanilla icon render for {}: rendered={}, skipped={}, missing={}",

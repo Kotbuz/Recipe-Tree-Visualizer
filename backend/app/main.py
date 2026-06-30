@@ -11,7 +11,7 @@ from app.api.routes.router import api_router
 from app.core.config import get_settings
 from app.core.logging import setup_logging
 from app.services.mod_service import mod_service
-from app.services.vanilla_icon_service import vanilla_icon_service
+from app.services.profile_service import profile_service
 from app.services.version_service import version_service
 
 
@@ -46,16 +46,29 @@ async def _render_vanilla_icons_on_startup() -> None:
     if version_service.resolve_jar_path(default_version) is None:
         return
 
+    # Догоняем пробелы только для активного профиля (Q1): иконки, затем текстуры блоков.
     try:
-        result = await asyncio.to_thread(vanilla_icon_service.ensure_icons, default_version)
-        if result.errors:
-            logger.warning(
-                "Vanilla icon render for {} finished with errors: {}",
-                default_version,
-                "; ".join(result.errors),
-            )
+        from app.services.asset_render_service import asset_render_service
+        from app.services.profile_storage import DEFAULT_PROFILE_ID
+
+        active_profile = version_service.get_active_profile_id(default_version)
+        if active_profile != DEFAULT_PROFILE_ID:
+            profile = profile_service.get_profile(default_version, active_profile)
+            if not profile.source_path:
+                logger.info(
+                    "Startup asset render skipped for {}::{}: модпак без source_path (Z1)",
+                    default_version,
+                    active_profile,
+                )
+                return
+
+        has_gaps = await asyncio.to_thread(
+            asset_render_service.has_gaps, default_version, active_profile
+        )
+        if has_gaps:
+            asset_render_service.start(default_version, active_profile)
     except Exception:
-        logger.exception("Failed to render vanilla icons for {}", default_version)
+        logger.exception("Failed to start startup asset render for {}", default_version)
 
 
 @asynccontextmanager

@@ -417,6 +417,18 @@ class ProfileService:
                 if isinstance(meta.get("forge_version"), str)
                 else None
             ),
+            minecraft_version=(
+                str(meta["minecraft_version"]).strip()
+                if isinstance(meta.get("minecraft_version"), str)
+                and str(meta["minecraft_version"]).strip()
+                else None
+            ),
+            source_path=(
+                str(meta["source_path"]).strip()
+                if isinstance(meta.get("source_path"), str)
+                and str(meta["source_path"]).strip()
+                else None
+            ),
         )
 
     def _import_from_directory(

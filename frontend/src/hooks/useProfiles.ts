@@ -9,6 +9,8 @@ export type ProfileSummary = {
     active: boolean;
     loader?: string | null;
     forge_version?: string | null;
+    minecraft_version?: string | null;
+    source_path?: string | null;
 };
 
 type ProfileListResponse = {

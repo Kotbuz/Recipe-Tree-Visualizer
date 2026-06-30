@@ -38,6 +38,7 @@ class RecipeSnapshotMeta:
     loader_version: str | None
     exported_at: str
     recipe_count: int
+    item_count: int = 0
     instance_path: str | None = None
     last_error: str | None = None
 
@@ -48,6 +49,35 @@ class RecipeSnapshotStatus:
     meta: RecipeSnapshotMeta | None
     recipe_count: int
     last_error: str | None
+    item_count: int = 0
+
+
+def count_snapshot_items(snapshot_payload: dict[str, Any]) -> int:
+    """Уникальные item_id среди inputs+outputs всех рецептов снимка (для статуса «Mп»)."""
+    recipes_obj = snapshot_payload.get("recipes")
+    if not isinstance(recipes_obj, dict):
+        return 0
+    item_ids: set[str] = set()
+    for recipe_data in recipes_obj.values():
+        if not isinstance(recipe_data, dict):
+            continue
+        for key in ("inputs", "outputs", "results", "ingredients"):
+            section = recipe_data.get(key)
+            if isinstance(section, list):
+                _collect_item_ids(section, item_ids)
+    return len(item_ids)
+
+
+def _collect_item_ids(section: list[Any], sink: set[str]) -> None:
+    for part in section:
+        if isinstance(part, str):
+            sink.add(part)
+        elif isinstance(part, dict):
+            for id_key in ("item", "item_id", "id", "fluid"):
+                value = part.get(id_key)
+                if isinstance(value, str) and value:
+                    sink.add(value)
+                    break
 
 
 def bake_dir(version: str, profile_id: str) -> Path:
@@ -120,6 +150,7 @@ def _parse_meta(payload: dict[str, Any]) -> RecipeSnapshotMeta:
         ),
         exported_at=str(payload.get("exported_at", "")),
         recipe_count=int(payload.get("recipe_count", 0)),
+        item_count=int(payload.get("item_count", 0)),
         instance_path=(
             payload.get("instance_path")
             if isinstance(payload.get("instance_path"), str)
@@ -171,6 +202,7 @@ def read_snapshot_status(version: str, profile_id: str) -> RecipeSnapshotStatus:
         has_snapshot=has_snapshot,
         meta=meta,
         recipe_count=meta.recipe_count if has_snapshot else 0,
+        item_count=meta.item_count if has_snapshot else 0,
         last_error=last_error or meta.last_error,
     )
 

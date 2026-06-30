@@ -122,6 +122,12 @@ export default defineConfig({
         port: 5173,
         middlewareMode: false,
         proxy: {
+            // `/api/...` → backend (без префикса). `/api/blocks` перехватывает middleware выше.
+            '/api': {
+                target: 'http://localhost:8000',
+                changeOrigin: true,
+                rewrite: (path: string) => path.replace(/^\/api/, ''),
+            },
             '/recipes': {
                 target: 'http://localhost:8000',
                 changeOrigin: true,

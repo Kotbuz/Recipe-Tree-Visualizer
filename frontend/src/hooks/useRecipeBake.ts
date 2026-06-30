@@ -5,10 +5,12 @@ export type RecipeBakeStatus = {
     profile_id: string;
     has_snapshot: boolean;
     recipe_count: number;
+    item_count: number;
     exported_at?: string | null;
     minecraft_version?: string | null;
     loader_version?: string | null;
     last_error?: string | null;
+    export_running: boolean;
 };
 
 export type RecipeBakeResult = {
@@ -16,10 +18,13 @@ export type RecipeBakeResult = {
     profile_id: string;
     status: string;
     recipe_count: number;
+    item_count: number;
     duration_seconds?: number | null;
     log_tail?: string | null;
     error?: string | null;
     kept_previous_snapshot: boolean;
+    backend_log_path?: string | null;
+    bake_log_path?: string | null;
 };
 
 export function useRecipeBake(version: string, profileId?: string) {

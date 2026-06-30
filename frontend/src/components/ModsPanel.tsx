@@ -64,15 +64,26 @@ type ModsPanelProps = {
     /** DOM-узел в шапке холста, куда вставляется кнопка «Модпак». */
     toggleContainer?: HTMLElement | null;
     onExpandedChange?: (expanded: boolean) => void;
-    onBakeRecipes?: () => void;
+    /** Кнопка «Экспорт рецептов» под выбором профиля. Если не передан — блок не показывается. */
+    onExportRecipes?: () => void;
+    /** Текст-причина серого состояния кнопки экспорта (null/undefined = активна). */
+    exportDisabledReason?: string | null;
     bakingRecipes?: boolean;
-    recipeBakeStatus?: {
-        has_snapshot: boolean;
+    recipeStats?: {
+        has_stats: boolean;
         recipe_count: number;
-        exported_at?: string | null;
-        last_error?: string | null;
+        item_count: number;
     } | null;
+    recipeExportedAt?: string | null;
     recipeBakeError?: string | null;
+    /** Полный путь к логу экспорта; клик → копирование в буфер (не показываем tail). */
+    exportLogPath?: string | null;
+    /** Блокировка всей панели на время экспорта (overlay). */
+    panelLocked?: boolean;
+    /** Кнопка «Рендер иконок» в «Сервис» (полный повторный скан jar). */
+    onRenderIcons?: () => void;
+    renderIconsDisabledReason?: string | null;
+    renderingIcons?: boolean;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -211,10 +222,17 @@ export default function ModsPanel({
     calculationError,
     toggleContainer = null,
     onExpandedChange,
-    onBakeRecipes,
+    onExportRecipes,
+    exportDisabledReason = null,
     bakingRecipes = false,
-    recipeBakeStatus = null,
+    recipeStats = null,
+    recipeExportedAt = null,
     recipeBakeError = null,
+    exportLogPath = null,
+    panelLocked = false,
+    onRenderIcons,
+    renderIconsDisabledReason = null,
+    renderingIcons = false,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
@@ -239,8 +257,22 @@ export default function ModsPanel({
         showIntegrityTools ||
         (missingDependencyCount > 0 && Boolean(onDownloadDependencies)) ||
         Boolean(onReloadMods) ||
-        Boolean(onBakeRecipes) ||
+        Boolean(onRenderIcons) ||
         (showRecipeMaintenance && Boolean(onClearRecipeExport));
+    const [logPathCopied, setLogPathCopied] = useState(false);
+
+    const copyLogPath = useCallback(async () => {
+        if (!exportLogPath) {
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(exportLogPath);
+            setLogPathCopied(true);
+            window.setTimeout(() => setLogPathCopied(false), 2000);
+        } catch {
+            // буфер недоступен — путь всё равно виден текстом
+        }
+    }, [exportLogPath]);
     const integrityBusy = integrityChecking || integritySyncing;
     const canSyncIntegrity = Boolean(integrityReport?.can_sync);
 
@@ -331,7 +363,17 @@ export default function ModsPanel({
     }
 
     return (
-        <aside className="mods-panel mods-panel--expanded" aria-label="Панель модпаков">
+        <aside
+            className={`mods-panel mods-panel--expanded${panelLocked ? ' mods-panel--locked' : ''}`}
+            aria-label="Панель модпаков"
+            aria-busy={panelLocked}
+        >
+            {panelLocked ? (
+                <div className="mods-panel-lock-overlay" role="status">
+                    <span className="mods-panel-lock-spinner" aria-hidden />
+                    <span>Экспорт рецептов… панель заблокирована</span>
+                </div>
+            ) : null}
             <div className="mods-panel-header">
                 <h2 className="mods-panel-title">Модпак</h2>
                 <div className="mods-panel-header-actions">
@@ -422,6 +464,55 @@ export default function ModsPanel({
                     </div>
                 </label>
             </div>
+
+            {onExportRecipes ? (
+                <div className="mods-panel-export">
+                    <div className="mods-panel-export-row">
+                        <button
+                            type="button"
+                            className="mods-panel-btn mods-panel-btn--primary mods-panel-export-btn"
+                            disabled={
+                                Boolean(exportDisabledReason) || bakingRecipes || versionsEmpty
+                            }
+                            title={exportDisabledReason ?? 'Экспорт рецептов'}
+                            onClick={onExportRecipes}
+                        >
+                            {bakingRecipes ? 'Экспорт рецептов… (5–20 мин)' : 'Экспорт рецептов'}
+                        </button>
+                        <span
+                            className="mods-panel-export-stats"
+                            title="Рецепты · предметы"
+                        >
+                            {recipeStats?.has_stats
+                                ? `${recipeStats.recipe_count}р · ${recipeStats.item_count}п`
+                                : '—'}
+                        </span>
+                    </div>
+                    {recipeExportedAt ? (
+                        <p className="mods-panel-hint">
+                            Снимок: {recipeExportedAt.slice(0, 19).replace('T', ' ')}
+                        </p>
+                    ) : null}
+                    {exportDisabledReason ? (
+                        <p className="mods-panel-hint">{exportDisabledReason}</p>
+                    ) : null}
+                    {recipeBakeError ? (
+                        <div className="mods-panel-error">
+                            <p>{recipeBakeError}</p>
+                            {exportLogPath ? (
+                                <button
+                                    type="button"
+                                    className="mods-panel-log-path"
+                                    title="Скопировать полный путь к логу"
+                                    onClick={() => void copyLogPath()}
+                                >
+                                    {logPathCopied ? '✓ Путь скопирован' : exportLogPath}
+                                </button>
+                            ) : null}
+                        </div>
+                    ) : null}
+                </div>
+            ) : null}
 
             <div className="mods-panel-actions">
                 <button type="button" className="mods-panel-btn" onClick={onLoad}>
@@ -797,40 +888,26 @@ export default function ModsPanel({
                                         : `Зависимости (${missingDependencyCount})`}
                                 </button>
                             ) : null}
-                            {onBakeRecipes ? (
+                            {onRenderIcons ? (
                                 <>
-                                    {recipeBakeStatus?.has_snapshot ? (
-                                        <p className="mods-panel-hint">
-                                            Снимок: {recipeBakeStatus.recipe_count} рецептов
-                                            {recipeBakeStatus.exported_at
-                                                ? ` · ${recipeBakeStatus.exported_at.slice(0, 19).replace('T', ' ')}`
-                                                : ''}
-                                        </p>
-                                    ) : (
-                                        <p className="mods-panel-hint">
-                                            In-game снимок не собран — поиск может пропускать KubeJS/машины.
-                                        </p>
-                                    )}
-                                    {recipeBakeError ? (
-                                        <p className="mods-panel-error">{recipeBakeError}</p>
-                                    ) : recipeBakeStatus?.last_error ? (
-                                        <p className="mods-panel-error">{recipeBakeStatus.last_error}</p>
-                                    ) : null}
                                     <button
                                         type="button"
-                                        className="mods-panel-btn mods-panel-btn--primary mods-panel-btn--block"
+                                        className="mods-panel-btn mods-panel-btn--block"
                                         disabled={
-                                            bakingRecipes ||
-                                            versionsEmpty ||
-                                            integrityBusy ||
-                                            reloadingMods
+                                            Boolean(renderIconsDisabledReason) ||
+                                            renderingIcons ||
+                                            versionsEmpty
                                         }
-                                        onClick={onBakeRecipes}
+                                        title={renderIconsDisabledReason ?? 'Полный повторный скан jar'}
+                                        onClick={onRenderIcons}
                                     >
-                                        {bakingRecipes
-                                            ? 'Сборка рецептов… (до ~15 мин)'
-                                            : 'Собрать рецепты (in-game)'}
+                                        {renderingIcons ? 'Рендер иконок…' : 'Рендер иконок'}
                                     </button>
+                                    {renderIconsDisabledReason ? (
+                                        <p className="mods-panel-hint">
+                                            {renderIconsDisabledReason}
+                                        </p>
+                                    ) : null}
                                 </>
                             ) : null}
                             {onReloadMods ? (

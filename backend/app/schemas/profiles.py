@@ -18,6 +18,8 @@ class ProfileSummary(BaseModel):
     active: bool = False
     loader: str | None = None
     forge_version: str | None = None
+    minecraft_version: str | None = None
+    source_path: str | None = None
 
 
 class ProfileListResponse(BaseModel):

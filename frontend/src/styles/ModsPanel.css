@@ -512,3 +512,89 @@
 .mods-panel-integrity-item--ok {
     color: #166534;
 }
+
+/* --- Экспорт рецептов под профилем (фаза 1) --- */
+.mods-panel-export {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    padding: 0.4rem;
+    border: 1px solid var(--ui-border);
+    border-radius: 6px;
+    background: var(--ui-bg);
+}
+
+.mods-panel-export-row {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+}
+
+.mods-panel-export-btn {
+    flex: 1 1 auto;
+}
+
+.mods-panel-export-stats {
+    flex: 0 0 auto;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--ui-text-muted, #475569);
+    white-space: nowrap;
+}
+
+.mods-panel-log-path {
+    display: block;
+    width: 100%;
+    margin-top: 0.25rem;
+    padding: 0.25rem 0.4rem;
+    border: 1px dashed #b91c1c;
+    border-radius: 4px;
+    background: #fef2f2;
+    color: #991b1b;
+    font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+    font-size: 0.7rem;
+    text-align: left;
+    word-break: break-all;
+    cursor: pointer;
+}
+
+.mods-panel-log-path:hover {
+    background: #fee2e2;
+}
+
+/* --- Блокировка всей панели на время экспорта --- */
+.mods-panel--locked {
+    overflow: hidden;
+}
+
+.mods-panel-lock-overlay {
+    position: absolute;
+    inset: 0;
+    z-index: 40;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0.6rem;
+    padding: 1rem;
+    text-align: center;
+    background: rgba(248, 250, 252, 0.86);
+    backdrop-filter: blur(1px);
+    color: #334155;
+    font-weight: 600;
+}
+
+.mods-panel-lock-spinner {
+    width: 28px;
+    height: 28px;
+    border: 3px solid #cbd5e1;
+    border-top-color: #2563eb;
+    border-radius: 50%;
+    animation: mods-panel-spin 0.8s linear infinite;
+}
+
+@keyframes mods-panel-spin {
+    to {
+        transform: rotate(360deg);
+    }
+}

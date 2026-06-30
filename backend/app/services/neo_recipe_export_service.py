@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import shutil
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
@@ -25,6 +26,7 @@ from app.services.recipe_snapshot_service import (
     append_bake_log,
     bake_log_path,
     commit_snapshot,
+    count_snapshot_items,
     read_snapshot_status,
     record_bake_failure,
     recipes_snapshot_path,
@@ -46,11 +48,29 @@ class NeoRecipeExportService:
         return {
             "has_snapshot": status.has_snapshot,
             "recipe_count": status.recipe_count,
+            "item_count": status.item_count,
             "exported_at": meta.exported_at if meta else None,
             "minecraft_version": meta.minecraft_version if meta else None,
             "loader_version": meta.loader_version if meta else None,
             "last_error": status.last_error,
         }
+
+    def get_exporter_busy(self) -> bool | None:
+        """Опрашивает recipe-exporter-neo `/status`. None — exporter недоступен (W2)."""
+        base_url = self._settings.neo_recipe_exporter_url.strip()
+        if not base_url:
+            return None
+        url = base_url.rstrip("/") + "/status"
+        try:
+            with httpx.Client(timeout=httpx.Timeout(2.5)) as client:
+                response = client.get(url)
+                response.raise_for_status()
+                body = response.json()
+        except (httpx.HTTPError, json.JSONDecodeError):
+            return None
+        if isinstance(body, dict):
+            return bool(body.get("busy"))
+        return None
 
     def bake_profile(
         self,
@@ -141,42 +161,58 @@ class NeoRecipeExportService:
         }
 
         started = datetime.now(UTC)
+        timestamp = started.strftime("%Y%m%d-%H%M%S")
         try:
             result = self._call_exporter(exporter_url, payload)
         except NeoRecipeExportError as exc:
             record_bake_failure(version, profile_id, error=str(exc))
-            return {
-                "status": "error",
-                "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
-                "duration_seconds": (datetime.now(UTC) - started).total_seconds(),
-                "error": str(exc),
-                "kept_previous_snapshot": had_snapshot,
-                "log_tail": self._read_log_tail(version, profile_id),
-            }
+            return self._finalize(
+                version,
+                profile_id,
+                timestamp,
+                {
+                    "status": "error",
+                    "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
+                    "duration_seconds": (datetime.now(UTC) - started).total_seconds(),
+                    "error": str(exc),
+                    "kept_previous_snapshot": had_snapshot,
+                    "log_tail": self._read_log_tail(version, profile_id),
+                },
+            )
 
         if result.get("status") != "ok":
             error = str(result.get("error", "export failed"))
             log_tail = result.get("log_tail") or result.get("stderr_tail")
             record_bake_failure(version, profile_id, error=error, log_tail=log_tail)
-            return {
-                "status": "error",
-                "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
-                "duration_seconds": result.get("duration_seconds"),
-                "error": error,
-                "kept_previous_snapshot": had_snapshot,
-                "log_tail": log_tail,
-            }
+            return self._finalize(
+                version,
+                profile_id,
+                timestamp,
+                {
+                    "status": "error",
+                    "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
+                    "duration_seconds": result.get("duration_seconds"),
+                    "error": error,
+                    "kept_previous_snapshot": had_snapshot,
+                    "log_tail": log_tail,
+                },
+            )
 
         snapshot_file = output_dir / "recipes.baked.json"
         if not snapshot_file.is_file():
             error = "Exporter завершился без recipes.baked.json"
             record_bake_failure(version, profile_id, error=error, log_tail=result.get("log_tail"))
-            return {
-                "status": "error",
-                "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
-                "error": error,
-                "kept_previous_snapshot": had_snapshot,
-            }
+            return self._finalize(
+                version,
+                profile_id,
+                timestamp,
+                {
+                    "status": "error",
+                    "recipe_count": read_snapshot_status(version, profile_id).recipe_count,
+                    "error": error,
+                    "kept_previous_snapshot": had_snapshot,
+                },
+            )
 
         snapshot_payload = json.loads(snapshot_file.read_text(encoding="utf-8"))
         if not isinstance(snapshot_payload, dict):
@@ -186,6 +222,7 @@ class NeoRecipeExportService:
         recipe_count = (
             len(recipes_obj) if isinstance(recipes_obj, dict) else int(result.get("recipe_count", 0))
         )
+        item_count = count_snapshot_items(snapshot_payload)
 
         bake_meta = {
             "format_version": SNAPSHOT_FORMAT_VERSION,
@@ -194,6 +231,7 @@ class NeoRecipeExportService:
             "loader_version": loader_version,
             "exported_at": datetime.now(UTC).isoformat(),
             "recipe_count": recipe_count,
+            "item_count": item_count,
             "instance_path": instance_path_raw,
         }
         commit_snapshot(
@@ -211,13 +249,19 @@ class NeoRecipeExportService:
 
         clear_snapshot_cache()
 
-        return {
-            "status": "ok",
-            "recipe_count": recipe_count,
-            "duration_seconds": result.get("duration_seconds"),
-            "log_tail": result.get("log_tail"),
-            "kept_previous_snapshot": False,
-        }
+        return self._finalize(
+            version,
+            profile_id,
+            timestamp,
+            {
+                "status": "ok",
+                "recipe_count": recipe_count,
+                "item_count": item_count,
+                "duration_seconds": result.get("duration_seconds"),
+                "log_tail": result.get("log_tail"),
+                "kept_previous_snapshot": False,
+            },
+        )
 
     def _call_exporter(self, base_url: str, payload: dict[str, Any]) -> dict[str, Any]:
         url = base_url.rstrip("/") + "/export"
@@ -253,6 +297,55 @@ class NeoRecipeExportService:
         if raw.strip() and map_windows_path_to_container(PureWindowsPath(raw.strip())):
             return str(resolved.resolve())
         return str(resolved.resolve())
+
+    def _finalize(
+        self,
+        version: str,
+        profile_id: str,
+        timestamp: str,
+        result: dict[str, Any],
+    ) -> dict[str, Any]:
+        """Дублирует bake.log в backend/logs/ и (при успехе) запускает фоновый рендер."""
+        backend_log = self._copy_backend_log(version, profile_id, timestamp)
+        if backend_log is not None:
+            result["backend_log_path"] = str(backend_log)
+        result["bake_log_path"] = str(bake_log_path(version, profile_id))
+
+        if result.get("status") == "ok":
+            try:
+                from app.services.asset_render_service import asset_render_service
+
+                started = asset_render_service.start(version, profile_id)
+                logger.info(
+                    "Post-bake asset render for {}::{} started={}",
+                    version,
+                    profile_id,
+                    started,
+                )
+            except Exception:  # noqa: BLE001 - рендер не должен ломать успешный экспорт (H3)
+                logger.exception("Failed to start post-bake asset render")
+        return result
+
+    def _copy_backend_log(
+        self,
+        version: str,
+        profile_id: str,
+        timestamp: str,
+    ) -> Path | None:
+        source = bake_log_path(version, profile_id)
+        if not source.is_file():
+            return None
+        log_dir = self._settings.log_dir_path
+        log_dir.mkdir(parents=True, exist_ok=True)
+        safe_version = version.replace("/", "_").replace("\\", "_")
+        safe_profile = profile_id.replace("/", "_").replace("\\", "_")
+        target = log_dir / f"recipe-export-{safe_version}-{safe_profile}-{timestamp}.log"
+        try:
+            shutil.copyfile(source, target)
+        except OSError as exc:
+            logger.warning("Could not duplicate bake log to {}: {}", target, exc)
+            return None
+        return target
 
     def _read_log_tail(self, version: str, profile_id: str) -> str | None:
         path = bake_log_path(version, profile_id)
