@@ -7,7 +7,7 @@ import httpx
 from loguru import logger
 
 from app.core.config import get_settings
-from app.services.icon_registry import collect_recipe_icon_ids
+from app.services.icon_registry import collect_required_icon_ids
 from app.services.version_service import version_service
 
 ProgressCallback = Callable[[int, int], None]
@@ -34,7 +34,7 @@ class VanillaIconService:
         *,
         profile_id: str | None = None,
     ) -> list[str]:
-        return collect_recipe_icon_ids(version, profile_id=profile_id)
+        return collect_required_icon_ids(version, profile_id=profile_id)
 
     def ensure_icons(
         self,

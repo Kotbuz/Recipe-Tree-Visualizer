@@ -248,6 +248,11 @@
     line-height: 1.35;
 }
 
+.mods-panel-hint--warn {
+    border-left-color: #f59e0b;
+    color: #92400e;
+}
+
 .mods-panel-errors {
     display: flex;
     flex-direction: column;

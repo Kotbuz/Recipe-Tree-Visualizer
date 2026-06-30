@@ -4,6 +4,7 @@ import tempfile
 from pathlib import Path
 
 from fastapi import APIRouter, HTTPException, Query, UploadFile
+from loguru import logger
 
 from app.schemas.profiles import (
     CreateProfileRequest,
@@ -380,6 +381,12 @@ def activate_profile(version: str, profile_id: str) -> ProfileResponse:
         profile = profile_service.activate_profile(version, profile_id)
     except ProfileNotFoundError as exc:
         raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+    try:
+        asset_render_service.maybe_start_if_gaps(version, profile_id)
+    except Exception:
+        logger.exception("Failed to start asset render after profile activation")
+
     return ProfileResponse(version=version, profile=profile)
 
 

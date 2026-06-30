@@ -6,6 +6,11 @@ from app.services.block_texture_service import (
     _output_filename,
     _texture_ref_to_jar_entry,
 )
+from app.services.icon_registry import (
+    collect_jar_icon_ids,
+    collect_required_icon_ids,
+    model_entry_to_icon_id,
+)
 from app.services.recipe_snapshot_service import (
     count_snapshot_items,
     read_snapshot_status,
@@ -83,6 +88,42 @@ def test_snapshot_status_reads_item_count(tmp_path, monkeypatch) -> None:
     )
     status = read_snapshot_status(version, profile_id)
     assert status.item_count == 7
+
+
+def test_model_entry_to_icon_id() -> None:
+    assert model_entry_to_icon_id("assets/minecraft/models/item/stick.json") == "stick"
+    assert model_entry_to_icon_id("assets/create/models/item/cogwheel.json") == "create_cogwheel"
+    assert model_entry_to_icon_id("assets/minecraft/models/block/oak_planks.json") == "oak_planks"
+    assert model_entry_to_icon_id("assets/minecraft/items/diamond.json") == "diamond"
+
+
+def test_collect_jar_icon_ids_from_zip(tmp_path, monkeypatch) -> None:
+    import zipfile
+
+    jar_path = tmp_path / "mini.jar"
+    with zipfile.ZipFile(jar_path, "w") as archive:
+        archive.writestr("assets/minecraft/models/item/stick.json", "{}")
+        archive.writestr("assets/mini/models/item/gear.json", "{}")
+
+    monkeypatch.setattr(
+        "app.services.icon_registry.collect_profile_jar_paths",
+        lambda version, profile_id=None: [jar_path],
+    )
+    ids = collect_jar_icon_ids("test", profile_id="p")
+    assert "stick" in ids
+    assert "mini_gear" in ids
+
+
+def test_collect_required_icon_ids_unions_jar_and_recipes(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "app.services.icon_registry.collect_jar_icon_ids",
+        lambda *args, **kwargs: ["from_jar"],
+    )
+    monkeypatch.setattr(
+        "app.services.icon_registry.collect_recipe_icon_ids",
+        lambda *args, **kwargs: ["from_recipe"],
+    )
+    assert collect_required_icon_ids("1.21.1") == ["from_jar", "from_recipe"]
 
 
 def test_asset_render_rejects_concurrent_start(monkeypatch) -> None:

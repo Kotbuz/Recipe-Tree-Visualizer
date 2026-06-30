@@ -316,6 +316,22 @@ def get_item_icon(
     return Response(content=payload, media_type="image/png")
 
 
+@router.get("/{version}/blocks/{filename}", response_model=None)
+def get_block_texture(
+    version: str,
+    filename: str,
+    profile_id: str | None = Query(default=None, min_length=1),
+) -> FileResponse:
+    texture_path = version_service.resolve_block_texture_path(
+        version,
+        filename,
+        profile_id=profile_id,
+    )
+    if texture_path is None:
+        raise HTTPException(status_code=404, detail="Block texture not found")
+    return FileResponse(texture_path, media_type="image/png")
+
+
 @router.post("/{version}/render-icons", response_model=VanillaIconRenderResponse)
 def render_vanilla_icons(
     version: str,

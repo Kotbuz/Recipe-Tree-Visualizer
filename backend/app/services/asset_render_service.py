@@ -7,6 +7,8 @@ from typing import Any
 from loguru import logger
 
 from app.services.block_texture_service import block_texture_service
+from app.services.profile_storage import DEFAULT_PROFILE_ID
+from app.services.profile_service import profile_service
 from app.services.vanilla_icon_service import vanilla_icon_service
 from app.services.version_service import version_service
 
@@ -80,15 +82,35 @@ class AssetRenderService:
                 return True
             block_types = block_texture_service.count_block_types(version, profile_id=profile_id)
             if block_types > 0:
-                output_dir = version_service.profile_dir(
-                    version, version_service._resolve_profile_id(version, profile_id)
-                ) / "block-textures"
+                output_dir = version_service.profile_block_textures_dir(
+                    version, profile_id, create=False
+                )
                 existing_blocks = len(list(output_dir.glob("*.png"))) if output_dir.is_dir() else 0
-                if existing_blocks == 0:
+                if existing_blocks < block_types:
                     return True
         except Exception as exc:  # noqa: BLE001 - проверка пробелов не должна падать
             logger.warning("Asset gap check failed for {}::{}: {}", version, profile_id, exc)
         return False
+
+    def can_render_for_profile(self, version: str, profile_id: str) -> bool:
+        """Vanilla/default — без source_path; модпак — только с папкой инстанса (Z1)."""
+        if profile_id == DEFAULT_PROFILE_ID:
+            return True
+        try:
+            profile = profile_service.get_profile(version, profile_id)
+        except Exception:
+            return False
+        return bool(profile.source_path and profile.source_path.strip())
+
+    def maybe_start_if_gaps(self, version: str, profile_id: str) -> bool:
+        """Догонка пробелов: старт фонового рендера, если разрешено и есть что доделать."""
+        if not self.can_render_for_profile(version, profile_id):
+            return False
+        if self.is_running(version, profile_id):
+            return False
+        if not self.has_gaps(version, profile_id):
+            return False
+        return self.start(version, profile_id, full_rescan=False)
 
     def start(
         self,

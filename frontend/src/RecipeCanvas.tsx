@@ -1376,11 +1376,19 @@ export default function RecipeCanvas() {
                 await refreshMods();
                 await refreshExportStatus();
                 await reloadCatalog();
+                await refreshAssetProgress();
             } catch {
                 // ошибка в profilesError
             }
         },
-        [activeProfileId, activateProfile, refreshMods, refreshExportStatus, reloadCatalog],
+        [
+            activeProfileId,
+            activateProfile,
+            refreshMods,
+            refreshExportStatus,
+            reloadCatalog,
+            refreshAssetProgress,
+        ],
     );
 
     const handleProfileDelete = useCallback(
@@ -1718,6 +1726,18 @@ export default function RecipeCanvas() {
     const hasInstancePath = Boolean(profileSourcePath) || Boolean(integritySourcePath.trim());
     const exportRunning = recipeBakeStatus?.export_running ?? false;
     const assetRunning = assetProgress?.running ?? false;
+    const iconsPartial =
+        Boolean(assetProgress) &&
+        !assetProgress?.icons.running &&
+        (assetProgress?.icons.total ?? 0) > 0 &&
+        (Boolean(assetProgress?.icons.error) ||
+            (assetProgress?.icons.done ?? 0) < (assetProgress?.icons.total ?? 0));
+    const blocksPartial =
+        Boolean(assetProgress) &&
+        !assetProgress?.blocks.running &&
+        (assetProgress?.blocks.total ?? 0) > 0 &&
+        (Boolean(assetProgress?.blocks.error) ||
+            (assetProgress?.blocks.done ?? 0) < (assetProgress?.blocks.total ?? 0));
 
     const exportDisabledReason: string | null = (() => {
         if (activeProfileId === 'default') {
@@ -1799,11 +1819,15 @@ export default function RecipeCanvas() {
                         items.push(
                             `Иконки: ${assetProgress.icons.done} / ${assetProgress.icons.total}`,
                         );
+                    } else if (iconsPartial) {
+                        items.push('Иконки: частично');
                     }
                     if (assetProgress?.blocks.running) {
                         items.push(
                             `Блоки: ${assetProgress.blocks.done} / ${assetProgress.blocks.total}`,
                         );
+                    } else if (blocksPartial) {
+                        items.push('Блоки: частично');
                     }
                     if (items.length === 0) {
                         return null;
@@ -2265,6 +2289,16 @@ export default function RecipeCanvas() {
                 }
                 renderIconsDisabledReason={renderIconsDisabledReason}
                 renderingIcons={assetRunning || assetStarting}
+                assetPartialHint={
+                    iconsPartial || blocksPartial
+                        ? [
+                              iconsPartial ? 'Иконки отрендерены частично' : null,
+                              blocksPartial ? 'Текстуры блоков извлечены частично' : null,
+                          ]
+                              .filter(Boolean)
+                              .join(' · ')
+                        : null
+                }
             />
 
             <VersionManagerModal

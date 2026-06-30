@@ -8,13 +8,13 @@ from pathlib import Path
 
 from loguru import logger
 
+from app.services.jar_paths import collect_profile_jar_paths
 from app.services.version_service import version_service
 
 # Префиксы внутри jar, где Minecraft/моды хранят описания состояний блоков, модели и текстуры.
 _BLOCKSTATES_PREFIX = "blockstates/"
 _MODELS_PREFIX = "models/"
 _TEXTURES_PREFIX = "textures/"
-_OUTPUT_DIR_NAME = "block-textures"
 _MAX_PARENT_DEPTH = 8
 
 ProgressCallback = Callable[[int, int], None]
@@ -91,11 +91,11 @@ class BlockTextureService:
                 errors=["Нет jar-файлов для извлечения текстур блоков"],
             )
 
-        output_dir = version_service.profile_dir(
+        output_dir = version_service.profile_block_textures_dir(
             version,
-            version_service._resolve_profile_id(version, profile_id),
-        ) / _OUTPUT_DIR_NAME
-        output_dir.mkdir(parents=True, exist_ok=True)
+            profile_id,
+            create=True,
+        )
         existing = {path.name for path in output_dir.glob("*.png")}
 
         # Карта: тип блока (namespace:name) → jar, в котором он объявлен.
@@ -197,14 +197,7 @@ class BlockTextureService:
         return len(block_types)
 
     def _collect_jar_paths(self, version: str, *, profile_id: str | None) -> list[Path]:
-        jars: list[Path] = []
-        client_jar = version_service.resolve_jar_path(version)
-        if client_jar is not None:
-            jars.append(client_jar)
-        mods_dir = version_service.mods_dir(version, profile_id)
-        if mods_dir.is_dir():
-            jars.extend(sorted(mods_dir.glob("*.jar")))
-        return jars
+        return collect_profile_jar_paths(version, profile_id=profile_id)
 
     def _resolve_block_textures(
         self,

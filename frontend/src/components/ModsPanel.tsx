@@ -84,6 +84,8 @@ type ModsPanelProps = {
     onRenderIcons?: () => void;
     renderIconsDisabledReason?: string | null;
     renderingIcons?: boolean;
+    /** Подсказка, если иконки/блоки отрендерены не полностью (H3). */
+    assetPartialHint?: string | null;
 };
 
 function formatModVersion(mod: ModSummary): string | null {
@@ -233,6 +235,7 @@ export default function ModsPanel({
     onRenderIcons,
     renderIconsDisabledReason = null,
     renderingIcons = false,
+    assetPartialHint,
 }: ModsPanelProps) {
     const [expanded, setExpanded] = useState(false);
     const [importOpen, setImportOpen] = useState(versionsEmpty);
@@ -906,6 +909,11 @@ export default function ModsPanel({
                                     {renderIconsDisabledReason ? (
                                         <p className="mods-panel-hint">
                                             {renderIconsDisabledReason}
+                                        </p>
+                                    ) : null}
+                                    {assetPartialHint ? (
+                                        <p className="mods-panel-hint mods-panel-hint--warn">
+                                            {assetPartialHint}
                                         </p>
                                     ) : null}
                                 </>
