@@ -10,7 +10,10 @@ struct BackendChild(Mutex<Option<Child>>);
 
 fn repo_root() -> PathBuf {
     let manifest = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-    manifest.parent().and_then(|p| p.parent()).map_or(manifest, |p| p.to_path_buf())
+    match manifest.parent().and_then(|p| p.parent()) {
+        Some(root) => root.to_path_buf(),
+        None => manifest,
+    }
 }
 
 fn start_backend() -> Option<Child> {

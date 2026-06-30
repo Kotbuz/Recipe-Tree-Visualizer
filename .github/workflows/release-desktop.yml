@@ -47,6 +47,9 @@ jobs:
             frontend/package-lock.json
             desktop/package-lock.json
 
+      - name: Use npm 11 (lockfile compatibility)
+        run: npm install -g npm@11
+
       - name: Setup Rust
         uses: dtolnay/rust-toolchain@stable
 
