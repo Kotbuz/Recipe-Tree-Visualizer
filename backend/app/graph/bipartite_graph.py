@@ -59,6 +59,8 @@ class BipartiteGraphEngine:
             raise GraphValidationError("Duplicate node_id in graph")
 
         for recipe_node in self._graph.recipe_nodes:
+            if recipe_node.kind in _TERMINAL_RECIPE_KINDS:
+                continue
             if recipe_node.recipe_id not in self._recipes_by_id:
                 raise GraphValidationError(f"Unknown recipe_id: {recipe_node.recipe_id}")
 

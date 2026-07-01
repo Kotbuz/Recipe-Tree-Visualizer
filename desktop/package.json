@@ -1,7 +1,7 @@
 {
     "name":  "recipe-tree-visualizer-desktop",
     "private":  true,
-    "version":  "0.2.3",
+    "version":  "0.2.4",
     "description":  "Desktop shell (Tauri) for Recipe Tree Visualizer",
     "scripts":  {
                     "tauri":  "tauri",

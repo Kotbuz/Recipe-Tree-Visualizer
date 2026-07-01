@@ -127,6 +127,19 @@ def test_bipartite_graph_rejects_unknown_recipe() -> None:
         engine.validate()
 
 
+def test_bipartite_graph_accepts_terminal_without_catalog_recipe() -> None:
+    graph = CanvasGraph(
+        recipe_nodes=[
+            CanvasRecipeNode(
+                node_id="recipe_chest",
+                recipe_id="chest:chest-1782910518520-g2b0c",
+                kind="chest",
+            ),
+        ],
+    )
+    BipartiteGraphEngine(graph).validate()
+
+
 def test_bipartite_graph_rejects_item_to_item_edge() -> None:
     graph = CanvasGraph(
         item_nodes=[

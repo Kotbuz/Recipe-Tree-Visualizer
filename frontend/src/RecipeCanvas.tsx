@@ -19,6 +19,8 @@ import { prepareForgeInstall } from './hooks/useForgePrepare';
 import { useVersionCatalog } from './hooks/useVersionCatalog';
 import ItemIconView from './components/ItemIconView';
 import RecipePickerList from './components/RecipePickerList';
+import MachineLimitInput from './components/MachineLimitInput';
+import RecipeNodeContextPanel from './components/RecipeNodeContextPanel';
 import SlotQuantityBadge from './components/SlotQuantityBadge';
 import { mergeRecipeItems } from './utils/mergeRecipeItems';
 import { useMinecraftVersion } from './context/MinecraftVersionContext';
@@ -45,7 +47,6 @@ import {
 import {
     CANVAS_CONFIG,
     DEFAULT_DURATION_TICKS,
-    TICKS_PER_SECOND,
     CanvasConversionError,
     buildConnectionFlowRates,
     buildMachineCountByNodeId,
@@ -174,11 +175,6 @@ const mapMachineName = (typeName: string) =>
         .replace(/.*:/, '')
         .replace(/_/g, ' ')
         .replace(/\b\w/g, (c: string) => c.toUpperCase());
-
-const formatDurationLabel = (ticks: number) => {
-    const seconds = ticks / TICKS_PER_SECOND;
-    return seconds >= 10 ? `${ticks}t` : `${seconds.toFixed(1)}s`;
-};
 
 const isTerminalNode = (node: RecipeNode) =>
     node.kind === 'chest' ||
@@ -650,13 +646,6 @@ export default function RecipeCanvas() {
     );
     const [calculationError, setCalculationError] = useState<string | null>(null);
     const [productionPlan, setProductionPlan] = useState<ProductionPlan | null>(null);
-    const [durationEditNodeId, setDurationEditNodeId] = useState<string | null>(null);
-    const [durationEditValue, setDurationEditValue] = useState(String(DEFAULT_DURATION_TICKS));
-    const [constraintEditNodeId, setConstraintEditNodeId] = useState<string | null>(null);
-    const [machineLimitValue, setMachineLimitValue] = useState('');
-    const [speedPercentValue, setSpeedPercentValue] = useState('100');
-    const [outputRateLimitValue, setOutputRateLimitValue] = useState('');
-    const [autoRoundValue, setAutoRoundValue] = useState(false);
     const [targetEditSlot, setTargetEditSlot] = useState<{
         nodeId: string;
         itemIndex: number;
@@ -728,6 +717,46 @@ export default function RecipeCanvas() {
         handlePanMouseMove,
         handlePanMouseUp,
     } = useCanvasViewport();
+
+    const isCanvasInteractionLocked = useMemo(
+        () =>
+            contextMenu !== null ||
+            labelEditNodeId !== null ||
+            targetEditSlot !== null ||
+            portPicker !== null ||
+            versionManagerOpen ||
+            pendingModpackImport !== null,
+        [
+            contextMenu,
+            labelEditNodeId,
+            pendingModpackImport,
+            portPicker,
+            targetEditSlot,
+            versionManagerOpen,
+        ],
+    );
+
+    const handleCanvasWheel = useCallback(
+        (event: React.WheelEvent<HTMLDivElement>) => {
+            if (isCanvasInteractionLocked) {
+                return;
+            }
+            handleWheel(event);
+        },
+        [handleWheel, isCanvasInteractionLocked],
+    );
+
+    const updateRecipeNode = useCallback((nodeId: string, patch: Partial<RecipeNode>) => {
+        setNodes((current) =>
+            current.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+        );
+    }, []);
+
+    useEffect(() => {
+        if (isCanvasInteractionLocked) {
+            handlePanMouseUp();
+        }
+    }, [handlePanMouseUp, isCanvasInteractionLocked]);
 
     const itemRefs = useRef<Map<string, HTMLDivElement>>(new Map());
     const itemDragRef = useRef<ItemDragState | null>(null);
@@ -1029,108 +1058,6 @@ export default function RecipeCanvas() {
         );
         setLabelEditNodeId(null);
     }, [labelEditNodeId, labelEditValue]);
-
-    const openDurationEditor = useCallback(
-        (nodeId: string) => {
-            const node = nodes.find((entry) => entry.id === nodeId);
-            if (!node || node.kind !== 'recipe') {
-                return;
-            }
-            setDurationEditNodeId(nodeId);
-            setDurationEditValue(String(node.durationTicks ?? defaultDurationTicks));
-            setContextMenu(null);
-            setRecipeSearchQuery('');
-        },
-        [defaultDurationTicks, nodes],
-    );
-
-    const applyDurationEdit = useCallback(() => {
-        if (!durationEditNodeId) {
-            return;
-        }
-        const nextTicks = Number.parseInt(durationEditValue, 10);
-        if (!Number.isFinite(nextTicks) || nextTicks <= 0) {
-            return;
-        }
-        setNodes((current) =>
-            current.map((node) =>
-                node.id === durationEditNodeId ? { ...node, durationTicks: nextTicks } : node,
-            ),
-        );
-        setDurationEditNodeId(null);
-    }, [durationEditNodeId, durationEditValue]);
-
-    const openConstraintEditor = useCallback(
-        (nodeId: string) => {
-            const node = nodes.find((entry) => entry.id === nodeId);
-            if (!node || node.kind !== 'recipe') {
-                return;
-            }
-            setConstraintEditNodeId(nodeId);
-            setMachineLimitValue(node.machineLimit != null ? String(node.machineLimit) : '');
-            setSpeedPercentValue(String(node.speedPercent ?? 100));
-            setOutputRateLimitValue(
-                node.outputRateLimitPerMinute != null
-                    ? String(fromRatePerMinute(node.outputRateLimitPerMinute, flowRateUnit))
-                    : '',
-            );
-            setAutoRoundValue(node.autoRound ?? false);
-            setContextMenu(null);
-            setRecipeSearchQuery('');
-        },
-        [flowRateUnit, nodes],
-    );
-
-    const applyConstraintEdit = useCallback(() => {
-        if (!constraintEditNodeId) {
-            return;
-        }
-
-        let machineLimit: number | null = null;
-        if (machineLimitValue.trim()) {
-            const parsed = Number.parseInt(machineLimitValue, 10);
-            if (!Number.isFinite(parsed) || parsed < 1) {
-                return;
-            }
-            machineLimit = parsed;
-        }
-
-        const speedPercent = Number.parseFloat(speedPercentValue);
-        if (!Number.isFinite(speedPercent) || speedPercent <= 0) {
-            return;
-        }
-
-        let outputRateLimitPerMinute: number | null = null;
-        if (outputRateLimitValue.trim()) {
-            const parsedRate = Number.parseFloat(outputRateLimitValue);
-            if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
-                return;
-            }
-            outputRateLimitPerMinute = toRatePerMinute(parsedRate, flowRateUnit);
-        }
-
-        setNodes((current) =>
-            current.map((node) =>
-                node.id === constraintEditNodeId
-                    ? {
-                          ...node,
-                          machineLimit,
-                          speedPercent,
-                          outputRateLimitPerMinute,
-                          autoRound: autoRoundValue,
-                      }
-                    : node,
-            ),
-        );
-        setConstraintEditNodeId(null);
-    }, [
-        autoRoundValue,
-        constraintEditNodeId,
-        flowRateUnit,
-        machineLimitValue,
-        outputRateLimitValue,
-        speedPercentValue,
-    ]);
 
     const openTargetEditor = useCallback((menu: SlotContextMenu) => {
         setTargetEditSlot({
@@ -1734,6 +1661,9 @@ export default function RecipeCanvas() {
     }, [finishItemDrag]);
 
     const handleCanvasMouseDownForPan = (event: React.MouseEvent<HTMLDivElement>) => {
+        if (isCanvasInteractionLocked) {
+            return;
+        }
         if (event.button !== 0) return;
         if (nodeDragState || itemDragState) return;
         handlePanMouseDown(event);
@@ -1782,7 +1712,6 @@ export default function RecipeCanvas() {
             }
             setContextMenu(null);
             setRecipeSearchQuery('');
-            setDurationEditNodeId(null);
             setTargetEditSlot(null);
         } catch {
             // пользователь отменил выбор или файл некорректен
@@ -2330,7 +2259,7 @@ export default function RecipeCanvas() {
                 className="recipe-canvas"
                 ref={viewportRef}
                 onContextMenu={openMenu}
-                onWheel={handleWheel}
+                onWheel={handleCanvasWheel}
                 onMouseDown={handleCanvasMouseDownForPan}
                 onMouseMove={handlePanMouseMove}
                 onMouseUp={handlePanMouseUp}
@@ -2446,32 +2375,44 @@ export default function RecipeCanvas() {
                                     )}
                                 </div>
                                 <div className="recipe-node-column recipe-node-column--machine">
-                                    <div
-                                        className={`recipe-node-machine recipe-node-machine--${node.kind}`}
-                                        onMouseDown={(event) =>
-                                            handleMachineMouseDown(node.id, event)
-                                        }
-                                    >
-                                        <span>{displayNodeName(node)}</span>
-                                        {node.kind === 'recipe' && machineStats && (
-                                            <div className="recipe-node-machines" title="Машин (расчёт / лимит)">
-                                                <span className="recipe-node-machines-calculated">
-                                                    {machineStats.machineCount.toFixed(2)}
-                                                </span>
-                                                {node.machineLimit != null && (
-                                                    <span className="recipe-node-machines-limit">
-                                                        {node.machineLimit}
-                                                    </span>
-                                                )}
-                                            </div>
-                                        )}
-                                        {node.kind === 'recipe' && node.durationTicks !== undefined && (
-                                            <span
-                                                className="recipe-node-duration"
-                                                title={`${node.durationTicks} тиков`}
-                                            >
-                                                {formatDurationLabel(node.durationTicks)}
-                                            </span>
+                                    <div className="recipe-node-machine-stack">
+                                        <div
+                                            className={`recipe-node-machine recipe-node-machine--${node.kind}`}
+                                            onMouseDown={(event) =>
+                                                handleMachineMouseDown(node.id, event)
+                                            }
+                                        >
+                                            <span>{displayNodeName(node)}</span>
+                                        </div>
+                                        {node.kind === 'recipe' && (
+                                            <>
+                                                <div className="recipe-node-stats-row recipe-node-stats-row--calculated">
+                                                    {machineStats ? (
+                                                        machineStats.machineCount.toFixed(2)
+                                                    ) : (
+                                                        <span className="recipe-node-stats-placeholder">
+                                                            ??
+                                                        </span>
+                                                    )}
+                                                </div>
+                                                <div className="recipe-node-stats-row recipe-node-stats-row--limit">
+                                                    {machineStats ? (
+                                                        <MachineLimitInput
+                                                            nodeId={node.id}
+                                                            machineLimit={node.machineLimit}
+                                                            onCommit={(value) =>
+                                                                updateRecipeNode(node.id, {
+                                                                    machineLimit: value,
+                                                                })
+                                                            }
+                                                        />
+                                                    ) : (
+                                                        <span className="recipe-node-stats-placeholder">
+                                                            ??
+                                                        </span>
+                                                    )}
+                                                </div>
+                                            </>
                                         )}
                                     </div>
                                 </div>
@@ -2493,7 +2434,11 @@ export default function RecipeCanvas() {
 
                 {(contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') &&
                     createPortal(
-                        <div className="recipe-context-modal" onClick={closeMenu}>
+                        <div
+                            className="recipe-context-modal"
+                            onClick={closeMenu}
+                            onWheel={(event) => event.stopPropagation()}
+                        >
                             <div
                                 className="recipe-context-panel"
                                 style={{
@@ -2576,94 +2521,45 @@ export default function RecipeCanvas() {
                     )}
 
                 {contextMenu?.type === 'node' &&
-                    createPortal(
-                        <div
-                            className="recipe-context-modal recipe-context-modal--transparent"
-                            onClick={closeMenu}
-                        >
+                    (() => {
+                        const node = nodes.find((entry) => entry.id === contextMenu.nodeId);
+                        if (!node) {
+                            return null;
+                        }
+                        return createPortal(
                             <div
-                                className="recipe-node-context-panel"
-                                style={{
-                                    left: contextMenu.screenX,
-                                    top: contextMenu.screenY,
-                                }}
-                                onClick={(event) => event.stopPropagation()}
+                                className="recipe-context-modal recipe-context-modal--transparent"
+                                onClick={closeMenu}
+                                onWheel={(event) => event.stopPropagation()}
                             >
-                                {(() => {
-                                    const node = nodes.find(
-                                        (entry) => entry.id === contextMenu.nodeId,
-                                    );
-                                    const canEditDuration = node?.kind === 'recipe';
-                                    const isFactory = node?.kind === 'outpost';
-                                    return (
-                                        <>
-                                            {isFactory && (
-                                                <button
-                                                    type="button"
-                                                    className="recipe-node-context-item"
-                                                    onClick={() =>
-                                                        openFactory(contextMenu.nodeId)
-                                                    }
-                                                >
-                                                    Открыть фабрику
-                                                </button>
-                                            )}
-                                            {isFactory && (
-                                                <button
-                                                    type="button"
-                                                    className="recipe-node-context-item"
-                                                    onClick={() =>
-                                                        openLabelEditor(contextMenu.nodeId)
-                                                    }
-                                                >
-                                                    Переименовать…
-                                                </button>
-                                            )}
-                                            {canEditDuration && (
-                                                <button
-                                                    type="button"
-                                                    className="recipe-node-context-item"
-                                                    onClick={() =>
-                                                        openConstraintEditor(contextMenu.nodeId)
-                                                    }
-                                                >
-                                                    Производство…
-                                                </button>
-                                            )}
-                                            {canEditDuration && (
-                                                <button
-                                                    type="button"
-                                                    className="recipe-node-context-item"
-                                                    onClick={() =>
-                                                        openDurationEditor(contextMenu.nodeId)
-                                                    }
-                                                >
-                                                    Изменить время операции…
-                                                </button>
-                                            )}
-                                            <button
-                                                type="button"
-                                                className="recipe-node-context-item recipe-node-context-item--danger"
-                                                onClick={() => {
-                                                    removeNode(contextMenu.nodeId);
-                                                    closeMenu();
-                                                }}
-                                            >
-                                                Удалить ноду
-                                            </button>
-                                        </>
-                                    );
-                                })()}
-                            </div>
-                        </div>,
-                        document.body,
-                    )}
+                                <RecipeNodeContextPanel
+                                    node={node}
+                                    screenX={contextMenu.screenX}
+                                    screenY={contextMenu.screenY}
+                                    flowRateUnit={flowRateUnit}
+                                    defaultDurationTicks={defaultDurationTicks}
+                                    onUpdateNode={updateRecipeNode}
+                                    onOpenFactory={() => {
+                                        openFactory(contextMenu.nodeId);
+                                        closeMenu();
+                                    }}
+                                    onRenameFactory={() => openLabelEditor(contextMenu.nodeId)}
+                                    onDelete={() => {
+                                        removeNode(contextMenu.nodeId);
+                                        closeMenu();
+                                    }}
+                                />
+                            </div>,
+                            document.body,
+                        );
+                    })()}
 
                 {contextMenu?.type === 'slot' &&
                     createPortal(
                         <div
                             className="recipe-context-modal recipe-context-modal--transparent"
                             onClick={closeMenu}
+                            onWheel={(event) => event.stopPropagation()}
                         >
                             <div
                                 className="recipe-node-context-panel"
@@ -2690,6 +2586,7 @@ export default function RecipeCanvas() {
                         <div
                             className="recipe-context-modal recipe-context-modal--transparent"
                             onClick={() => setPortPicker(null)}
+                            onWheel={(event) => event.stopPropagation()}
                         >
                             <div
                                 className="recipe-node-context-panel"
@@ -2743,6 +2640,7 @@ export default function RecipeCanvas() {
                         <div
                             className="recipe-context-modal"
                             onClick={() => setLabelEditNodeId(null)}
+                            onWheel={(event) => event.stopPropagation()}
                         >
                             <div
                                 className="recipe-duration-modal"
@@ -2784,140 +2682,12 @@ export default function RecipeCanvas() {
                         document.body,
                     )}
 
-                {durationEditNodeId &&
-                    createPortal(
-                        <div
-                            className="recipe-context-modal"
-                            onClick={() => setDurationEditNodeId(null)}
-                        >
-                            <div
-                                className="recipe-duration-modal"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <div className="recipe-duration-modal-title">
-                                    Время операции (тиков)
-                                </div>
-                                <input
-                                    className="recipe-duration-modal-input"
-                                    type="number"
-                                    min={1}
-                                    step={1}
-                                    value={durationEditValue}
-                                    onChange={(event) => setDurationEditValue(event.target.value)}
-                                    onKeyDown={(event) => {
-                                        if (event.key === 'Enter') {
-                                            applyDurationEdit();
-                                        }
-                                    }}
-                                />
-                                <p className="recipe-duration-modal-hint">
-                                    {TICKS_PER_SECOND} тиков = 1 сек
-                                </p>
-                                <div className="recipe-duration-modal-actions">
-                                    <button
-                                        type="button"
-                                        className="recipe-duration-modal-button"
-                                        onClick={() => setDurationEditNodeId(null)}
-                                    >
-                                        Отмена
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
-                                        onClick={applyDurationEdit}
-                                    >
-                                        Сохранить
-                                    </button>
-                                </div>
-                            </div>
-                        </div>,
-                        document.body,
-                    )}
-
-                {constraintEditNodeId &&
-                    createPortal(
-                        <div
-                            className="recipe-context-modal"
-                            onClick={() => setConstraintEditNodeId(null)}
-                        >
-                            <div
-                                className="recipe-duration-modal recipe-constraint-modal"
-                                onClick={(event) => event.stopPropagation()}
-                            >
-                                <div className="recipe-duration-modal-title">Производство</div>
-                                <label className="recipe-constraint-field">
-                                    <span>Лимит машин (целое)</span>
-                                    <input
-                                        className="recipe-duration-modal-input"
-                                        type="number"
-                                        min={1}
-                                        step={1}
-                                        placeholder="без лимита"
-                                        value={machineLimitValue}
-                                        onChange={(event) => setMachineLimitValue(event.target.value)}
-                                    />
-                                </label>
-                                <label className="recipe-constraint-field">
-                                    <span>Скорость часов %</span>
-                                    <input
-                                        className="recipe-duration-modal-input"
-                                        type="number"
-                                        min={0.01}
-                                        step="any"
-                                        value={speedPercentValue}
-                                        onChange={(event) => setSpeedPercentValue(event.target.value)}
-                                    />
-                                </label>
-                                <label className="recipe-constraint-field">
-                                    <span>
-                                        Лимит скорости выхода ({FLOW_RATE_UNIT_LABELS[flowRateUnit]})
-                                    </span>
-                                    <input
-                                        className="recipe-duration-modal-input"
-                                        type="number"
-                                        min={0.01}
-                                        step="any"
-                                        placeholder="без лимита"
-                                        value={outputRateLimitValue}
-                                        onChange={(event) =>
-                                            setOutputRateLimitValue(event.target.value)
-                                        }
-                                    />
-                                </label>
-                                <label className="recipe-constraint-toggle">
-                                    <input
-                                        type="checkbox"
-                                        checked={autoRoundValue}
-                                        onChange={(event) => setAutoRoundValue(event.target.checked)}
-                                    />
-                                    <span>Автоматический раунд</span>
-                                </label>
-                                <div className="recipe-duration-modal-actions">
-                                    <button
-                                        type="button"
-                                        className="recipe-duration-modal-button"
-                                        onClick={() => setConstraintEditNodeId(null)}
-                                    >
-                                        Отмена
-                                    </button>
-                                    <button
-                                        type="button"
-                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
-                                        onClick={applyConstraintEdit}
-                                    >
-                                        Сохранить
-                                    </button>
-                                </div>
-                            </div>
-                        </div>,
-                        document.body,
-                    )}
-
                 {targetEditSlot &&
                     createPortal(
                         <div
                             className="recipe-context-modal"
                             onClick={() => setTargetEditSlot(null)}
+                            onWheel={(event) => event.stopPropagation()}
                         >
                             <div
                                 className="recipe-duration-modal"

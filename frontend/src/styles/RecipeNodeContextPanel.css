@@ -1,0 +1,68 @@
+.recipe-node-context-panel--form {
+    min-width: 16rem;
+    max-width: min(20rem, calc(100vw - 2rem));
+    padding: 0.65rem 0.75rem;
+    background: var(--ui-bg);
+    border: 1px solid var(--ui-border);
+    box-shadow: var(--ui-shadow);
+}
+
+.recipe-node-context-actions {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
+    margin-bottom: 0.5rem;
+    padding-bottom: 0.5rem;
+    border-bottom: 1px solid var(--ui-border-subtle);
+}
+
+.recipe-node-context-section-title {
+    font-size: 0.78rem;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #6b7280;
+    margin: 0.35rem 0 0.45rem;
+}
+
+.recipe-node-context-section-title:first-child {
+    margin-top: 0;
+}
+
+.recipe-node-context-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.8rem;
+    color: #374151;
+}
+
+.recipe-node-context-input {
+    width: 100%;
+    padding: 0.35rem 0.45rem;
+    border: 1px solid var(--ui-border-light);
+    background: var(--ui-bg-muted);
+    font-size: 0.88rem;
+    color: #111827;
+}
+
+.recipe-node-context-input:focus {
+    outline: 2px solid #93c5fd;
+    border-color: #60a5fa;
+}
+
+.recipe-node-context-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.45rem;
+    margin-bottom: 0.55rem;
+    font-size: 0.8rem;
+    color: #374151;
+}
+
+.recipe-node-context-hint {
+    margin: -0.25rem 0 0.55rem;
+    font-size: 0.72rem;
+    color: #6b7280;
+}
