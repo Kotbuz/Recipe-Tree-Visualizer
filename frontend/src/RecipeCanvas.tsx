@@ -48,6 +48,7 @@ import {
     TICKS_PER_SECOND,
     CanvasConversionError,
     buildConnectionFlowRates,
+    buildMachineCountByNodeId,
     buildCanvasBezierPath,
     canvasToBackendGraph,
     getCanvasBezierPoint,
@@ -62,7 +63,7 @@ import {
     useCanvasViewport,
     type CanvasNodeRecord,
 } from './canvas';
-import type { FlowRateUnit, ProductionTarget } from './types/production';
+import type { FlowRateUnit, ProductionPlan, ProductionTarget } from './types/production';
 import { FLOW_RATE_UNIT_LABELS, formatFlowRate, fromRatePerMinute, toRatePerMinute } from './utils/flowRate';
 import './styles/RecipeCanvas.css';
 
@@ -648,8 +649,14 @@ export default function RecipeCanvas() {
         () => new Map(),
     );
     const [calculationError, setCalculationError] = useState<string | null>(null);
+    const [productionPlan, setProductionPlan] = useState<ProductionPlan | null>(null);
     const [durationEditNodeId, setDurationEditNodeId] = useState<string | null>(null);
     const [durationEditValue, setDurationEditValue] = useState(String(DEFAULT_DURATION_TICKS));
+    const [constraintEditNodeId, setConstraintEditNodeId] = useState<string | null>(null);
+    const [machineLimitValue, setMachineLimitValue] = useState('');
+    const [speedPercentValue, setSpeedPercentValue] = useState('100');
+    const [outputRateLimitValue, setOutputRateLimitValue] = useState('');
+    const [autoRoundValue, setAutoRoundValue] = useState(false);
     const [targetEditSlot, setTargetEditSlot] = useState<{
         nodeId: string;
         itemIndex: number;
@@ -787,9 +794,27 @@ export default function RecipeCanvas() {
         bumpLayout();
     }, [nodes, connections, transform, bumpLayout]);
 
+    const hasMachineLimits = useMemo(
+        () =>
+            nodes.some(
+                (node) =>
+                    node.kind === 'recipe' &&
+                    node.machineLimit != null &&
+                    Number.isFinite(node.machineLimit) &&
+                    node.machineLimit > 0,
+            ),
+        [nodes],
+    );
+
+    const machineCountByNode = useMemo(
+        () => buildMachineCountByNodeId(nodes, productionPlan),
+        [nodes, productionPlan],
+    );
+
     useEffect(() => {
-        if (!productionTarget) {
+        if (!productionTarget && !hasMachineLimits) {
             setConnectionFlowRates(new Map());
+            setProductionPlan(null);
             setCalculationError(null);
             return undefined;
         }
@@ -798,16 +823,26 @@ export default function RecipeCanvas() {
             try {
                 const graph = canvasToBackendGraph(nodes, connections);
                 const plan = await calculateProduction({
-                    target_item_id: productionTarget.itemId,
-                    target_rate_per_minute: productionTarget.ratePerMinute,
+                    ...(productionTarget
+                        ? {
+                              target_item_id: productionTarget.itemId,
+                              target_rate_per_minute: productionTarget.ratePerMinute,
+                          }
+                        : {}),
                     graph,
                     version,
                     profile_id: activeProfileId,
                 });
                 setConnectionFlowRates(buildConnectionFlowRates(nodes, connections, plan));
-                setCalculationError(null);
+                setProductionPlan(plan);
+                if (plan.constraint_errors && plan.constraint_errors.length > 0) {
+                    setCalculationError(plan.constraint_errors.join(' · '));
+                } else {
+                    setCalculationError(null);
+                }
             } catch (error) {
                 setConnectionFlowRates(new Map());
+                setProductionPlan(null);
                 if (error instanceof CanvasConversionError || error instanceof Error) {
                     setCalculationError(error.message);
                 } else {
@@ -817,7 +852,7 @@ export default function RecipeCanvas() {
         }, 400);
 
         return () => window.clearTimeout(timer);
-    }, [activeProfileId, connections, nodes, productionTarget, version]);
+    }, [activeProfileId, connections, hasMachineLimits, nodes, productionTarget, version]);
 
     const syncChestPassthrough = useCallback((nodeId: string, itemName: string) => {
         setNodes((current) =>
@@ -1024,6 +1059,78 @@ export default function RecipeCanvas() {
         );
         setDurationEditNodeId(null);
     }, [durationEditNodeId, durationEditValue]);
+
+    const openConstraintEditor = useCallback(
+        (nodeId: string) => {
+            const node = nodes.find((entry) => entry.id === nodeId);
+            if (!node || node.kind !== 'recipe') {
+                return;
+            }
+            setConstraintEditNodeId(nodeId);
+            setMachineLimitValue(node.machineLimit != null ? String(node.machineLimit) : '');
+            setSpeedPercentValue(String(node.speedPercent ?? 100));
+            setOutputRateLimitValue(
+                node.outputRateLimitPerMinute != null
+                    ? String(fromRatePerMinute(node.outputRateLimitPerMinute, flowRateUnit))
+                    : '',
+            );
+            setAutoRoundValue(node.autoRound ?? false);
+            setContextMenu(null);
+            setRecipeSearchQuery('');
+        },
+        [flowRateUnit, nodes],
+    );
+
+    const applyConstraintEdit = useCallback(() => {
+        if (!constraintEditNodeId) {
+            return;
+        }
+
+        let machineLimit: number | null = null;
+        if (machineLimitValue.trim()) {
+            const parsed = Number.parseInt(machineLimitValue, 10);
+            if (!Number.isFinite(parsed) || parsed < 1) {
+                return;
+            }
+            machineLimit = parsed;
+        }
+
+        const speedPercent = Number.parseFloat(speedPercentValue);
+        if (!Number.isFinite(speedPercent) || speedPercent <= 0) {
+            return;
+        }
+
+        let outputRateLimitPerMinute: number | null = null;
+        if (outputRateLimitValue.trim()) {
+            const parsedRate = Number.parseFloat(outputRateLimitValue);
+            if (!Number.isFinite(parsedRate) || parsedRate <= 0) {
+                return;
+            }
+            outputRateLimitPerMinute = toRatePerMinute(parsedRate, flowRateUnit);
+        }
+
+        setNodes((current) =>
+            current.map((node) =>
+                node.id === constraintEditNodeId
+                    ? {
+                          ...node,
+                          machineLimit,
+                          speedPercent,
+                          outputRateLimitPerMinute,
+                          autoRound: autoRoundValue,
+                      }
+                    : node,
+            ),
+        );
+        setConstraintEditNodeId(null);
+    }, [
+        autoRoundValue,
+        constraintEditNodeId,
+        flowRateUnit,
+        machineLimitValue,
+        outputRateLimitValue,
+        speedPercentValue,
+    ]);
 
     const openTargetEditor = useCallback((menu: SlotContextMenu) => {
         setTargetEditSlot({
@@ -2307,7 +2414,10 @@ export default function RecipeCanvas() {
                         })}
                     </svg>
 
-                    {nodes.map((node) => (
+                    {nodes.map((node) => {
+                        const machineStats = machineCountByNode.get(node.id);
+                        const isConstraintLimited = machineStats?.limitApplied ?? false;
+                        return (
                         <div
                             key={node.id}
                             className={`recipe-node-wrapper ${
@@ -2328,7 +2438,7 @@ export default function RecipeCanvas() {
                                     contextMenu?.type === 'node' && contextMenu.nodeId === node.id
                                         ? 'recipe-node--active'
                                         : ''
-                                }`}
+                                } ${isConstraintLimited ? 'recipe-node--constrained' : ''}`}
                             >
                                 <div className="recipe-node-column recipe-node-column--inputs">
                                     {node.inputs.map((input, index) =>
@@ -2343,6 +2453,18 @@ export default function RecipeCanvas() {
                                         }
                                     >
                                         <span>{displayNodeName(node)}</span>
+                                        {node.kind === 'recipe' && machineStats && (
+                                            <div className="recipe-node-machines" title="Машин (расчёт / лимит)">
+                                                <span className="recipe-node-machines-calculated">
+                                                    {machineStats.machineCount.toFixed(2)}
+                                                </span>
+                                                {node.machineLimit != null && (
+                                                    <span className="recipe-node-machines-limit">
+                                                        {node.machineLimit}
+                                                    </span>
+                                                )}
+                                            </div>
+                                        )}
                                         {node.kind === 'recipe' && node.durationTicks !== undefined && (
                                             <span
                                                 className="recipe-node-duration"
@@ -2365,7 +2487,8 @@ export default function RecipeCanvas() {
                                 )}
                             </div>
                         </div>
-                    ))}
+                        );
+                    })}
                 </div>
 
                 {(contextMenu?.type === 'recipe' || contextMenu?.type === 'item-recipe') &&
@@ -2494,6 +2617,17 @@ export default function RecipeCanvas() {
                                                     }
                                                 >
                                                     Переименовать…
+                                                </button>
+                                            )}
+                                            {canEditDuration && (
+                                                <button
+                                                    type="button"
+                                                    className="recipe-node-context-item"
+                                                    onClick={() =>
+                                                        openConstraintEditor(contextMenu.nodeId)
+                                                    }
+                                                >
+                                                    Производство…
                                                 </button>
                                             )}
                                             {canEditDuration && (
@@ -2691,6 +2825,85 @@ export default function RecipeCanvas() {
                                         type="button"
                                         className="recipe-duration-modal-button recipe-duration-modal-button--primary"
                                         onClick={applyDurationEdit}
+                                    >
+                                        Сохранить
+                                    </button>
+                                </div>
+                            </div>
+                        </div>,
+                        document.body,
+                    )}
+
+                {constraintEditNodeId &&
+                    createPortal(
+                        <div
+                            className="recipe-context-modal"
+                            onClick={() => setConstraintEditNodeId(null)}
+                        >
+                            <div
+                                className="recipe-duration-modal recipe-constraint-modal"
+                                onClick={(event) => event.stopPropagation()}
+                            >
+                                <div className="recipe-duration-modal-title">Производство</div>
+                                <label className="recipe-constraint-field">
+                                    <span>Лимит машин (целое)</span>
+                                    <input
+                                        className="recipe-duration-modal-input"
+                                        type="number"
+                                        min={1}
+                                        step={1}
+                                        placeholder="без лимита"
+                                        value={machineLimitValue}
+                                        onChange={(event) => setMachineLimitValue(event.target.value)}
+                                    />
+                                </label>
+                                <label className="recipe-constraint-field">
+                                    <span>Скорость часов %</span>
+                                    <input
+                                        className="recipe-duration-modal-input"
+                                        type="number"
+                                        min={0.01}
+                                        step="any"
+                                        value={speedPercentValue}
+                                        onChange={(event) => setSpeedPercentValue(event.target.value)}
+                                    />
+                                </label>
+                                <label className="recipe-constraint-field">
+                                    <span>
+                                        Лимит скорости выхода ({FLOW_RATE_UNIT_LABELS[flowRateUnit]})
+                                    </span>
+                                    <input
+                                        className="recipe-duration-modal-input"
+                                        type="number"
+                                        min={0.01}
+                                        step="any"
+                                        placeholder="без лимита"
+                                        value={outputRateLimitValue}
+                                        onChange={(event) =>
+                                            setOutputRateLimitValue(event.target.value)
+                                        }
+                                    />
+                                </label>
+                                <label className="recipe-constraint-toggle">
+                                    <input
+                                        type="checkbox"
+                                        checked={autoRoundValue}
+                                        onChange={(event) => setAutoRoundValue(event.target.checked)}
+                                    />
+                                    <span>Автоматический раунд</span>
+                                </label>
+                                <div className="recipe-duration-modal-actions">
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button"
+                                        onClick={() => setConstraintEditNodeId(null)}
+                                    >
+                                        Отмена
+                                    </button>
+                                    <button
+                                        type="button"
+                                        className="recipe-duration-modal-button recipe-duration-modal-button--primary"
+                                        onClick={applyConstraintEdit}
                                     >
                                         Сохранить
                                     </button>

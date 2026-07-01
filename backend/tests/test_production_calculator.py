@@ -538,3 +538,51 @@ def test_production_calculator_uses_default_duration_for_crafting(mock_load) -> 
 
     # 120 sticks/min = 30 crafts/min; default 100 ticks => 12 crafts/min per table
     assert plan.stages[0].machine_count == pytest.approx(2.5)
+
+
+@patch.object(BipartiteGraphEngine, "_load_recipes")
+def test_machine_limit_caps_downstream_rate(mock_load) -> None:
+    mock_load.return_value = _mock_recipes(_stick_recipe())
+    graph = CanvasGraph(
+        item_nodes=[
+            CanvasItemNode(node_id="item_stick", item_id="minecraft:stick"),
+            CanvasItemNode(node_id="item_planks", item_id="minecraft:oak_planks"),
+        ],
+        recipe_nodes=[
+            CanvasRecipeNode(
+                node_id="recipe_stick",
+                recipe_id="minecraft:stick",
+                machine_limit=1,
+            ),
+        ],
+        edges=[
+            CanvasEdge(
+                edge_id="out_stick",
+                source_node_id="recipe_stick",
+                target_node_id="item_stick",
+                item_id="minecraft:stick",
+                amount=4,
+            ),
+            CanvasEdge(
+                edge_id="in_planks",
+                source_node_id="item_planks",
+                target_node_id="recipe_stick",
+                item_id="minecraft:oak_planks",
+                amount=2,
+            ),
+        ],
+    )
+
+    plan = ProductionCalculator().calculate(
+        CalculateProductionRequest(
+            target_item_id="minecraft:stick",
+            target_rate_per_minute=100,
+            graph=graph,
+        )
+    )
+
+    assert plan.stages[0].machine_count == pytest.approx(1.0)
+    assert plan.stages[0].machine_limit_applied is True
+    assert plan.stages[0].output_rates["minecraft:stick"] == pytest.approx(48.0)
+    assert plan.effective_target_rate_per_minute == pytest.approx(48.0)
+    assert plan.constraint_errors

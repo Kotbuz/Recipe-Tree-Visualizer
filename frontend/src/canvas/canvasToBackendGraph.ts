@@ -17,6 +17,10 @@ export type BackendCanvasGraph = {
         recipe_id: string;
         kind?: string | null;
         duration_ticks?: number | null;
+        machine_limit?: number | null;
+        output_rate_limit_per_minute?: number | null;
+        speed_percent?: number;
+        auto_round?: boolean;
         x: number;
         y: number;
     }>;
@@ -103,6 +107,10 @@ export function canvasToBackendGraph(
                     recipe_id: node.recipeId,
                     kind: null,
                     duration_ticks: node.durationTicks ?? null,
+                    machine_limit: node.machineLimit ?? null,
+                    output_rate_limit_per_minute: node.outputRateLimitPerMinute ?? null,
+                    speed_percent: node.speedPercent ?? 100,
+                    auto_round: node.autoRound ?? false,
                     x: node.x,
                     y: node.y,
                 });

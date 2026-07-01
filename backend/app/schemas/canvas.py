@@ -16,6 +16,10 @@ class CanvasRecipeNode(BaseModel):
     recipe_id: str
     kind: str | None = None
     duration_ticks: int | None = None
+    machine_limit: int | None = Field(default=None, ge=1)
+    output_rate_limit_per_minute: float | None = Field(default=None, gt=0)
+    speed_percent: float = Field(default=100.0, gt=0)
+    auto_round: bool = False
     x: float = 0
     y: float = 0
 

@@ -112,6 +112,15 @@ class BipartiteGraphEngine:
             raise GraphValidationError(f"Unknown recipe node: {recipe_node_id}")
         return self.get_recipe(recipe_node.recipe_id)
 
+    def get_canvas_recipe_node(self, recipe_node_id: str) -> CanvasRecipeNode:
+        recipe_node = self._recipe_nodes.get(recipe_node_id)
+        if recipe_node is None:
+            raise GraphValidationError(f"Unknown recipe node: {recipe_node_id}")
+        return recipe_node
+
+    def items_match(self, needle: str, candidate: str) -> bool:
+        return self._item_matches(needle, candidate)
+
     def duration_ticks_for_node(self, recipe_node_id: str) -> int:
         recipe_node = self._recipe_nodes.get(recipe_node_id)
         if recipe_node is None:

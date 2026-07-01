@@ -23,6 +23,13 @@ export interface CanvasNodeRecord {
     inputs: RecipeItem[];
     outputs: RecipeItem[];
     durationTicks?: number;
+    /** Целое — верхняя граница числа машин на этом экземпляре рецепта. */
+    machineLimit?: number | null;
+    /** Верхняя граница скорости основного выхода, предметов/мин. */
+    outputRateLimitPerMinute?: number | null;
+    /** Множитель скорости машины, % (100 = без изменений). */
+    speedPercent?: number;
+    autoRound?: boolean;
     /** Пользовательское имя экземпляра (кнопка «Переименовать» у фабрики). */
     label?: string;
     /** Вложенный холст фабрики: внутренние ноды и связи. */

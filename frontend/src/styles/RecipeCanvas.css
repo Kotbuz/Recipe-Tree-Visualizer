@@ -274,6 +274,53 @@
     opacity: 0.85;
 }
 
+.recipe-node-machines {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.05rem;
+    line-height: 1;
+}
+
+.recipe-node-machines-calculated {
+    font-size: 0.95rem;
+    font-weight: 800;
+    color: #1e1b4b;
+}
+
+.recipe-node-machines-limit {
+    font-size: 0.72rem;
+    font-weight: 700;
+    color: #6b7280;
+}
+
+.recipe-node--constrained {
+    outline: 2px solid #f59e0b;
+    outline-offset: 1px;
+}
+
+.recipe-constraint-modal {
+    min-width: 18rem;
+}
+
+.recipe-constraint-field {
+    display: flex;
+    flex-direction: column;
+    gap: 0.35rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.82rem;
+    color: #374151;
+}
+
+.recipe-constraint-toggle {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.85rem;
+    font-size: 0.82rem;
+    color: #374151;
+}
+
 .recipe-node-machine:active {
     cursor: grabbing;
 }

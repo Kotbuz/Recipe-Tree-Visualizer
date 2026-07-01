@@ -41,4 +41,4 @@ export {
 export { useCanvasViewport } from './useCanvasViewport';
 export { isSlotConnected } from './slotConnections';
 export { canvasToBackendGraph, CanvasConversionError } from './canvasToBackendGraph';
-export { buildConnectionFlowRates } from './connectionFlowRates';
+export { buildConnectionFlowRates, buildMachineCountByNodeId } from './connectionFlowRates';

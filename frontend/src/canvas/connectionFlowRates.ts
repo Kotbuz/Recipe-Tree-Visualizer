@@ -17,13 +17,17 @@ function resolveProducerSlot(connection: RecipeConnection) {
     return null;
 }
 
+function backendNodeId(nodeId: string): string {
+    return nodeId;
+}
+
 function findStageRate(
     plan: ProductionPlan,
-    recipeId: string,
+    recipeNodeId: string,
     itemId: string,
     direction: 'output' | 'input',
 ): number | undefined {
-    const stage = plan.stages.find((entry) => entry.recipe_id === recipeId);
+    const stage = plan.stages.find((entry) => entry.recipe_node_id === recipeNodeId);
     if (!stage) {
         return undefined;
     }
@@ -61,7 +65,12 @@ export function buildConnectionFlowRates(
             continue;
         }
 
-        const rate = findStageRate(plan, producerNode.recipeId, itemId, 'output');
+        const rate = findStageRate(
+            plan,
+            backendNodeId(producerSlot.nodeId),
+            itemId,
+            'output',
+        );
         if (rate !== undefined) {
             rates.set(connection.id, rate);
             continue;
@@ -79,11 +88,40 @@ export function buildConnectionFlowRates(
             continue;
         }
 
-        const inputRate = findStageRate(plan, consumerNode.recipeId, consumerItemId, 'input');
+        const inputRate = findStageRate(
+            plan,
+            backendNodeId(consumerSlot.nodeId),
+            consumerItemId,
+            'input',
+        );
         if (inputRate !== undefined) {
             rates.set(connection.id, inputRate);
         }
     }
 
     return rates;
+}
+
+export function buildMachineCountByNodeId(
+    nodes: CanvasNodeRecord[],
+    plan: ProductionPlan | null,
+): Map<string, { machineCount: number; limitApplied: boolean }> {
+    const result = new Map<string, { machineCount: number; limitApplied: boolean }>();
+    if (!plan) {
+        return result;
+    }
+    for (const node of nodes) {
+        if (node.kind !== 'recipe') {
+            continue;
+        }
+        const stage = plan.stages.find((entry) => entry.recipe_node_id === backendNodeId(node.id));
+        if (!stage) {
+            continue;
+        }
+        result.set(node.id, {
+            machineCount: stage.machine_count,
+            limitApplied: stage.machine_limit_applied ?? false,
+        });
+    }
+    return result;
 }
