@@ -243,7 +243,8 @@ recipe-exporter-neo/dist/*
 recipe-exporter/dist/*
 !recipe-exporter/dist/.gitkeep
 
-# Desktop CI/local build output
+# Локальные артефакты сборки (desktop .exe/.msi, portable, manifest.json)
+# Скрипт scripts/build-desktop.ps1 → release/desktop/ — в репозиторий не коммитить
 release/
 
 # Lockfiles at repo root only (frontend/desktop lockfiles are committed)
