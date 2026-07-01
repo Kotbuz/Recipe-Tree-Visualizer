@@ -117,7 +117,12 @@ class VanillaIconService:
                     mod_jar_paths=mod_jars,
                 )
             except httpx.HTTPError as exc:
-                message = f"Renderer request failed: {exc}"
+                message = (
+                    "Renderer недоступен (localhost:3001). "
+                    "Запустите Docker renderer или дождитесь встроенного рендера в desktop."
+                )
+                if not isinstance(exc, httpx.ConnectError):
+                    message = f"Renderer request failed: {exc}"
                 logger.error(message)
                 errors.append(message)
                 break

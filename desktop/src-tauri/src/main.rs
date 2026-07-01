@@ -61,6 +61,8 @@ fn apply_data_env(cmd: &mut Command, data_dir: &Path) {
     cmd.env("MINECRAFT_VERSIONS_DIR", &versions);
     cmd.env("LOG_DIR", &logs);
     cmd.env("PROJECT_HOST_PATH", data_dir);
+    // Renderer пока отдельный сервис; без Docker не запускаем фоновый рендер иконок.
+    cmd.env("VANILLA_ICON_RENDER_ON_STARTUP", "false");
 }
 
 fn resolve_dev_backend_dir() -> Option<PathBuf> {
@@ -108,6 +110,13 @@ fn wait_for_backend_port(timeout: Duration) -> bool {
 
 fn spawn_uvicorn(cmd: &mut Command, backend_cwd: &Path, data_dir: &Path) -> Option<Child> {
     apply_data_env(cmd, data_dir);
+
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
 
     if let Ok(java_home) = std::env::var("RTV_JAVA_HOME") {
         cmd.env("JAVA_HOME", java_home);
