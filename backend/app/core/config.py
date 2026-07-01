@@ -34,6 +34,8 @@ class Settings(BaseSettings):
     neo_recipe_exporter_timeout_seconds: float = 3600.0
     auto_bake_recipes_after_instance_import: bool = False
     neo_recipe_export_supported_versions: str = "1.21.1"
+    # Desktop: %APPDATA%/Recipe Tree Visualizer (задаётся из Tauri при старте)
+    rtv_data_dir: str = ""
     # Корень репозитория на хосте (для путей к логам в UI при backend в Docker)
     project_host_path: str = ""
 

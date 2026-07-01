@@ -8,6 +8,7 @@ param(
     [string] $Version = "",
     [switch] $SkipFrontend,
     [switch] $SkipIcons,
+    [switch] $SkipBackendBundle,
     [switch] $VersionOnly
 )
 
@@ -85,6 +86,16 @@ if ($VersionOnly) {
 
 $resolvedVersion = (Get-Content $TauriConf -Raw | ConvertFrom-Json).version
 Write-Host "Building Recipe Tree Visualizer desktop v$resolvedVersion"
+
+if (-not $SkipBackendBundle) {
+    & (Join-Path $Root "scripts\build-backend-bundle.ps1")
+} else {
+    $bundleMarker = Join-Path $TauriDir "bin\backend-bundle\python\python.exe"
+    if (-not (Test-Path $bundleMarker)) {
+        throw "Backend bundle missing ($bundleMarker). Run without -SkipBackendBundle."
+    }
+    Write-Host "Skipping backend bundle (already present)"
+}
 
 if (-not $SkipFrontend) {
     Push-Location $FrontendDir

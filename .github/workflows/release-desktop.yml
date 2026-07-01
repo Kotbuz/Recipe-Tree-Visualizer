@@ -75,6 +75,10 @@ jobs:
         working-directory: frontend
         run: npm run build
 
+      - name: Build embedded Python backend bundle
+        shell: pwsh
+        run: ./scripts/build-backend-bundle.ps1
+
       - name: Build Tauri bundle and release
         uses: tauri-apps/tauri-action@v0
         env:
@@ -90,10 +94,10 @@ jobs:
             - **`*-setup.exe`** — NSIS installer (рекомендуется)
 
             ### Зависимости на машине пользователя
-            - [uv](https://docs.astral.sh/uv/) в PATH — backend (`uv run uvicorn`)
             - JDK 8/17/21 для JVM-экспорта (UI → Модпак → Java)
+            - Данные: `%APPDATA%\Recipe Tree Visualizer\` (версии MC, моды, логи)
 
-            NeoForge 1.21+ и рендер иконок — через `docker compose` (см. README репозитория).
+            NeoForge 1.21+ in-game экспорт и рендер иконок — отдельные этапы (см. README).
           releaseDraft: ${{ github.event_name == 'workflow_dispatch' && inputs.draft }}
           prerelease: false
           args: --verbose
