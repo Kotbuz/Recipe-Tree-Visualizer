@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react';
-import { apiUrl } from '../api/base';
+import { apiFetch } from '../api/base';
 
 export type VersionCatalogEntry = {
     version: string;
@@ -27,7 +27,7 @@ export function useVersionCatalog() {
         setLoading(true);
         setError(null);
         try {
-            const response = await fetch(apiUrl('/versions/catalog'));
+            const response = await apiFetch('/versions/catalog');
             if (!response.ok) {
                 throw new Error(`Не удалось загрузить каталог версий (${response.status})`);
             }
@@ -56,7 +56,7 @@ export function useVersionCatalog() {
             setInstallingVersion(version);
             setError(null);
             try {
-                const response = await fetch(apiUrl(`/versions/${encodeURIComponent(version)}/install`), {
+                const response = await apiFetch(`/versions/${encodeURIComponent(version)}/install`, {
                     method: 'POST',
                 });
                 if (!response.ok) {

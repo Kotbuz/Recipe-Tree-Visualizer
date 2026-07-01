@@ -5,7 +5,7 @@ use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, Instant};
 
-use tauri::{Manager, RunEvent, path::BaseDirectory};
+use tauri::{path::BaseDirectory, Manager, RunEvent};
 
 struct BackendChild(Mutex<Option<Child>>);
 
@@ -20,7 +20,10 @@ fn prepend_to_path(dir: &Path) {
         return;
     };
     let dir_str = dir.to_string_lossy();
-    if path.split(';').any(|entry| entry.eq_ignore_ascii_case(dir_str.as_ref())) {
+    if path
+        .split(';')
+        .any(|entry| entry.eq_ignore_ascii_case(dir_str.as_ref()))
+    {
         return;
     }
     #[allow(unsafe_code)]
@@ -122,9 +125,20 @@ fn spawn_uvicorn(cmd: &mut Command, backend_cwd: &Path, data_dir: &Path) -> Opti
         cmd.env("JAVA_HOME", java_home);
     }
 
+    let stderr = {
+        let log_path = data_dir.join("logs").join("backend-stderr.log");
+        std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(log_path)
+            .ok()
+            .map(Stdio::from)
+            .unwrap_or_else(Stdio::null)
+    };
+
     cmd.current_dir(backend_cwd)
         .stdout(Stdio::null())
-        .stderr(Stdio::null());
+        .stderr(stderr);
 
     match cmd.spawn() {
         Ok(child) => Some(child),
@@ -145,7 +159,10 @@ fn start_backend_dev() -> Option<Child> {
 
     let mut cmd = if cfg!(windows) {
         let mut c = Command::new("cmd");
-        c.args(["/C", "uv run uvicorn app.main:app --host 127.0.0.1 --port 8000"]);
+        c.args([
+            "/C",
+            "uv run uvicorn app.main:app --host 127.0.0.1 --port 8000",
+        ]);
         c
     } else {
         let mut c = Command::new("uv");
@@ -220,6 +237,7 @@ fn stop_backend(app: &tauri::AppHandle) {
 
 fn main() {
     let app = tauri::Builder::default()
+        .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_shell::init())
         .manage(BackendChild(Mutex::new(None)))
         .setup(|app| {

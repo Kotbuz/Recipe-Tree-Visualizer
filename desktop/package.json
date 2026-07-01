@@ -1,7 +1,7 @@
 {
     "name":  "recipe-tree-visualizer-desktop",
     "private":  true,
-    "version":  "0.2.2",
+    "version":  "0.2.3",
     "description":  "Desktop shell (Tauri) for Recipe Tree Visualizer",
     "scripts":  {
                     "tauri":  "tauri",
@@ -10,5 +10,8 @@
                 },
     "devDependencies":  {
                             "@tauri-apps/cli":  "^2.2.7"
-                        }
+                        },
+    "dependencies":  {
+                         "@tauri-apps/plugin-http":  "^2.5.9"
+                     }
 }

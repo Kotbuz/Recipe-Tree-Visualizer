@@ -80,6 +80,27 @@ function shouldProxyToApi(pathname: string): boolean {
     );
 }
 
+function requestPathname(input: RequestInfo | URL): string {
+    if (typeof input === 'string') {
+        if (input.startsWith('http://') || input.startsWith('https://')) {
+            return new URL(input).pathname;
+        }
+        return input.split('?')[0]?.split('#')[0] ?? input;
+    }
+    if (input instanceof URL) {
+        return input.pathname;
+    }
+    try {
+        return new URL(input.url).pathname;
+    } catch {
+        return input.url.split('?')[0]?.split('#')[0] ?? input.url;
+    }
+}
+
+function isApiRequest(input: RequestInfo | URL): boolean {
+    return shouldProxyToApi(requestPathname(input));
+}
+
 function rewriteToApiBase(pathname: string, search: string, hash: string): string {
     const base = getApiBase();
     if (!base) {
@@ -131,6 +152,53 @@ export function apiUrl(path: string): string {
     return typeof resolved === 'string' ? resolved : resolved.toString();
 }
 
+let desktopHttpFetch: typeof globalThis.fetch | null | undefined;
+
+async function getDesktopHttpFetch(): Promise<typeof globalThis.fetch | null> {
+    if (desktopHttpFetch !== undefined) {
+        return desktopHttpFetch;
+    }
+    if (!isDesktopApp() && !isTauriWebviewOrigin()) {
+        desktopHttpFetch = null;
+        return null;
+    }
+    try {
+        const { fetch } = await import('@tauri-apps/plugin-http');
+        desktopHttpFetch = fetch as typeof globalThis.fetch;
+    } catch {
+        desktopHttpFetch = null;
+    }
+    return desktopHttpFetch;
+}
+
+function resolveFetchTarget(input: RequestInfo | URL): RequestInfo | URL {
+    if (typeof input === 'string' || input instanceof URL) {
+        return resolveApiUrl(input);
+    }
+    const resolved = resolveApiUrl(input.url);
+    if (resolved !== input.url) {
+        return new Request(resolved, input);
+    }
+    return input;
+}
+
+export async function apiFetch(
+    input: RequestInfo | URL,
+    init?: RequestInit,
+): Promise<Response> {
+    const useDesktopHttp = Boolean(getApiBase()) && isApiRequest(input);
+    if (useDesktopHttp) {
+        const tauriFetch = await getDesktopHttpFetch();
+        if (tauriFetch) {
+            const target = resolveFetchTarget(input);
+            return tauriFetch(target, init);
+        }
+    }
+
+    const target = resolveFetchTarget(input);
+    return globalThis.fetch(target, init);
+}
+
 export function installDesktopFetchProxy(): void {
     if (import.meta.env.DEV || typeof window === 'undefined') {
         return;
@@ -144,18 +212,8 @@ export function installDesktopFetchProxy(): void {
 
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
-        if (!getApiBase()) {
-            return originalFetch(input, init);
-        }
-
-        if (typeof input === 'string' || input instanceof URL) {
-            return originalFetch(resolveApiUrl(input), init);
-        }
-        if (input instanceof Request) {
-            const resolved = resolveApiUrl(input.url);
-            if (resolved !== input.url) {
-                return originalFetch(new Request(resolved, input), init);
-            }
+        if (getApiBase() && isApiRequest(input)) {
+            return apiFetch(input, init);
         }
         return originalFetch(input, init);
     };
