@@ -105,6 +105,7 @@ if (-not $SkipFrontend) {
         } else {
             npm install --no-audit --no-fund
         }
+        $env:TAURI_ENV_PLATFORM = "windows"
         npm run build
     } finally {
         Pop-Location

@@ -10,6 +10,7 @@ const API_PREFIXES = [
     '/graph',
     '/recipes',
     '/items',
+    '/profiles',
     '/health',
 ];
 
@@ -21,7 +22,19 @@ function isTauriWebviewOrigin(): boolean {
     return (
         protocol === 'tauri:' ||
         hostname === 'tauri.localhost' ||
-        hostname === 'asset.localhost'
+        hostname === 'asset.localhost' ||
+        hostname.endsWith('.localhost')
+    );
+}
+
+function isDockerSameOrigin(): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+    const { hostname, port } = window.location;
+    return (
+        (hostname === 'localhost' || hostname === '127.0.0.1') &&
+        (port === '' || port === '80')
     );
 }
 
@@ -43,7 +56,16 @@ export function getApiBase(): string {
     if (import.meta.env.DEV) {
         return '';
     }
-    return isDesktopApp() ? DESKTOP_API_BASE : '';
+    if (typeof window === 'undefined') {
+        return '';
+    }
+    if (isDockerSameOrigin()) {
+        return '';
+    }
+    if (isDesktopApp() || isTauriWebviewOrigin()) {
+        return DESKTOP_API_BASE;
+    }
+    return '';
 }
 
 function shouldProxyToApi(pathname: string): boolean {
@@ -110,12 +132,22 @@ export function apiUrl(path: string): string {
 }
 
 export function installDesktopFetchProxy(): void {
-    if (!getApiBase()) {
+    if (import.meta.env.DEV || typeof window === 'undefined') {
         return;
     }
 
+    const marker = '__rtvFetchProxied';
+    if (marker in window) {
+        return;
+    }
+    Object.defineProperty(window, marker, { value: true, enumerable: false });
+
     const originalFetch = window.fetch.bind(window);
     window.fetch = (input: RequestInfo | URL, init?: RequestInit) => {
+        if (!getApiBase()) {
+            return originalFetch(input, init);
+        }
+
         if (typeof input === 'string' || input instanceof URL) {
             return originalFetch(resolveApiUrl(input), init);
         }
