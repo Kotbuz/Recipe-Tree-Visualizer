@@ -8,7 +8,8 @@ import {
     useState,
     type ReactNode,
 } from 'react';
-import { DEFAULT_MINECRAFT_VERSION, resolveItemIconFileName } from '../utils/itemIcon';
+import { resolveItemIconFileName } from '../utils/itemIcon';
+import { apiUrl } from '../api/base';
 import type { IngredientIndex } from '../utils/ingredientMatch';
 
 type VersionListResponse = {
@@ -52,9 +53,9 @@ const profileQuery = (profileId: string | undefined) => {
 };
 
 export function MinecraftVersionProvider({ children }: { children: ReactNode }) {
-    const [version, setVersionState] = useState(DEFAULT_MINECRAFT_VERSION);
+    const [version, setVersionState] = useState('');
     const [profileId, setProfileIdState] = useState('default');
-    const [versions, setVersions] = useState<string[]>([DEFAULT_MINECRAFT_VERSION]);
+    const [versions, setVersions] = useState<string[]>([]);
     const [iconNames, setIconNames] = useState<ReadonlySet<string>>(new Set());
     const [iconsRevision, setIconsRevision] = useState('0');
     const [iconsReady, setIconsReady] = useState(false);
@@ -73,6 +74,8 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
                 setVersionState((current) =>
                     installed.includes(current) ? current : installed[0],
                 );
+            } else {
+                setVersionState('');
             }
             return installed;
         } catch {
@@ -211,9 +214,10 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             const fileName = resolveItemIconFileName(itemName, iconId);
             const profileSuffix = profileQuery(profileId);
             const base = `/versions/${encodeURIComponent(version)}/items/${fileName}${profileSuffix}`;
-            return profileSuffix
+            const path = profileSuffix
                 ? `${base}&v=${encodeURIComponent(iconsRevision)}`
                 : `${base}?v=${encodeURIComponent(iconsRevision)}`;
+            return apiUrl(path);
         },
         [iconsRevision, version, profileId],
     );

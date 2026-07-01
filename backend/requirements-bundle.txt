@@ -1,0 +1,9 @@
+# Frozen deps for Windows desktop bundle (keep in sync with pyproject.toml)
+fastapi>=0.115
+uvicorn[standard]>=0.32
+pydantic-settings>=2.6
+loguru>=0.7
+orjson>=3.10
+networkx>=3.4
+python-multipart>=0.0.17
+httpx>=0.28

@@ -24,6 +24,20 @@ export function formatElapsed(seconds: number): string {
     return restMinutes > 0 ? `${hours} ч ${restMinutes} мин` : `${hours} ч`;
 }
 
+function isRendererUnavailableError(error: string | null | undefined): boolean {
+    if (!error) {
+        return false;
+    }
+    const lower = error.toLowerCase();
+    return (
+        lower.includes('renderer request failed') ||
+        lower.includes('connection refused') ||
+        lower.includes('connect error') ||
+        lower.includes('could not connect') ||
+        lower.includes('renderer недоступен')
+    );
+}
+
 function formatAssetTask(
     label: string,
     key: string,
@@ -39,6 +53,14 @@ function formatAssetTask(
         return { key, label, text, tone: 'active', active: true };
     }
     if (task.error) {
+        if (label === 'Иконки' && isRendererUnavailableError(task.error)) {
+            return {
+                key,
+                label,
+                text: 'нужен renderer (Docker)',
+                tone: 'warn',
+            };
+        }
         return { key, label, text: 'ошибка', tone: 'error' };
     }
     if (partial) {

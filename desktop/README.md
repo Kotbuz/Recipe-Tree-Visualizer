@@ -2,7 +2,15 @@
 
 
 
-Нативная оболочка `.exe` для Windows: WebView + локальный backend.
+Нативная оболочка `.exe` для Windows: WebView + встроенный Python backend.
+
+
+
+При установке в папке приложения лежат дополнительные файлы (embedded Python, зависимости, код API), но **пользователь запускает один ярлык** — Tauri сам поднимает backend на `127.0.0.1:8000`.
+
+
+
+Данные (версии Minecraft, моды, логи): `%APPDATA%\Recipe Tree Visualizer\`
 
 
 
@@ -16,15 +24,17 @@
 
 3. [Visual Studio Build Tools](https://visualstudio.microsoft.com/visual-cpp-build-tools/) — C++ workload (для Tauri на Windows)
 
-
-
-Для **запуска** у пользователя дополнительно:
+4. Интернет при первой сборке — скачивается Python embeddable (~25 MB)
 
 
 
-- [uv](https://docs.astral.sh/uv/) в PATH
+Для **запуска** у пользователя:
 
-- JDK 8 / 17 / 21 (UI → **Модпак → Java (JVM)**)
+
+
+- JDK 8 / 17 / 21 (UI → **Модпак → Java (JVM)**) — для JVM/NeoForge экспорта
+
+- `uv` **не нужен** в release-сборке
 
 
 
@@ -43,6 +53,30 @@
 ```powershell
 
 .\scripts\build-desktop.ps1
+
+```
+
+
+
+Скрипт автоматически:
+
+1. Собирает backend bundle (`scripts\build-backend-bundle.ps1`) — Python 3.13 embed + FastAPI
+
+2. Собирает frontend
+
+3. Собирает Tauri installer
+
+
+
+Только backend bundle (быстрее при повторной сборке desktop):
+
+
+
+```powershell
+
+.\scripts\build-backend-bundle.ps1
+
+.\scripts\build-desktop.ps1 -SkipBackendBundle
 
 ```
 
@@ -202,6 +236,8 @@ npm run dev
 
 |------|------------|
 
+| `scripts/build-backend-bundle.ps1` | Embedded Python + API для installer |
+
 | `scripts/build-desktop.ps1` | Полная сборка Windows |
 
 | `scripts/publish-github-release.ps1` | Загрузка в GitHub Releases через `gh` |
@@ -214,6 +250,6 @@ npm run dev
 
 
 
-Docker (`recipe-exporter-neo`, `renderer`) для полного NeoForge-экспорта — отдельно, см. корневой README.
+Docker (`recipe-exporter-neo`, `renderer`) — опционально; планируется вынести renderer и neo-export в само приложение.
 
 

@@ -55,6 +55,11 @@ export function useProfiles(gameVersion: string) {
             const response = await fetch(
                 `/versions/${encodeURIComponent(resolvedVersion)}/profiles`,
             );
+            if (response.status === 404) {
+                setProfiles([]);
+                setActiveProfileId('default');
+                return;
+            }
             if (!response.ok) {
                 throw new Error(`Не удалось загрузить профили (${response.status})`);
             }
