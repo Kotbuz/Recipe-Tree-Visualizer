@@ -9,6 +9,7 @@ import {
     type ReactNode,
 } from 'react';
 import { DEFAULT_MINECRAFT_VERSION, resolveItemIconFileName } from '../utils/itemIcon';
+import { apiUrl } from '../api/base';
 import type { IngredientIndex } from '../utils/ingredientMatch';
 
 type VersionListResponse = {
@@ -211,9 +212,10 @@ export function MinecraftVersionProvider({ children }: { children: ReactNode }) 
             const fileName = resolveItemIconFileName(itemName, iconId);
             const profileSuffix = profileQuery(profileId);
             const base = `/versions/${encodeURIComponent(version)}/items/${fileName}${profileSuffix}`;
-            return profileSuffix
+            const path = profileSuffix
                 ? `${base}&v=${encodeURIComponent(iconsRevision)}`
                 : `${base}?v=${encodeURIComponent(iconsRevision)}`;
+            return apiUrl(path);
         },
         [iconsRevision, version, profileId],
     );

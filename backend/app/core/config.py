@@ -49,7 +49,11 @@ class Settings(BaseSettings):
     )
     mod_dependency_download_timeout_seconds: float = 120.0
     enable_local_folder_picker: bool = True
-    cors_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost"
+    cors_origins: str = (
+        "http://localhost:5173,http://127.0.0.1:5173,http://localhost,"
+        "https://tauri.localhost,http://tauri.localhost,"
+        "https://asset.localhost,http://asset.localhost,tauri://localhost"
+    )
 
     @property
     def cors_origins_list(self) -> list[str]:

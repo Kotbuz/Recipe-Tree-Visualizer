@@ -13,6 +13,18 @@ const API_PREFIXES = [
     '/health',
 ];
 
+function isTauriWebviewOrigin(): boolean {
+    if (typeof window === 'undefined') {
+        return false;
+    }
+    const { hostname, protocol } = window.location;
+    return (
+        protocol === 'tauri:' ||
+        hostname === 'tauri.localhost' ||
+        hostname === 'asset.localhost'
+    );
+}
+
 export function isDesktopApp(): boolean {
     if (typeof __RTV_DESKTOP__ !== 'undefined' && __RTV_DESKTOP__) {
         return true;
@@ -21,9 +33,9 @@ export function isDesktopApp(): boolean {
         return false;
     }
     return (
+        isTauriWebviewOrigin() ||
         '__TAURI_INTERNALS__' in window ||
-        '__TAURI__' in window ||
-        window.location.protocol === 'tauri:'
+        '__TAURI__' in window
     );
 }
 
@@ -46,6 +58,29 @@ function shouldProxyToApi(pathname: string): boolean {
     );
 }
 
+function rewriteToApiBase(pathname: string, search: string, hash: string): string {
+    const base = getApiBase();
+    if (!base) {
+        return `${pathname}${search}${hash}`;
+    }
+    return new URL(`${pathname}${search}${hash}`, base).toString();
+}
+
+function rewriteAbsoluteApiUrl(input: string): string | null {
+    try {
+        const parsed = new URL(input);
+        if (!shouldProxyToApi(parsed.pathname)) {
+            return null;
+        }
+        if (parsed.origin === DESKTOP_API_BASE) {
+            return null;
+        }
+        return rewriteToApiBase(parsed.pathname, parsed.search, parsed.hash);
+    } catch {
+        return null;
+    }
+}
+
 export function resolveApiUrl(input: string | URL): string | URL {
     const base = getApiBase();
     if (!base) {
@@ -54,7 +89,7 @@ export function resolveApiUrl(input: string | URL): string | URL {
 
     if (typeof input === 'string') {
         if (input.startsWith('http://') || input.startsWith('https://')) {
-            return input;
+            return rewriteAbsoluteApiUrl(input) ?? input;
         }
         if (input.startsWith('/') && shouldProxyToApi(input)) {
             return `${base}${input}`;
@@ -67,6 +102,11 @@ export function resolveApiUrl(input: string | URL): string | URL {
     }
 
     return input;
+}
+
+export function apiUrl(path: string): string {
+    const resolved = resolveApiUrl(path);
+    return typeof resolved === 'string' ? resolved : resolved.toString();
 }
 
 export function installDesktopFetchProxy(): void {

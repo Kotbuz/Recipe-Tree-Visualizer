@@ -1,10 +1,42 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 
 struct BackendChild(Mutex<Option<Child>>);
+
+fn prepend_to_path(dir: &Path) {
+    let has_uv = dir.join("uv.exe").is_file() || dir.join("uv").is_file();
+    if !has_uv {
+        return;
+    }
+    let Ok(path) = std::env::var("PATH") else {
+        return;
+    };
+    let dir_str = dir.to_string_lossy();
+    if path.split(';').any(|entry| entry.eq_ignore_ascii_case(dir_str.as_ref())) {
+        return;
+    }
+    #[allow(unsafe_code)]
+    unsafe {
+        std::env::set_var("PATH", format!("{};{}", dir_str, path));
+    }
+}
+
+fn ensure_uv_in_path() {
+    if let Ok(home) = std::env::var("USERPROFILE") {
+        prepend_to_path(&Path::new(&home).join(".local").join("bin"));
+        prepend_to_path(&Path::new(&home).join(".cargo").join("bin"));
+    }
+    if let Ok(local) = std::env::var("LOCALAPPDATA") {
+        prepend_to_path(&Path::new(&local).join("Programs").join("uv"));
+    }
+    if let Ok(program_files) = std::env::var("ProgramFiles") {
+        prepend_to_path(&Path::new(&program_files).join("uv"));
+    }
+}
 
 fn resolve_backend_dir() -> Option<PathBuf> {
     if let Ok(root) = std::env::var("RTV_REPO_ROOT") {
@@ -38,7 +70,19 @@ fn resolve_backend_dir() -> Option<PathBuf> {
     None
 }
 
+fn wait_for_backend_port(timeout: Duration) -> bool {
+    let deadline = Instant::now() + timeout;
+    while Instant::now() < deadline {
+        if std::net::TcpStream::connect("127.0.0.1:8000").is_ok() {
+            return true;
+        }
+        std::thread::sleep(Duration::from_millis(200));
+    }
+    false
+}
+
 fn start_backend() -> Option<Child> {
+    ensure_uv_in_path();
     let backend_dir = resolve_backend_dir()?;
 
     let mut cmd = if cfg!(windows) {
@@ -58,6 +102,10 @@ fn start_backend() -> Option<Child> {
         ]);
         c
     };
+
+    if let Some(repo_root) = backend_dir.parent() {
+        cmd.env("RTV_REPO_ROOT", repo_root);
+    }
 
     cmd.current_dir(&backend_dir)
         .stdout(Stdio::null())
@@ -85,7 +133,11 @@ fn main() {
         .setup(|app| {
             if resolve_backend_dir().is_none() {
                 eprintln!(
-                    "Backend not found. Install uv, set RTV_REPO_ROOT, or run from a full repo checkout."
+                    "Backend not found. Set RTV_REPO_ROOT to the repo root or keep the project checkout."
+                );
+            } else if !wait_for_backend_port(Duration::from_secs(15)) {
+                eprintln!(
+                    "Backend did not start on 127.0.0.1:8000. Install uv and run once: cd backend && uv sync"
                 );
             }
             let _ = app;
